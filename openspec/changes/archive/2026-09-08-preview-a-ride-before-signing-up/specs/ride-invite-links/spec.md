@@ -86,9 +86,54 @@ can exercise cheaply. Revoked, expired, ride deleted, ride departed, malformed a
 SHALL be one outcome there, with nothing distinguishing them — **including nothing that distinguishes
 "never existed" from "revoked"**.
 
-#### Scenario: There is no cap
-- **WHEN** any number of riders claim a live link
-- **THEN** none SHALL be refused for a reason relating to how many came before them
+#### Scenario: An expired token
+- **WHEN** a token whose `expires_at` has passed is previewed or claimed
+- **THEN** the preview SHALL return zero rows and the claim SHALL raise the single error
+- **AND** no `ride_invites` row and no `ride_members` row SHALL be written
+
+#### Scenario: A revoked token
+- **WHEN** a token whose `revoked_at` is not NULL is previewed or claimed
+- **THEN** the outcome SHALL be identical to the expired case, by inspection of both the message
+  and the SQLSTATE
+
+#### Scenario: A token for a deleted ride
+- **WHEN** the ride is deleted and its token is then presented
+- **THEN** the link row SHALL already be gone by cascade, and the outcome SHALL be identical to a
+  token that never existed
+
+#### Scenario: A token for a ride that has already departed
+- **WHEN** `now()` is past the ride's `departure_at` and the token is presented
+- **THEN** the outcome SHALL be identical to the expired case, **including** where `expires_at` is
+  still in the future because the ride was moved earlier
+
+#### Scenario: A malformed or guessed token
+- **WHEN** a string that is not 32 hexadecimal characters, or is well-formed but matches no row,
+  is presented
+- **THEN** the outcome SHALL be identical to every case above
+- **AND** the claim SHALL NOT raise a different error for a malformed string than for an unmatched
+  one, since a distinct parse error confirms the token format to a prober
+
+#### Scenario: A blocked rider, block in either direction
+- **WHEN** a rider who has blocked the organizer, or whom the organizer has blocked, presents a
+  live token
+- **THEN** the preview SHALL return zero rows and the claim SHALL raise the single error
+- **AND** the block SHALL be checked in `private.ride_invite_link_reachable_by`, since a
+  `security definer` function has no policy beneath it to carry decision #2
+- **AND** no `ride_invites` row SHALL be written before the check, so no residue remains that a
+  later unblock could activate
+- **AND** this SHALL remain a statement about the **authenticated** preview and the claim; the
+  anonymous preview has no caller to test, which the `anonymous-ride-preview` capability states in
+  full
+
+#### Scenario: Blocking is checked in both directions by one call
+- **WHEN** the block check is written
+- **THEN** it SHALL use `private.is_blocked`, which is symmetric, and SHALL NOT test a directional
+  `blocks` row
+
+#### Scenario: A rider without both consent stamps
+- **WHEN** a rider whose `terms_accepted_at` or `onboarding_completed_at` is NULL presents a live
+  token to the **preview**
+- **THEN** zero rows SHALL be returned, indistinguishably from every case above
 
 #### Scenario: The anonymous preview is not a token oracle
 - **WHEN** a signed-out caller passes, in turn, a revoked token, an expired token, a token whose ride

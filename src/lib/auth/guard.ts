@@ -56,12 +56,16 @@ export const PUBLIC_PATHS = [
   // path that is not an auth screen or static copy, and the only opening this
   // change makes to a denylist that exists to keep decision #1 true by default.
   //
-  // **It is public so it can HOLD a credential, never so it can SHOW
-  // anything.** The screen behind it renders no ride data at all without a
-  // session: the preview RPC needs `auth.uid()` for its block check and its
-  // participation-gate check, so there is nothing to render before a session
-  // exists and nothing anonymous to leak. What the page needs is to *mount*, so
-  // it can stash the token before the rider is sent through sign-up.
+  // **It is public so it can HOLD a credential across the auth round trip, and
+  // — since `115` (PD-430) — so it can also SHOW one thing to a visitor with no
+  // session at all.** A signed-out visitor holding a well-formed token calls
+  // `public.ride_invite_link_public_preview`, decision #1's one named
+  // exception, and sees five fields of the ride the token names; a visitor
+  // with no token, an empty one, or one that does not parse still sees the
+  // generic invite naming neither the ride nor its organizer, because the
+  // grant follows the token and never `is_public`. No behaviour in this file
+  // changed for either case: this route was already public and already needed
+  // onboarding state below, and it still does.
   //
   // **It is in `needsOnboardingState` below as well, and that is not
   // duplication** — see that function.

@@ -167,29 +167,47 @@ with each other and SHALL NOT block each other.
 - **WHEN** two riders claim one live link concurrently
 - **THEN** both SHALL succeed, since `for share` is shared and they conflict only with a revoke
 
-### Requirement: A live token SHALL buy exactly two RPC calls and no policy reach
+### Requirement: A live token SHALL buy exactly three RPC calls and no policy reach
 
-Holding a token SHALL permit calling `public.ride_invite_link_preview(t text)` and
-`public.claim_ride_invite_link(t text)`, both granted to `authenticated` only.
+Holding a token SHALL permit calling **three** functions and no others:
 
-It SHALL NOT grant, widen or bypass any row-level policy. **This change SHALL add no audience arm
-to `public.rides`, and SHALL NOT modify `private.can_read_ride`.**
+| Function | Granted to | What it answers |
+|---|---|---|
+| `public.ride_invite_link_preview(t)` | `authenticated` only | The eight-column preview, gated on liveness **and** the caller. |
+| `public.claim_ride_invite_link(t)` | `authenticated` only | Joins the caller to the link's ride. |
+| `public.ride_invite_link_public_preview(t)` | **`anon` only** | Six columns — five data fields plus the ride id — gated on liveness alone, because there is no caller. |
 
-`public.ride_invite_link_preview` SHALL return **exactly** these named columns for exactly one
-ride: ride id, title, `departure_at`, `timezone`, `meeting_point`, the organizer's username, the
-organizer's avatar path, and a crew **count**. It SHALL NOT return the crew's ids or usernames,
-the ride's chat, `ride_members` rows, any second ride, the club's roster, or any column of
-`profiles` beyond the organizer's username and avatar.
+It SHALL NOT grant, widen or bypass any row-level policy. **This change SHALL add no audience arm to
+`public.rides`, and SHALL NOT modify `private.can_read_ride`** — the same pin `091` set for itself,
+re-proved rather than assumed to have survived.
 
-The preview SHALL be a fixed column list in SQL and SHALL NOT return `rides.*`, so a column added
-to `rides` later is not disclosed by default.
+`public.ride_invite_link_preview` SHALL be **unmodified**: the same eight named columns — ride id,
+title, `departure_at`, `timezone`, `meeting_point`, the organiser's username, the organiser's avatar
+path, and a crew **count** — the same grant, and the same single entry point through
+`private.ride_invite_link_reachable_by`. **It SHALL NOT be granted to `anon`**, because two of that
+helper's three conjuncts are statements about a caller who does not exist anonymously, and evaluating
+`is_blocked(NULL, organizer)` is not a loosened check but a security-critical predicate applied to an
+argument it was never written for.
+
+`public.ride_invite_link_public_preview` SHALL be a **separate, thinner function**, returning ride id,
+title, `departure_at`, `timezone`, `meeting_point` and the organiser's username, and resolving
+through `private.live_ride_invite_link(t)` alone. **Every column it returns SHALL also be returned
+by `public.ride_invite_link_preview`** — the anonymous projection is a strict subset of the
+authenticated one, which is what makes its disclosure argument checkable in one comparison. It SHALL
+NOT return coordinates, a map path, a crew count, an avatar path, a club, or `is_public`. **Both
+preview functions SHALL be fixed column lists in SQL and neither SHALL return `rides.*`.**
+
+`public.claim_ride_invite_link` SHALL remain `authenticated` only. **Nothing anonymous SHALL write
+anything**: the preview is the whole of the anonymous surface, and joining a ride stays a signed-in
+act gated on the block check and both participation stamps.
 
 #### Scenario: The preview discloses no roster
 - **WHEN** a token holder previews a ride with crew
-- **THEN** a count SHALL be returned and no rider id or username of any crew member SHALL be
+- **THEN** the authenticated preview SHALL return a count and no rider id or username of any crew
+  member, and the anonymous preview SHALL return **no count either**
 
 #### Scenario: A token reaches exactly one ride
-- **WHEN** a token holder previews or claims
+- **WHEN** a token holder previews or claims, by either preview
 - **THEN** exactly the link's own `ride_id` SHALL be reachable, and no other ride SHALL become
   readable by any route
 
@@ -198,28 +216,36 @@ to `rides` later is not disclosed by default.
 - **THEN** its qual SHALL be byte-identical to the string the suite pinned before it, and
   `private.can_read_ride`'s `prosrc` SHALL be unchanged
 
-#### Scenario: A token grants nothing without a session
-- **WHEN** either RPC is called with no session
-- **THEN** it SHALL be refused, because `anon` holds no EXECUTE on either and this change SHALL
-  grant none
+#### Scenario: The anonymous grant reaches one function and no other
+- **WHEN** `has_function_privilege('anon', …, 'EXECUTE')` is asked for all four ride-invite-link
+  functions
+- **THEN** it SHALL be `true` for `ride_invite_link_public_preview` alone, and `false` for
+  `ride_invite_link_preview`, `claim_ride_invite_link` and `revoke_ride_invite_link`
+
+#### Scenario: The thin preview is not a second door for a signed-in rider
+- **WHEN** `has_function_privilege('authenticated', 'public.ride_invite_link_public_preview(text)',
+  'EXECUTE')` is evaluated
+- **THEN** it SHALL be `false`, so a blocked or un-onboarded signed-in rider cannot route around
+  `private.ride_invite_link_reachable_by` by calling the thin function instead
 
 #### Scenario: A token does not open the chat before a claim
-- **WHEN** a token holder who has not claimed reads `ride_messages` for that ride
+- **WHEN** a token holder who has not claimed reads `ride_messages` for that ride, signed in or out
 - **THEN** zero rows SHALL be returned, because `private.is_ride_crew` is untouched by this change
 
 ### Requirement: Every dead token SHALL be indistinguishable from every other, and from a guess
 
-`public.ride_invite_link_preview` SHALL return **zero rows** for every non-live case, and SHALL
-NOT raise. `public.claim_ride_invite_link` SHALL have **one raise site**, with one message and one
-SQLSTATE, reached by every non-live case.
+`public.ride_invite_link_preview` **and `public.ride_invite_link_public_preview`** SHALL return **zero
+rows** for every non-live case, and SHALL NOT raise. `public.claim_ride_invite_link` SHALL have **one
+raise site**, with one message and one SQLSTATE, reached by every non-live case.
 
-The landing screen SHALL render **one message** for all of them, and SHALL NOT tell the rider
-which one occurred.
+**Both previews SHALL resolve liveness through `private.live_ride_invite_link` and nowhere else**, so
+that the anonymous path cannot come to disagree with the authenticated one about which tokens are
+dead. Neither preview body SHALL contain a `revoked_at`, `expires_at` or `departure_at` test.
 
-The one permitted exception is the participation gate, which raises from
-`private.join_ride_from_invite` with `check_violation`. That is a fact about the caller
-themselves and discloses nothing about the token — `083`'s own reasoning, restated because the
-one-raise-site rule would otherwise appear to forbid it.
+The anonymous preview SHALL be reachable without a session, so its dead states are the ones a prober
+can exercise cheaply. Revoked, expired, ride deleted, ride departed, malformed and **never existed**
+SHALL be one outcome there, with nothing distinguishing them — **including nothing that distinguishes
+"never existed" from "revoked"**.
 
 #### Scenario: An expired token
 - **WHEN** a token whose `expires_at` has passed is previewed or claimed
@@ -256,6 +282,9 @@ one-raise-site rule would otherwise appear to forbid it.
   `security definer` function has no policy beneath it to carry decision #2
 - **AND** no `ride_invites` row SHALL be written before the check, so no residue remains that a
   later unblock could activate
+- **AND** this SHALL remain a statement about the **authenticated** preview and the claim; the
+  anonymous preview has no caller to test, which the `anonymous-ride-preview` capability states in
+  full
 
 #### Scenario: Blocking is checked in both directions by one call
 - **WHEN** the block check is written
@@ -266,8 +295,16 @@ one-raise-site rule would otherwise appear to forbid it.
 - **WHEN** a rider whose `terms_accepted_at` or `onboarding_completed_at` is NULL presents a live
   token to the **preview**
 - **THEN** zero rows SHALL be returned, indistinguishably from every case above
-- **AND** they SHALL learn nothing of the ride's title, meeting point, departure, organizer or
-  crew count
+
+#### Scenario: The anonymous preview is not a token oracle
+- **WHEN** a signed-out caller passes, in turn, a revoked token, an expired token, a token whose ride
+  was deleted, a token whose ride has departed, a malformed string, and a random 32-hex string that
+  never existed
+- **THEN** all six SHALL return zero rows with no error, and the responses SHALL be indistinguishable
+
+#### Scenario: Both previews agree about a dead token
+- **WHEN** the same dead token is given to both preview functions
+- **THEN** both SHALL return zero rows, for every dead state
 
 ### Requirement: A rider who has not completed onboarding SHALL NOT be admitted, and SHALL NOT be shown the ride either
 
@@ -406,51 +443,63 @@ indistinguishable from expiry and revoke.
 - **WHEN** any number of riders claim a live link
 - **THEN** none SHALL be refused for a reason relating to how many came before them
 
-### Requirement: The landing route SHALL be public, SHALL render no data without a session, and SHALL define every state
+### Requirement: The landing route SHALL be public, SHALL show only what the sharer disclosed, and SHALL define every state
 
-`/rides/join` SHALL be added to **both** `PUBLIC_PATHS` and `needsOnboardingState()`'s set in
-`src/lib/auth/guard.ts`. `PUBLIC_PATHS` is a denylist, so the first is a deliberate opening and
-the only one this change makes; the second is a separate question the guard already keeps separate
-— *may this be reached without a session* versus *must decision #5 be evaluated here*.
+`/rides/join` SHALL remain in **both** `PUBLIC_PATHS` and `needsOnboardingState()`'s set in
+`src/lib/auth/guard.ts`, for the reasons the base requirement gives — the first is the deliberate
+opening, the second is what stops a newly signed-up rider being parked on the preview with no route
+into the wizard. **Neither set changes and no routing behaviour changes.**
 
-**Adding it to the first alone breaks the feature's main flow.** `needsOnboardingState`'s first
-line is `if (!isPublicPath(pathname)) return true`, so a public route answers it `false`, the
-onboarding stamps are never read, the guard answers "stay", and a rider who has just signed up is
-parked on the preview tapping a Join button that raises `check_violation` every time, with no
-route into the wizard.
+The token SHALL remain a **query parameter, not a path segment**, because the route tree is shared
+between the web and native builds and a `[token]` segment would require `generateStaticParams` under
+`CAPACITOR_BUILD=1`.
 
-**The token SHALL be a query parameter, not a path segment**, and the reason SHALL be recorded
-accurately because the obvious one is false. `output: 'export'` lives in `next.config.ts`'s
-`capacitorConfig` **only** — the file ends `isCapacitorBuild ? capacitorConfig : webConfig`, and a
-shared link opens the **web** build, which has no static export and does run a server. The binding
-constraint is that **the route tree is shared between both builds**, so a `[token]` segment would
-require `generateStaticParams` under `CAPACITOR_BUILD=1` and break `npm run build:native`.
+**With no session the route SHALL render the ride's title, its start time in the ride's own zone, its
+meeting point, and the organiser's username, plus a `Sign up to RSVP` control.** It SHALL call
+`public.ride_invite_link_public_preview` and **no other RPC**.
 
-With no session the route SHALL render the shell, a generic sentence naming neither the ride nor
-its organizer, and controls to sign in or create an account. It SHALL NOT call either RPC, and
-SHALL NOT render the ride's title, date, meeting point, organizer or crew count. Decision #1 is
-unchanged and no `anon` grant is added to make this screen richer.
+**It SHALL NOT render the ride's coordinates, its map, its crew, a crew count, its club, or whether
+it is club-private** — from any source, including a cache left by a previous session. The rule the
+base requirement stated as *"SHALL NOT render the ride's title, date, meeting point, organizer or
+crew count"* is **narrowed to its last two**, and narrowed deliberately: this is the app's only
+anonymous read and its boundary is the projection, not the screen.
 
-The route SHALL define all seven states from `client-render-shell`'s checklist:
+**The meeting point is rendered because it is already disclosed to this audience.**
+`public.ride_invite_link_preview` returns it to any holder of the same token before they claim
+anything, gated on the participation stamps rather than on ride membership — so what stood between a
+link recipient and the meeting point was the onboarding wizard, which is friction and not a
+boundary.
+
+**The `guard.ts` comment beside `RIDE_JOIN_PATH` SHALL be corrected in the same change.** It reads
+*"It is public so it can HOLD a credential, never so it can SHOW anything"*, which becomes false the
+day this ships; a comment asserting the opposite of the code is worse than no comment.
+
+The route SHALL define all eight states — the base requirement's seven, plus the signed-out preview
+this change adds:
 
 | State | What it renders |
 |---|---|
-| No session | Shell, generic invite copy, Sign in / Create account. No ride data. |
+| No session, live token | Title, start time, meeting point, organiser, `Sign up to RSVP`. Nothing else. |
+| No session, dead or absent token | The generic invite copy and the sign-in / create-account controls. |
 | Loading | A skeleton of the preview card. Gated on the **data**, never on `isLoading`. |
-| Live token, signed in | The preview and one `Join this ride` control. |
-| Dead token (any of the six) | One message: the invite link is no longer valid. Plus a route to `/rides`. |
+| Live token, signed in | The existing eight-column preview and one `Join this ride` control. Unchanged. |
+| Dead token (any of the six) | One message: the invite link is no longer valid. Plus a route to `/rides`. Identical signed in and out. |
 | Error (the RPC failed) | Distinguishable from a dead token, with a retry. A failed read is not a decided answer. |
-| Offline | The cached preview if one exists, with the Join control **disabled** and stated as such — a claim is a write and SHALL NOT be queued. |
-| Already claimed | The preview with the control replaced by a route to the ride. |
+| Offline | The cached preview if one exists, with the control **disabled** and stated as such — a claim is a write and SHALL NOT be queued. |
+| Already claimed | The preview with the control replaced by a route to the ride. Signed in only. |
 
 `undefined` SHALL mean "not yet" and `null` SHALL mean "decided"; only the second renders the dead
 message.
 
-#### Scenario: A visitor with no session sees no ride
+#### Scenario: A visitor with no session sees the ride, and nothing about its riders
 - **WHEN** a signed-out visitor opens a live link
-- **THEN** no ride title, date, meeting point, organizer name or crew count SHALL be rendered from
-  any source, including a cache left by a previous session
-- **AND** neither RPC SHALL be called
+- **THEN** the title, the start time in the ride's own zone, the ride's stored `meeting_point` and
+  the organiser's username SHALL render
+- **AND** the meeting point SHALL be asserted against the ride's **actual stored value** rather than
+  a literal, so a projection that drops or mangles it fails red
+- **AND** the ride's coordinates, its map, its crew, any count, and its club SHALL NOT be rendered
+  from any source, including a cache
+- **AND** only `public.ride_invite_link_public_preview` SHALL be called
 
 #### Scenario: A dead token and a failed read are told apart
 - **WHEN** the preview RPC errors, as opposed to returning zero rows
@@ -458,25 +507,29 @@ message.
 
 #### Scenario: The guard, with no session
 - **WHEN** an anonymous visitor reaches `/rides/join`
-- **THEN** `resolveDestination` SHALL return `null` — they stay, because the route is public and
-  the page must mount to stash the token
+- **THEN** `resolveDestination` SHALL return `null` — they stay, because the route is public and the
+  page must mount to stash the token
 
 #### Scenario: The guard, session with onboarding incomplete
 - **WHEN** a rider with a session and no completion stamp reaches the landing route
 - **THEN** `resolveDestination` SHALL return their resume step, per decision #5
-- **AND** this SHALL be asserted in `src/lib/auth/__tests__/guard.test.ts`, because it holds only
-  while `/rides/join` is in `needsOnboardingState()`'s set and is silently false if it is not
+- **AND** this SHALL remain asserted in `src/lib/auth/__tests__/guard.test.ts`, because it holds only
+  while `/rides/join` is in `needsOnboardingState()`'s set
 
 #### Scenario: The guard, session with onboarding complete
 - **WHEN** an onboarded rider reaches the landing route
-- **THEN** `resolveDestination` SHALL return `null` and the preview SHALL render
+- **THEN** `resolveDestination` SHALL return `null` and the authenticated preview SHALL render
 
 #### Scenario: The stash is consumed after the wizard, not abandoned at /postcards
 - **WHEN** a rider completes onboarding with a token stashed
 - **THEN** the screen they land on SHALL consume the stash and return them to `/rides/join`
-- **AND** the flow SHALL NOT end at `/postcards` with a live token still in `sessionStorage` and
-  nothing reading it
 
+#### Scenario: The walk exercises the signed-out route
+- **WHEN** `npm run walk` runs with fixtures
+- **THEN** it SHALL open `/rides/join` with a live token **signed out**, assert the title renders, and
+  assert the ride's stored `meeting_point` string is **present** in the document
+- **AND** it SHALL assert the crew count and the club name are **absent**, so the phase fails red if
+  the projection widens past the five columns rather than only if it narrows
 ### Requirement: The token SHALL survive the auth round trip without being spendable by another rider
 
 The token SHALL be held in `sessionStorage` under one key, and SHALL NOT be held in

@@ -329,15 +329,17 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**114 files. DEV is at `114` and PROD at `112` — measured 2026-09-07, after `114` applied.** `113`
+**115 files. DEV is at `115` and PROD at `112` — measured 2026-09-08, after `115` applied.** `113`
 was applied to DEV migration-first, ahead of #428; the merge is what landed its file, so the
 row that read as file-less until then is an ordinary applied migration. DEV's row count reads
 **three** high — the three long-standing hand-applied rows — and **PROD's is exact**, which is the
 direction that matters: nothing is applied there without a file behind it. Neither is a gap.
 
-**The open promotion gap is `113` and `114`, in that order and NOT collapsed.** `114` is the
-narrowing half and must not reach PROD until the same bundle is serving there — see its entry
-below before promoting either.
+**The open promotion gap is `113`, `114` and `115` — in that order, and `113`/`114` NOT collapsed.**
+`114` is the narrowing half and must not reach PROD until the same bundle is serving there — see its
+entry below before promoting either. **`115` carries no such gate against the other two**: it
+creates one object nothing existing calls, so it neither depends on `113`/`114` nor is depended on
+by them. It is migration-first on its own account, for the reason its entry gives.
 
 **`113_home_country` (PD-428), applied to DEV 2026-09-07T10:10:07Z as `20260907101007`.** Adds
 nullable `profiles.home_country` (ISO 3166-1 alpha-2), two VALIDATED CHECKs, three column grants
@@ -358,6 +360,37 @@ migration applied. Applied before the bundle serves, the old bundle's `complete_
 is refused on every signup and every new rider is stuck in the wizard with no skip. **The same
 split is owed on the PROD promotion rather than collapsed**: promote `113`, deploy, confirm
 `READY` with `aliasError` null on `app.letsride.social`, then `114`. `108`/`109`'s shape.
+
+**`115_a_stranger_sees_the_ride` (PD-430), applied to DEV 2026-09-08T09:49:46Z as
+`20260908094946`.** Creates `public.ride_invite_link_public_preview(t text)` — six columns of one
+ride — revokes EXECUTE from `public` and `authenticated` and grants it to **`anon`**, which is the
+app's first and only anonymous grant and the named exception in `CLAUDE.md` decision #1. Additive
+in every statement: no table altered, no policy touched, no trigger hung. Rollback is one
+`drop function`. **The hand-exercise gate does not fire** — nothing existing calls the new object,
+so there is no shipped write path a trigger could take down.
+
+**MIGRATION-FIRST, and both sides were answered rather than assumed.** Applied ahead of the bundle,
+`anon` holds EXECUTE on a function nothing invokes and nothing observes it — safe. The bundle
+serving without it puts `PGRST202` on a stranger's first impression, which is the one thing the
+story exists to prevent — not safe. **The PROD promotion carries the same order**, and it needs no
+coordination with `113`/`114`.
+
+**Its recorded statement's md5 does NOT equal the file's, deliberately, and that is the norm this
+document already describes** (§What reads as drift). The file applied cleanly and matched at
+`93aa1f33a5a0709a61bc69aab336d641`; the build then measured that the `volatile`-forces-POST reason
+in its `comment on function` was false, corrected the file, and reissued the corrected
+`comment on function` against DEV so the **object** agrees. Compare the object: the deployed comment
+and the file's are byte-identical at md5 `273030a67e91eb8684363c1ff431a0af`, 4305 characters, and
+the function body md5 is `f11fc97b0b920af7cef924c4a6db272b`. **The promotion applies the corrected
+file, so PROD gets the right comment in one statement.**
+
+**Advisors: +1 WARN, in a class the project had never seen.**
+`anon_security_definer_function_executable` (lint `0028`, *Public Can Execute SECURITY DEFINER
+Function*), one finding, naming this function. It is **not** a 39th
+`authenticated_security_definer_function_executable` — that count is unchanged at 38, and INFO
+`rls_enabled_no_policy` is unchanged at 3. So the advisor set *can* see the app's only anonymous
+surface, which is what the change asked to find out. Gate triggers 22 → 22; the `service_role`
+census unchanged at 30 kept / 3 revoked; `anon` table grants and `anon` policies both still 0.
 
 **The guard is NOT beside the consent and username arms, and the plan that said it should be was
 wrong.** `openspec/…/require-a-home-country-at-onboarding/tasks.md` §5.3 justified that placement
@@ -1480,7 +1513,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 114 — DEV at 114, PROD at 112 (113 then 114 await promotion, in that order)
+ls supabase/migrations/*.sql | wc -l     # 115 — DEV at 115, PROD at 112 (113, 114, 115 await promotion; 113 then 114 in that order)
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```
@@ -1599,8 +1632,9 @@ projects, and it reads exactly like drift. Compare the OBJECT, never the recorde
 
 ## Security advisors
 
-**Security advisors: forty-two on BOTH projects since the `108`–`112` promotion of 2026-09-07, and only one
-is outstanding on each.** A one- or two-advisor difference between the projects is the ordinary
+**Security advisors: forty-three on DEV and forty-two on PROD since `115` applied on 2026-09-08, and
+only one is outstanding on each.** The difference is `115`'s pending promotion, in the new
+`anon_security_definer_function_executable` row below. A one- or two-advisor difference between the projects is the ordinary
 shape of a pending promotion, never a finding on its own. Re-derive
 rather than trust the number — `get_advisors(security)`, or, without the payload,
 
@@ -1617,6 +1651,7 @@ cannot tell a session whether a new WARN is expected:
 |---|---|---|
 | 38 on both | `authenticated_security_definer_function_executable` (WARN) | Every `security definer` RPC in `public` — the onboarding accessors (`021`), the recovery-grant pair (`026`), the moderation and club-management RPCs, the push-device pair (`078`), the ride and club invite RPCs (`083`, `085`, `091`), `introduce_to_club` (`097`), the moderation-reversal accessors (`105`/`106`) and `108`'s two ride-thread RPCs. Every one is `security definer` **by design**, and each is narrow on purpose: takes a row id and never a rider id, writes or answers exactly one row for its caller, and has ONE raise site so it cannot be used as an oracle. **This advisor fires once per such function, so a migration adding two adds two**, and a migration whose functions live in `private` adds none, because PostgREST does not publish `private`. Count them off `get_advisors` rather than off this cell |
 | 3 | `rls_enabled_no_policy` on `password_reset_grants`, `push_devices` and `club_removals` (INFO) | Correct by design: `026`, `078` and `111` revoke everything on their table from the client roles, so a policy would be the thing that granted reach. **`club_removals` and `password_reset_grants` still hold Supabase's default `service_role` grant, and should not** — PD-413; `docs/reference/schema.md` §`service_role` grants has the reasoning |
+| **1 on DEV, 0 on PROD** | `anon_security_definer_function_executable` (lint `0028`, WARN) | **A class this project had never seen before `115`**, and its arrival is a finding in itself: it means the advisor set *can* see the app's only anonymous surface, which the change wrote down as a fact to read rather than predict. It names `public.ride_invite_link_public_preview(t text)` and nothing else, and it is `CLAUDE.md` decision #1's one named exception. **It is NOT a 39th of the row above** — that count did not move — so a session reading only the total would mis-attribute it. Zero on PROD until `115` promotes; a **second** finding in this class is a new decision and not this one extended |
 | 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
 
 An unexpected advisor is one **not** in that table. A one-advisor difference between the projects

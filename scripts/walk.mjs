@@ -1477,6 +1477,70 @@ async function provision(wanted, existing = {}) {
   return created
 }
 
+/**
+ * A LIVE invite token for `rideId` — PD-430, task 6.4. Reused if the ride
+ * already carries one, minted through `/rides/detail/invite`'s own "Create an
+ * invite link" control otherwise, exactly the way `provision()` above creates
+ * a ride or a club: through the app's own form, never a direct insert, so the
+ * write exercises `createRideInviteLink` end to end rather than proving
+ * nothing about it.
+ *
+ * **Gated by the identical `fixturesPermitted` every other write in this file
+ * goes through** — a rerun with fixtures off, or against a non-writable ref,
+ * must not mint a new link on shared DEV.
+ *
+ * **The token is read off the network response, never off the DOM** — nothing
+ * on this screen ever prints a token as text; `InviteLinkRow`'s Share control
+ * hands it to `navigator.share`/the clipboard, neither of which this harness
+ * can read back. `getRideInviteLinks`' own SELECT includes `token` (the
+ * organizer's row security, not `anon`'s), so the REST response this
+ * `useQuery` call makes on every load already carries it.
+ *
+ * Liveness is computed the same way `InviteLinkRow` computes `dead` —
+ * `revoked_at === null` and `expires_at` still in the future — rather than
+ * trusted from a display label, since a walk running against a DEV ride
+ * dated a year out (see `provision()`) will always find its own link live.
+ *
+ * Returns the token string, or `null` when there is no live link and none
+ * could be created (fixtures off, or the project is not writable).
+ */
+async function provisionInviteToken(rideId) {
+  const isLinksGet = (r) =>
+    r.url().includes('/rest/v1/ride_invite_links') && r.request().method() === 'GET'
+
+  const liveToken = (rows) => {
+    if (!Array.isArray(rows)) return null
+    const now = Date.now()
+    const live = rows.find(
+      (r) => r.revoked_at === null && new Date(r.expires_at).getTime() > now
+    )
+    return live?.token ?? null
+  }
+
+  const initial = page
+    .waitForResponse(isLinksGet, { timeout: 20_000 })
+    .then((r) => r.json())
+    .catch(() => null)
+  await page.goto(`${BASE}/rides/detail/invite?id=${rideId}`, { waitUntil: 'networkidle' })
+  const existing = liveToken(await initial)
+  if (existing) return existing
+
+  const permit = fixturesPermitted(await authenticatedProjectRef())
+  if (!permit.ok) return null
+
+  const refetch = page
+    .waitForResponse(isLinksGet, { timeout: 20_000 })
+    .then((r) => r.json())
+    .catch(() => null)
+  const clicked = await page
+    .click('button:has-text("Create")', { timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (!clicked) return null
+
+  return liveToken(await refetch)
+}
+
 let fixtureFailures = 0
 
 /**
@@ -1899,6 +1963,15 @@ const INVITE_LANDINGS = [
     // "You have been invited" is a prefix of the live preview's "You have been
     // invited to a ride", so anchoring there would pass on a leaked preview.
     signedOut: /Sign in or create an account/i,
+    // **`115`, PD-430 — the anonymous RPC, and only the ride has one.** Its
+    // presence is what flips this phase's signed-out expectations below from
+    // "generic copy, no call" to "the dead-link message, exactly one call to
+    // THIS function and none to `rpc` above". Substring-safe in both
+    // directions and worth stating because the counters use `includes`:
+    // `ride_invite_link_public_preview` does not contain
+    // `ride_invite_link_preview`, since what follows the shared prefix is
+    // `public_` rather than `preview`.
+    anonRpc: '/rpc/ride_invite_link_public_preview',
   },
   {
     kind: 'club',
@@ -1907,6 +1980,10 @@ const INVITE_LANDINGS = [
     dataMarker: /Private club|\b\d+ riders?\b/i,
     claim: /Join club/i,
     signedOut: /Sign in or create an account/i,
+    // **No anonymous club preview exists and adding one is a NEW decision** —
+    // `CLAUDE.md` decision #1's exception names one function. So this kind
+    // keeps the original contract in full, and `null` here is what asserts it.
+    anonRpc: null,
   },
 ]
 
@@ -1929,28 +2006,46 @@ const DEAD_LINK_COPY = 'This link has expired'
  *
  * ## Signed out, holding a token: the screen must not become an oracle
  *
- * `RideInviteJoin`'s and `ClubInviteJoin`'s shared contract is that a visitor
- * with no session sees generic copy naming neither the ride nor its organizer
- * (neither the club nor its size), and that it **calls neither RPC** — each
- * preview needs `auth.uid()` for its block and participation checks, so there
- * is nothing to render before a session exists and nothing to leak. Decision #1
- * is untouched and no `anon` grant exists to make either screen richer.
+ * **The two kinds no longer share one contract, and `115` (PD-430) is where
+ * they split.** Read the club's first, because it is the original and it is
+ * still true of the club: a visitor with no session sees generic copy naming
+ * neither the club nor its size, and the page **calls no RPC** —
+ * `club_invite_link_preview` needs `auth.uid()` for its block and
+ * participation checks, so there is nothing to render before a session exists.
+ * **No anonymous club preview exists, and adding one is a new decision**:
+ * `CLAUDE.md` decision #1's exception names exactly one function.
  *
- * **The load-bearing assertion is the RPC one, and the reason is worth stating
- * because the obvious reading of this phase is wrong.** A dead token cannot
- * produce ride data whatever the screen does, so "no ride title on screen"
- * passes here on a build that leaks every ride — it is asserted anyway (it
- * would catch `SignedOutInvite` being replaced by a preview) but it proves
- * nothing on its own. What a dead token *can* show is the discriminator: if the
- * component ever reordered its guards so `DeadLink` were reached before the
- * `signedIn === false` branch, or issued the read anonymously, a stranger could
- * tell a live token from a dead one by opening it. That is an existence oracle
- * over every ride and every club in the app, RLS would refuse none of it — each
- * RPC is granted to `authenticated`, so an anonymous call is a refusal rather
- * than a leak, and a refusal answers the question just as well as a row does —
- * and no assertion in `supabase/tests/` can see it. Two assertions close it: the
- * dead token is NOT reported as dead, and no request to the preview RPC leaves
- * the page.
+ * **The ride's signed-out screen now answers.** `115` granted `anon` EXECUTE on
+ * `ride_invite_link_public_preview`, so a signed-out visitor holding a
+ * well-formed token gets the ride's title, time, meeting point and organiser —
+ * and a well-formed token that is dead gets `DeadLink`. So this phase's dead
+ * token, which is 32 valid hex characters, must now reach the dead-link message
+ * rather than the generic copy, and the two assertions that said otherwise were
+ * inverted here rather than deleted.
+ *
+ * **What that costs, stated rather than glossed: signed out, a stranger can now
+ * tell a LIVE ride token from a dead one.** That is not a regression this phase
+ * failed to stop — it is the feature. Showing the ride for a live token is the
+ * entire story, and no screen can do that while staying indistinguishable from
+ * one that shows nothing. The property that survives, and the one the spec
+ * actually requires, is that **the dead states are indistinguishable from each
+ * other**: revoked, expired, ride deleted, ride departed, malformed and
+ * never-existed are one zero-row answer that raises nothing, which is
+ * `115`'s own `2.9` in `supabase/tests/` across all six — the walk holds one
+ * DOM and can only ever see one of them.
+ *
+ * **The load-bearing assertion is still an RPC one, and for the ride it is now
+ * the negative.** A dead token cannot produce ride data whatever the screen
+ * does, so "no ride title on screen" passes here on a build that leaks every
+ * ride — it is asserted anyway (it would catch a preview drawn where none is
+ * owed) but it proves nothing on its own. What must never happen is the page
+ * reaching for the AUTHENTICATED preview with no session: it is granted to
+ * `authenticated`, so the call answers 401/42501, and **a refusal
+ * distinguishes a real token from a guess exactly as well as a row does**.
+ * `115` opened a separate, thinner function and did not widen that one; the
+ * two shapes look interchangeable, which is what makes the assertion worth
+ * keeping. No assertion in `supabase/tests/` can see a client calling the
+ * wrong endpoint.
  *
  * ## Signed in, holding the same dead token: the read has to actually work
  *
@@ -1969,7 +2064,7 @@ const DEAD_LINK_COPY = 'This link has expired'
  * by a tap and by nothing else, and a claim is a write — so the Join control is
  * asserted *absent* on a dead link and is never pressed on a live one.
  */
-async function checkInviteLanding({ kind, path, rpc, dataMarker, claim, signedOut }) {
+async function checkInviteLanding({ kind, path, rpc, dataMarker, claim, signedOut, anonRpc }) {
   console.log(`\nthe ${kind} invite landing route (${path}):`)
   let bad = 0
   let ran = 0
@@ -1989,8 +2084,10 @@ async function checkInviteLanding({ kind, path, rpc, dataMarker, claim, signedOu
   const anonContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
   const anonPage = await anonContext.newPage()
   let anonPreviewCalls = 0
+  let anonPublicPreviewCalls = 0
   anonPage.on('request', (r) => {
     if (r.url().includes(rpc)) anonPreviewCalls += 1
+    if (anonRpc && r.url().includes(anonRpc)) anonPublicPreviewCalls += 1
   })
 
   await anonPage.goto(target, { waitUntil: 'networkidle' }).catch(() => {})
@@ -2025,19 +2122,48 @@ async function checkInviteLanding({ kind, path, rpc, dataMarker, claim, signedOu
     'signed out: the visitor is not bounced to /auth/login',
     `landed on ${anonPath}`
   )
-  report(
-    signedOut.test(anonText),
-    'signed out: the generic invite renders',
-    `body was ${JSON.stringify(anonText.slice(0, 120))}`
-  )
-  report(
-    !new RegExp(DEAD_LINK_COPY, 'i').test(anonText),
-    'signed out: a dead token is NOT reported as dead',
-    'the screen is an oracle — a stranger can tell a live token from a dead one'
-  )
+  // **The two kinds diverge here, and only here — `115`, PD-430.** The club
+  // keeps the original contract in full; the ride's signed-out screen now
+  // ANSWERS a well-formed token, so a dead one must reach the dead-link
+  // message rather than the generic copy. See this function's header.
+  if (anonRpc) {
+    report(
+      new RegExp(DEAD_LINK_COPY, 'i').test(anonText),
+      'signed out: a dead token reaches the dead-link message',
+      `body was ${JSON.stringify(anonText.slice(0, 120))}`
+    )
+    report(
+      !signedOut.test(anonText),
+      'signed out: a well-formed token does NOT fall back to the generic invite',
+      'the anonymous read was skipped — a live token would render nothing either'
+    )
+    report(
+      anonPublicPreviewCalls === 1,
+      'signed out: the ANONYMOUS preview RPC is called exactly once',
+      `${anonPublicPreviewCalls} request(s) to ${anonRpc}`
+    )
+  } else {
+    report(
+      signedOut.test(anonText),
+      'signed out: the generic invite renders',
+      `body was ${JSON.stringify(anonText.slice(0, 120))}`
+    )
+    report(
+      !new RegExp(DEAD_LINK_COPY, 'i').test(anonText),
+      'signed out: a dead token is NOT reported as dead',
+      'the screen is an oracle — a stranger can tell a live token from a dead one'
+    )
+  }
+  // **Unconditional, and for the ride it is now the load-bearing one.** The
+  // AUTHENTICATED preview is granted to `authenticated` alone and must never
+  // be reached with no session — anonymously it answers 401/42501, and a
+  // refusal distinguishes a real token from a guess just as well as a row
+  // does. `115` granted `anon` a SEPARATE, thinner function; it did not open
+  // this one, and this assertion is what would catch a build that reached for
+  // it because the shapes look interchangeable.
   report(
     anonPreviewCalls === 0,
-    'signed out: the preview RPC is never called',
+    'signed out: the AUTHENTICATED preview RPC is never called',
     `${anonPreviewCalls} request(s) to ${rpc}`
   )
   // Trivially true for a dead token — see the header. Kept because it is the
@@ -2114,6 +2240,153 @@ async function checkInviteLanding({ kind, path, rpc, dataMarker, claim, signedOu
     'signed in: no Join control on a dead link',
     'a dead token is offering a claim'
   )
+
+  return { bad, ran }
+}
+
+/**
+ * The anonymous ride preview, signed OUT, holding a LIVE token — PD-430,
+ * tasks 6.4/6.4b, `openspec/changes/preview-a-ride-before-signing-up/`.
+ *
+ * `checkInviteLanding` above proves the shape of every state with a DEAD
+ * token, deliberately, so it writes nothing. It cannot prove the one thing
+ * `115` actually shipped: that a real, LIVE preview puts the ride's own title
+ * and meeting point on a stranger's screen. That needs a ride this rider
+ * owns and a token that resolves — this is the only phase in the walk that
+ * asks for both.
+ *
+ * **The expected strings are read off the ride's own stored row, never a
+ * literal** — through `/rides/detail/edit`'s own controlled inputs, the
+ * exact mechanism `checkEditRetention` already trusts for an untruncated
+ * value. A literal here would pass against a projection that silently
+ * returned the WRONG ride's title, which is exactly the class of bug 2.7 in
+ * `tasks.md` exists to catch at the RLS layer — this is the DOM half of the
+ * same argument.
+ *
+ * **Crew count absence is asserted the same way `checkInviteLanding`'s
+ * `dataMarker` asserts it on the authenticated side** — `\b\d+ riders?\b` — so
+ * a regression that forwarded `crew_count` into `PublicRidePreviewCard`
+ * fails here even though the dead-token phase above can never see it (a dead
+ * token never carries a crew to count).
+ *
+ * **The robots directive is read off the served document, not off
+ * `metadata.robots`** — `layout.test.ts` already pins the object Next
+ * renders the tag from; this is what 6.4b actually asks for, "the document
+ * carries `noindex, nofollow`" read where the document exists.
+ */
+async function checkAnonymousRidePreview(rideId, unavailable) {
+  let bad = 0
+  let ran = 0
+  const report = (ok, label, detail) => {
+    ran += 1
+    if (!ok) bad += 1
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `  (${detail})`}`)
+  }
+
+  console.log('\nthe anonymous ride preview, signed out with a live token (PD-430):')
+
+  if (!rideId) {
+    if (unavailable?.failed) {
+      // Fixtures were permitted and asked for, and still nothing came out of
+      // it — the `! FIXTURE FAILED` line already printed at the caller.
+      // CLAUDE.md: a shrunken N/N is a skip, not a pass.
+      report(false, 'a ride this rider owns was available to preview', unavailable.reason)
+    } else {
+      console.log(
+        `  (no ride this rider owns — not exercised` +
+          `${unavailable?.reason ? `: ${unavailable.reason}` : ''})`
+      )
+    }
+    return { bad, ran }
+  }
+
+  await page.goto(`${BASE}/rides/detail/edit?id=${rideId}`, { waitUntil: 'networkidle' })
+  const formReady = await page
+    .waitForSelector('form [name="meeting_point"]', { timeout: 20_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (!formReady) {
+    report(
+      false,
+      'could read the owned ride’s own stored title and meeting point',
+      'the edit form (this rider is confirmed to own the ride) never rendered'
+    )
+    return { bad, ran }
+  }
+  const expectedTitle = await page.inputValue('form [name="title"]')
+  const expectedMeetingPoint = await page.inputValue('form [name="meeting_point"]')
+
+  const token = await provisionInviteToken(rideId)
+  if (!token) {
+    const permit = fixturesPermitted(await authenticatedProjectRef())
+    report(
+      false,
+      'a live invite token was available to preview',
+      permit.why ?? 'no live invite link on this ride and none could be created'
+    )
+    return { bad, ran }
+  }
+
+  // A throwaway signed-out context, same shape as `checkInviteLanding`'s
+  // anonymous half and for the same reason: it must not see the session the
+  // walk established above.
+  const anonContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
+  const anonPage = await anonContext.newPage()
+  try {
+    await anonPage
+      .goto(`${BASE}/rides/join?token=${token}`, { waitUntil: 'networkidle' })
+      .catch(() => {})
+
+    // A terminal state — the title actually rendering, or the dead-link copy
+    // if the just-minted token were somehow already dead — never the
+    // skeleton's absence (see `INVITE_LANDINGS`'s own note on why that
+    // predicate returns before the screen has mounted at all).
+    await anonPage
+      .waitForFunction(
+        ([title, deadCopy]) =>
+          document.body.innerText.includes(title) || document.body.innerText.includes(deadCopy),
+        [expectedTitle, DEAD_LINK_COPY],
+        { timeout: 20_000 }
+      )
+      .catch(() => {})
+
+    const anonPath = new URL(anonPage.url()).pathname
+    const text = await anonPage.evaluate(() => document.body.innerText).catch(() => '')
+
+    report(
+      anonPath === '/rides/join',
+      'the visitor is not bounced off /rides/join',
+      `landed on ${anonPath}`
+    )
+    report(
+      text.includes(expectedTitle),
+      'the ride’s own title is on the signed-out screen',
+      `expected ${JSON.stringify(expectedTitle)} in ${JSON.stringify(text.slice(0, 200))}`
+    )
+    report(
+      text.includes(expectedMeetingPoint),
+      'the ride’s own stored meeting point is on the signed-out screen',
+      `expected ${JSON.stringify(expectedMeetingPoint)} in ${JSON.stringify(text.slice(0, 200))}`
+    )
+    report(
+      !/\b\d+\s+riders?\b/i.test(text),
+      'no crew count is on the signed-out screen',
+      'a rider count leaked into the anonymous preview'
+    )
+
+    // 6.4b. Read off the served document — never off `metadata.robots`, which
+    // `layout.test.ts` already pins.
+    const robots = await anonPage
+      .evaluate(() => document.querySelector('meta[name="robots"]')?.getAttribute('content') ?? null)
+      .catch(() => null)
+    report(
+      Boolean(robots) && /noindex/i.test(robots) && /nofollow/i.test(robots),
+      'the document carries noindex, nofollow',
+      `meta[name="robots"] content was ${JSON.stringify(robots)}`
+    )
+  } finally {
+    await anonContext.close()
+  }
 
   return { bad, ran }
 }
@@ -3804,6 +4077,12 @@ let retentionRan = 0
  * into a pass.
  */
 let inviteLandingRan = 0
+/**
+ * Same reasoning as `inviteLandingRan` — `checkAnonymousRidePreview` throws
+ * to a `.catch()` that reports one failed assertion rather than shrinking
+ * this into a silent pass.
+ */
+let anonymousPreviewRan = 0
 let socialActionFailures = 0
 let socialActionsRan = 0
 if (isFullWalk) {
@@ -3870,6 +4149,24 @@ if (isFullWalk) {
     guardFailures += inviteLanding.bad
     inviteLandingRan += inviteLanding.ran
   }
+
+  // PD-430, tasks 6.4/6.4b — the one phase in this file that previews a LIVE
+  // ride to a stranger, rather than proving the shape of a dead token. Needs
+  // `owned.ride`, established well above by `discoverOwned`/`provision()`;
+  // `ownershipUnavailableReason`/`ownershipGapIsFailure` are the same pair
+  // `checkEditRetention` already reads for its own skip-vs-fail distinction.
+  // **This one DOES write** — a live invite link, minted if the ride does not
+  // already carry one — unlike the read-only phases in the loop just above,
+  // so it sits here rather than being folded into that loop.
+  const anonymousPreview = await checkAnonymousRidePreview(owned.ride, {
+    failed: ownershipGapIsFailure,
+    reason: ownershipUnavailableReason,
+  }).catch((e) => {
+    console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
+    return { bad: 1, ran: 1 }
+  })
+  guardFailures += anonymousPreview.bad
+  anonymousPreviewRan += anonymousPreview.ran
 
   // The four WRITE phases — see their own block comment above
   // `waitForTableWrite` for what these are, why they exist, and the
@@ -4001,6 +4298,10 @@ if (isFullWalk) {
     retentionRan +
     refusedSignupRan +
     inviteLandingRan +
+    // PD-430. Same reasoning as `inviteLandingRan`: skips (no owned ride, or
+    // fixtures off) without moving `ran`; only a fixture asked for and
+    // refused counts against the total. See `checkAnonymousRidePreview`.
+    anonymousPreviewRan +
     // Same reasoning again: `checkLikePostcard`/`checkCommentOnPostcard` skip
     // without a visible postcard, and `checkRsvpToRide`/`checkJoinClub` skip
     // without an eligible ride/club on Explore — none of the four can be

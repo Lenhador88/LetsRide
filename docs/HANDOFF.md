@@ -25,13 +25,13 @@ history.
 - **`development` is the default branch and deploys to DEV** (`app-dev.letsride.social`);
   `main` is production (`app.letsride.social`). `development` is normally ahead of `main`, and
   that is the steady state.
-- **Migrations: 114 files on `development`. DEV is at `114`, PROD at `112`** — `108`–`112`
-  promoted 2026-09-07 with [#431](https://github.com/Lenhador88/LetsRide/pull/431); `113` landed
-  its file with #428 and `114` was written once that bundle was confirmed serving. `list_migrations`
-  against both refs is the check. **`113` then `114` is a required order on the PROD promotion and
-  must not be collapsed** — `114` refuses a NULL country, so applied ahead of the bundle that
-  writes one it strands every new signup in a wizard with no skip. Promote `113`, deploy, confirm
-  `READY` with `aliasError` null on `app.letsride.social`, then `114`.
+- **Migrations: 115 files on `development`. DEV is at `115`, PROD at `112`.** `list_migrations`
+  against both refs is the check. **The promotion is `113`, `114`, `115`, and `113` then `114` must
+  not be collapsed** — `114` refuses a NULL country, so applied ahead of the bundle that writes one
+  it strands every new signup in a wizard with no skip. Promote `113`, deploy, confirm `READY` with
+  `aliasError` null on `app.letsride.social`, then `114`; `115` is independent of both.
+  **`115` grants `anon` EXECUTE on one function — the first exception to decision #1**, and it puts
+  a new advisor class (`anon_security_definer_function_executable`) on DEV alone until it promotes.
   `docs/reference/migrations.md` §Applied state has the per-file log and that gate.
 - **Edge Functions: the two projects DISAGREE, and that is the resting state after a merge.**
   #434 touched `supabase/functions/resolve-ride-location/` (comments only), so
@@ -42,31 +42,28 @@ history.
 - **The walk is green on DEV** as both fixture accounts (2026-09-06 baselines in
   `docs/reference/running-locally.md` §The walk). In CI it is still **skipped** — the Actions
   secrets name PROD and `WALK_CI` is unset (see §Blocked on the owner).
-- **OpenSpec has 45 open changes and 6 archived**
+- **OpenSpec has 44 open changes and 7 archived**
   (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`) — a backlog no
-  hook clears; see §Next action. `preview-a-ride-before-signing-up` is **correctly** open: nothing
-  in it is built. **Archiving one is not two commands**: every change old enough to matter carries
-  a stale `## MODIFIED Requirements` block that would drop scenarios, and PD-359's two needed
-  seven requirements refreshed. `docs/reference/journal.md` §The open OpenSpec changes has the
-  refresh and the per-capability check that proves nothing was lost.
+  hook clears; see §Next action. **Archiving one is not two commands**: every change old enough to
+  matter carries a stale `## MODIFIED Requirements` block that would drop scenarios. PD-359's two
+  needed seven requirements refreshed, and PD-430's — written the same day it archived — carried a
+  block that would have dropped **eight** scenarios and imported a ninth from an unrelated
+  requirement. **Diff scenario names per requirement before merging any block.**
+  `docs/reference/journal.md` §The open OpenSpec changes has the check that proves nothing was
+  lost.
 
 ## In flight
 
-- **Both queue slots are free.** #435 (PD-429, PD-430) merged 2026-09-07 as `ecae89a`, taken as a
-  group into slot-1 and released on the merge.
+- **`Queued (AI)` is empty**, so the next firing has nothing to take and ends `idle`.
 - **`Development (AI)`:** PD-421 only (the log digest's HTTP call has never succeeded), carrying
   no slot label — so it occupies no slot, which is deliberate rather than a gap.
-- **`Queued (AI)`:** PD-430. PD-431 was taken 2026-09-07 and its **registration half is built** —
-  child B of `openspec/changes/deliver-push-notifications`, every non-`[device]` box ticked. It
-  stays open: what its title names is a rider getting a reminder, and the sender is child C,
-  blocked on the APNs `.p8` and the FCM service account (task 0.4, owner-only).
-- **PD-431 duplicates PD-302, PD-303 and PD-124**, which are `Todo AI` sub-issues of the PD-291
-  epic that already owns the written proposal. Which row should carry the remaining work is a
-  three-option table on PD-431 and is the owner's call — until it is made, a firing reading
-  `Queued (AI)` cannot tell which row it would be building.
-- **PD-430 is decided: the preview shows the ride's real `meeting_point`, not a town.** `091`
-  already returns it to any token holder before they claim — gated on the participation stamps,
-  not ride membership — so the anonymous projection is a strict subset of one that ships.
+- **PD-431 is parked in `Needs help` and needs TWO answers**, neither of which any session can
+  give. Its **registration half is built** (child B of
+  `openspec/changes/deliver-push-notifications`, merged as #438); the sender is child C, blocked on
+  the APNs `.p8` and the FCM service account (task 0.4). Separately, **PD-431 duplicates PD-302,
+  PD-303 and PD-124**, `Todo AI` sub-issues of the PD-291 epic that already owns the written
+  proposal — the three-option table on PD-431 is the owner's call, and until it is made a firing
+  reading `Queued (AI)` cannot tell which row it would be building.
 - **Two stories are open on purpose.** **PD-385**: 9 DEV rides carry a coordinate and no tile,
   repairable only by each ride's own organizer. **PD-428**: `114` is written and applied to DEV, so
   what it still owes is a way to change the country after onboarding — a decision rather than a
@@ -98,7 +95,7 @@ body carries its own steps.
 code is in production.** The first is one screen and it blocks the queue from picking the work up
 cleanly; the second is the standing backlog below.
 
-**Archive the OpenSpec changes whose code is in production.** 45 are open against 6 archived, so
+**Archive the OpenSpec changes whose code is in production.** 44 are open against 7 archived, so
 `openspec/specs/` no longer describes the app and the next proposal is written against specs that
 are missing what shipped. One docs-only PR, in `npm run openspec -- list` order, archiving only
 changes whose migrations and screens are on `main`, budgeting for §Position's refresh; a change with an open decision inside it
