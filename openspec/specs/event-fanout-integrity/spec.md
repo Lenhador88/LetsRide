@@ -7,6 +7,7 @@ recipients must be excluded before a row is written. Split out of `notifications
 because the next fan-out this app grows — ride reminders, "ride updated", the Inbox epic —
 inherits every rule here unchanged and must not rediscover them.
 ## Requirements
+
 ### Requirement: Fan-out SHALL be performed by a database trigger and by nothing else
 
 Every notification row SHALL be written by an `AFTER INSERT` (or `AFTER DELETE`) row-level trigger

@@ -10,6 +10,7 @@ assertion in `supabase/tests/rls_test.sql`.** The one exception is named as such
 Supabase Realtime applies the SELECT policy per subscriber cannot be asserted on plain Postgres,
 and it lives in `realtime-subscriptions`.
 ## Requirements
+
 ### Requirement: A ride's chat SHALL be readable and writable by its crew, and by nobody else
 
 `public.ride_messages` SHALL be reachable only by riders who are the ride's organizer or who

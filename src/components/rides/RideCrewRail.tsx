@@ -84,7 +84,11 @@ export function RideCrewRail({
   // the better answer — see the header.
   const failed = !roster.data && !!roster.error
 
-  if (!roster.data && !failed) {
+  // **Only while the rail has never been opened** — `ClubMemberRail`'s note
+  // has the reason: `refetch()` clears the error before its retry resolves, so
+  // an open rail passes through this state and would collapse under the
+  // rider's finger.
+  if (!roster.data && !failed && !open) {
     return (
       <div className="mx-4 flex min-h-[46px] items-center gap-3 rounded-lg border border-border px-3">
         <Skeleton className="h-8 w-8 rounded-full" />
@@ -207,11 +211,16 @@ export function RideCrewRail({
                 </>
               )}
             </>
-          ) : (
+          ) : failed ? (
             <ErrorState
               message="We could not load the crew. It is usually temporary — try again in a moment."
               onRetry={roster.refetch}
             />
+          ) : (
+            <div className="flex min-h-[46px] items-center gap-3 px-4">
+              <Skeleton className="h-8 w-8 rounded-full" />
+              <Skeleton className="h-3 w-20" />
+            </div>
           )}
 
           {/* The open state shows what `getRideCrew` returned, which is capped

@@ -17,6 +17,7 @@ How a rider's session is held, proved and discarded once there is no server to s
 cookie. Covers the move to device secure storage, the replacement for the password-recovery
 marker, and what sign-out must destroy on a device two people share.
 ## Requirements
+
 ### Requirement: Session tokens SHALL be held in device secure storage
 
 The session lives in a storage adapter passed to `@supabase/supabase-js`
@@ -106,11 +107,13 @@ rider on that device inherits a spendable grant.
 - **THEN** no cached row, list, image or signed URL belonging to A SHALL be readable or
   renderable by B
 - **AND** this SHALL hold even with the device offline at the moment B signs in
+
 #### Scenario: Cached private-club imagery does not outlive membership
 - **WHEN** a rider leaves a club, or is signed out
 - **THEN** cached image bytes for that club's postcards SHALL be discarded
 - **AND** the one-hour signed-URL TTL SHALL NOT be lengthened to make caching easier, since the
   signature is the only protection on an image once it leaves RLS's reach
+
 #### Scenario: A failed sign-out does not leave a half-signed-in device
 - **WHEN** the token revocation call fails because the device is offline
 - **THEN** local state SHALL still be destroyed and the rider SHALL still land signed out

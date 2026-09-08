@@ -98,6 +98,49 @@ describe('signImagePaths', () => {
 
     expect((await signImagePaths(['a.jpg'], client)).size).toBe(0)
   })
+
+  it('returns empty rather than throwing when the request never gets an answer', async () => {
+    // **The case above is a Storage *answer*; this is the absence of one.** A
+    // rejection from `fetch` never reaches the returned `error`, and every
+    // caller awaits this AFTER unwrapping its rows — `getClubMembers` last —
+    // so a throw here discards a roster the database already returned, over an
+    // avatar. Found by review on PD-382, whose reported symptom was exactly
+    // that roster failing.
+    const client = {
+      storage: {
+        from: () => ({
+          createSignedUrls: async () => {
+            throw new TypeError('Failed to fetch')
+          },
+        }),
+      },
+    } as unknown as DataClient
+
+    expect((await signImagePaths(['a.jpg'], client)).size).toBe(0)
+  })
+
+  it('lets a rejected signing pass leave the rows it was given intact', async () => {
+    // The property the rail's retry now depends on: `resolveAvatarUrls` mutates
+    // in place and its caller keeps going, so an unsignable avatar costs that
+    // avatar and not the list it was on.
+    const client = {
+      storage: {
+        from: () => ({
+          createSignedUrls: async () => {
+            throw new TypeError('Failed to fetch')
+          },
+        }),
+      },
+    } as unknown as DataClient
+    const roster = [
+      { id: 'r1', avatar_path: 'avatars/r1/a.jpg', avatar_url: null },
+      { id: 'r2', avatar_path: null, avatar_url: null },
+    ]
+
+    await expect(resolveAvatarUrls(roster, client)).resolves.toBeUndefined()
+    expect(roster).toHaveLength(2)
+    expect(roster[0].avatar_url).toBeNull()
+  })
 })
 
 describe('resolveAvatarUrls', () => {

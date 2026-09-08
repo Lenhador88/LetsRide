@@ -77,7 +77,13 @@ export function ClubMemberRail({ clubId }: { clubId: string }) {
   // hand is the better answer — see the header.
   const failed = !roster.data && !!roster.error
 
-  if (!roster.data && !failed) {
+  // **Only while the rail has never been opened.** `refetch()` clears the
+  // error synchronously, before its retry resolves, so an open rail passes
+  // through exactly this state on the way back — and returning the shell here
+  // would collapse the panel the rider is looking at, taking `See all` with
+  // it, for however long the request takes to fail again. Below, the panel
+  // draws the wait in place instead.
+  if (!roster.data && !failed && !open) {
     return (
       <div className="mx-4 flex min-h-[46px] items-center gap-3 rounded-lg border border-border px-3">
         <Skeleton className="h-8 w-8 rounded-full" />
@@ -161,11 +167,16 @@ export function ClubMemberRail({ clubId }: { clubId: string }) {
                 }
               />
             ))
-          ) : (
+          ) : failed ? (
             <ErrorState
               message="We could not load the members. It is usually temporary — try again in a moment."
               onRetry={roster.refetch}
             />
+          ) : (
+            <div className="flex min-h-[46px] items-center gap-3 px-4">
+              <Skeleton className="h-8 w-8 rounded-full" />
+              <Skeleton className="h-3 w-20" />
+            </div>
           )}
 
           {/* The open state shows what `getClubMembers` returned, which is

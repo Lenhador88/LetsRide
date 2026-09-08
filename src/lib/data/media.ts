@@ -26,6 +26,17 @@ export const SIGNED_URL_TTL_SECONDS = 60 * 60
  * readable at all; a path the viewer may not see comes back with an error here
  * and lands as null. Never treat "got a URL" as "the viewer is allowed" — the
  * postcards SELECT policy already decided that upstream by returning the row.
+ *
+ * **It never throws, and the `try` is the whole point rather than defensive
+ * padding.** The returned `error` covers a Storage answer; it does not cover
+ * the request failing to get one — a rejection from `fetch` on a flaky
+ * connection propagates out of `createSignedUrls`. Every caller awaits this
+ * AFTER unwrapping its rows, so a throw here discards a roster, a feed or a
+ * crew that the database already returned, over a photo. `getClubMembers` is
+ * the measured instance: an avatar the browser could not sign took the whole
+ * member list down, which is the failure PD-382's rail then disguised as a
+ * link. One unsigned image costs that image and nothing else — the same rule
+ * the per-item errors above already follow.
  */
 export async function signImagePaths(
   paths: string[],
@@ -36,10 +47,17 @@ export async function signImagePaths(
   if (unique.length === 0) return urls
 
   const client = supabase ?? (await resolveSupabase())
-  const { data, error } = await client.storage
-    .from(MEDIA_BUCKET)
-    .createSignedUrls(unique, SIGNED_URL_TTL_SECONDS)
 
+  let signed
+  try {
+    signed = await client.storage
+      .from(MEDIA_BUCKET)
+      .createSignedUrls(unique, SIGNED_URL_TTL_SECONDS)
+  } catch {
+    return urls
+  }
+
+  const { data, error } = signed
   if (error || !data) return urls
 
   for (const item of data) {

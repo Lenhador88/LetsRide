@@ -19,6 +19,7 @@ invalidates had to survive the move without becoming a component-by-component gu
 contract that replaced them is `src/lib/query/keys.ts`, whose header carries the table
 reconciling every one of the 33 against the key that replaced it.
 ## Requirements
+
 ### Requirement: Every mutation SHALL declare what it invalidates
 
 Every function in `src/lib/actions/` SHALL name the cache keys it moves, from
@@ -71,9 +72,11 @@ being served.
 - **THEN** its new invalidation SHALL cover at least the routes its `revalidatePath` calls named
 - **AND** any route deliberately dropped SHALL be recorded with its reason, since three of
   today's calls target routes chosen by convention rather than necessity
+
 #### Scenario: A mutation's own screen updates without a navigation
 - **WHEN** a rider likes, joins, leaves, hides, blocks, reports, comments or posts
 - **THEN** the screen they are on SHALL reflect the change without a manual refresh
+
 #### Scenario: A failed mutation leaves no false state behind
 - **WHEN** a mutation fails after an optimistic update
 - **THEN** the optimistic change SHALL be reverted and the failure SHALL be shown

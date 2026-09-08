@@ -17,6 +17,7 @@ notification row's control-rendering rule is a component contract; and the cross
 between the policy and `private.can_read_ride` is asserted as *equal answers for four named
 riders*, which is behaviour rather than text.
 ## Requirements
+
 ### Requirement: Only the ride's organizer SHALL create an invite
 
 `public.ride_invites` INSERT SHALL be permitted only where `inviter_id = auth.uid()` **and** the
@@ -70,9 +71,11 @@ would conclude that an `accepted` row for a rider nobody named is impossible, an
 - **THEN** the insert SHALL succeed with `status` taking its default of `pending`
 - **AND** `created_at` SHALL be the server's `now()` and SHALL NOT be nameable by the caller
 - **AND** `responded_at` SHALL be NULL
+
 #### Scenario: A club member of the ride's club cannot invite
 - **WHEN** a member of the ride's club, who is neither organizer nor crew, attempts the insert
 - **THEN** it SHALL be refused
+
 #### Scenario: A rider cannot invite on someone else's behalf
 - **WHEN** any rider inserts a row whose `inviter_id` is not `auth.uid()`
 - **THEN** it SHALL be refused, even where that `inviter_id` names the ride's actual organizer

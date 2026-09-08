@@ -18,6 +18,7 @@ split between Zod schemas a Server Action parses and CHECK constraints in Postgr
 client owns the mutation path the constraint coverage is the entire story, and anything not
 expressed as a CHECK, trigger or policy is advisory.
 ## Requirements
+
 ### Requirement: Text bounds on rider-authored columns SHALL be enforced by the database
 
 **This is a live defect, not a risk the migration introduces.** The publishable key ships in
@@ -404,6 +405,7 @@ same migration and in the same position.
 - **THEN** it SHALL still be returned, because `accepted` is a live invite
 - **AND** they SHALL be able to rejoin, which depends on this — `ride_members` INSERT carries its
   own `EXISTS (rides …)` evaluated under their row security
+
 #### Scenario: Invited rider who declined
 - **WHEN** a rider who declined an invite reads the ride
 - **THEN** zero rows SHALL be returned, unless another arm admits them
@@ -526,15 +528,29 @@ trap this requirement closes.
 
 ### Requirement: A column the server owns SHALL NOT be writable by a client that can insert the row
 
-A column whose value is a server decision SHALL be withheld by the **grant**, not by a default and
-not by a trigger alone. A default applies only when the column is omitted, and PostgREST will
-happily name one.
+Where a column's value must come from the server — a timestamp that orders a conversation, a
+stamp that records an act — a DEFAULT SHALL NOT be treated as the enforcement. The value SHALL be
+imposed by a trigger, or the column grant SHALL be withheld.
 
-**This change adds the sharpest instance of that rule in the schema: a secret.**
-`public.ride_invite_links.token` is the credential itself, so a client able to name it could mint
-a link with a token it chose — a predictable or reused string, or one already pasted somewhere —
-and the entropy guarantee would be worth nothing. `expires_at` is the same argument one step down:
-a client able to name it sets its own ceiling.
+A DEFAULT applies only when the column is **omitted**. `authenticated` holds INSERT on every
+content table and PostgREST lets a client name any column in the insert body, so a DEFAULT is a
+convention the database does not enforce — the same class of claim as `joinClub` relying on
+`club_members.role`'s default, which `019` exists to close.
+
+It has never mattered for `postcard_comments.created_at`, because a comment thread is short and
+nobody has an incentive to forge a position in it. It matters the moment a column decides the
+order of a conversation: a message stamped with a far-future time pins itself to the top of every
+participant's thread permanently, and the only remedy is a delete.
+
+**A secret narrows the choice to one of the two, and `091` is the sharpest instance in the
+schema.** `public.ride_invite_links.token` is the credential itself, so a client able to name it
+could mint a link with a token it chose — a predictable or reused string, or one already pasted
+somewhere — and the entropy guarantee would be worth nothing. A trigger that overwrites the value
+still lets the client *send* it and still returns the row, so for a secret the enforcement SHALL be
+the withheld **grant** specifically. `expires_at` is the same argument one step down: a client able
+to name it sets its own ceiling. **This narrows the rule for secrets and does not replace it**: a
+write-once stamp a grant cannot express — `012`'s `profiles.terms_accepted_at`, and `044` lines
+48–65 on why — is still correctly a trigger.
 
 #### Scenario: The token is withheld by the grant
 - **WHEN** `information_schema.column_privileges` is read for `authenticated` on
@@ -551,18 +567,21 @@ a client able to name it sets its own ceiling.
 - **THEN** the stored value SHALL be the server's
 - **AND** the enforcement SHALL be a trigger or a withheld column grant, never the client
   omitting the column
+
 #### Scenario: The trigger takes no caller input and is not callable
 - **WHEN** the value is imposed by a trigger function
 - **THEN** that function SHALL take no argument, SHALL derive the value from the server alone,
   and SHALL have EXECUTE revoked from `public`, `anon` and `authenticated`
 - **AND** it SHALL therefore add no `authenticated_security_definer_function_executable` advisor
   finding
+
 #### Scenario: Trigger firing order is stated rather than relied on by luck
 - **WHEN** a table carries more than one `BEFORE INSERT` row trigger
 - **THEN** the migration SHALL state that Postgres fires them in name order and SHALL say whether
   anything depends on it
 - **AND** where nothing depends on it, that SHALL be written down rather than left as an
   unexamined coincidence
+
 #### Scenario: An ordering column alone is not a total order
 - **WHEN** rows are ordered by a timestamp
 - **THEN** a deterministic tiebreak SHALL be part of the ordering, the index and any pagination
@@ -571,13 +590,26 @@ a client able to name it sets its own ceiling.
 
 ### Requirement: A table with no designed edit SHALL carry no UPDATE grant
 
-Where a table has exactly one designed mutation, that mutation SHALL be a `security definer` RPC
-and the table SHALL carry no UPDATE grant and no UPDATE policy for any client role.
+Where editing a row has not been designed, the table SHALL have no UPDATE policy **and** no
+UPDATE grant to `authenticated`.
 
-**`public.ride_invite_links` has exactly one: revoke.** A column grant on `(revoked_at)` would let
-a client write NULL and **un-revoke** a link the organizer killed, and would let them write a
-future timestamp. `public.revoke_ride_invite_link` is therefore the only path, with one raise site
-so a caller learns nothing about a link that is not theirs.
+The grant is the second, independent layer — the one that still holds if a future policy is
+written too permissively. `009` applied this to `postcard_likes` and `blocks`, `011` to
+`postcard_comments`, `postcard_hides` and `postcard_reports`, and each stated the same reason: a
+table with no mutable column has nothing to grant UPDATE for. It is stated here as a rule rather
+than repeated a sixth time in a migration comment.
+
+**Editing is a design problem, not a permission one.** It means deciding whether "edited" is
+disclosed, from when, and what the record of a conversation means once it can be rewritten. None
+of that exists for any table in this schema.
+
+**One designed mutation is the same answer, not an exception — `091`.** Where a table has exactly
+one, that mutation SHALL be a `security definer` RPC and the table SHALL still carry no UPDATE
+grant and no UPDATE policy for any client role. `public.ride_invite_links` has exactly one: revoke.
+A column grant on `(revoked_at)` would let a client write NULL and **un-revoke** a link the
+organizer killed, and would let them write a future timestamp.
+`public.revoke_ride_invite_link` is therefore the only path, with one raise site so a caller learns
+nothing about a link that is not theirs.
 
 #### Scenario: Revoke is not reversible by a client
 - **WHEN** any rider attempts to UPDATE `ride_invite_links` by any route
@@ -590,11 +622,13 @@ so a caller learns nothing about a link that is not theirs.
 - **THEN** the write SHALL be refused
 - **AND** both the absent policy and the absent grant SHALL be asserted, because either alone
   would be undone by a single future line
+
 #### Scenario: An upsert against such a table uses do-nothing, not do-update
 - **WHEN** a caller writes an upsert against a table with no UPDATE grant
 - **THEN** it SHALL use `on conflict do nothing`
 - **AND** `on conflict do update` SHALL be refused with `42501` rather than silently affecting
   nothing
+
 #### Scenario: The absence is a recorded gap, not an accident
 - **WHEN** a table is created with no UPDATE path
 - **THEN** the migration SHALL say so explicitly

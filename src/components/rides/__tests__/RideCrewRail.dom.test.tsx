@@ -4,46 +4,36 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { ClubRosterMember } from '@/types'
+import type { PublicProfile, RideCrew } from '@/types'
 
 /**
- * **What the failed rail does when a rider actually taps it** — the half
- * `ClubMemberRail.states.test.tsx` cannot reach.
- *
- * That file asserts the collapsed rail is a button and not a link, which is
- * the regression PD-382 reported. It cannot say what the button *opens*,
- * because the panel is unmounted while closed and mounting it needs a real
- * click. Without this file the rail could satisfy every static assertion and
- * still open an empty box — a Members section that expands into nothing is a
- * different bug wearing the same fix.
+ * **`ClubMemberRail.dom.test.tsx`'s mirror, and it exists because the fold-in
+ * shipped without it.** A pre-merge review's finding: the ride rail took the
+ * identical fix with strictly weaker coverage — static assertions only, so
+ * nothing said its failed panel actually opens with a retry, and nothing at
+ * all covered the retry state below.
  *
  * **jsdom rather than `renderToStaticMarkup`, and the reason is the event.**
  * `open` is local state and the panel is `{open && …}`, so under this repo's
- * default `environment: 'node'` there is nothing to assert. Both cases here
- * are a `click` and its re-render.
+ * default `environment: 'node'` there is no panel to assert against and a rail
+ * that opened an empty box would pass every static case.
  */
 
-let result: { data: ClubRosterMember[] | undefined; error: Error | null } = {
-  data: undefined,
-  error: null,
-}
+let result: { data: RideCrew | undefined; error: Error | null } = { data: undefined, error: null }
 
-/**
- * Mirrors `queryClient.ts`'s `refetch`, which **clears the error synchronously**
- * before the retry resolves. A mock that only records the call cannot see the
- * state the rail then passes through, and that state is where a review found
- * the whole open panel collapsing back to a skeleton.
- */
+/** Clears the error synchronously, exactly as `queryClient.ts`'s `refetch`
+ * does — see the club rail's file for why a bare `vi.fn()` cannot see the
+ * state this is here to pin. */
 const refetch = vi.fn(() => {
   result = { data: undefined, error: null }
   act(() => {
-    root.render(<ClubMemberRail clubId="c1" />)
+    root.render(<RideCrewRail rideId="r1" organizerId="pl" organizer={host} isUpcoming />)
   })
 })
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: () => {}, replace: () => {}, refresh: () => {} }),
-  usePathname: () => '/clubs/detail',
+  usePathname: () => '/rides/detail',
   useSearchParams: () => new URLSearchParams(),
   notFound: () => {},
 }))
@@ -56,19 +46,27 @@ vi.mock('@/lib/query', async (importOriginal) => {
   }
 })
 
-const { ClubMemberRail } = await import('@/components/clubs/ClubMemberRail')
+const { RideCrewRail } = await import('@/components/rides/RideCrewRail')
+
+const host: PublicProfile = {
+  id: 'pl',
+  username: 'pl',
+  avatar_url: null,
+  avatar_path: null,
+  bike_model: null,
+}
 
 let container: HTMLDivElement
 let root: Root
 
 beforeEach(() => {
   refetch.mockClear()
-  result = { data: undefined, error: new Error('Could not read this club’s members') }
+  result = { data: undefined, error: new Error('Could not read who is riding') }
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
   act(() => {
-    root.render(<ClubMemberRail clubId="c1" />)
+    root.render(<RideCrewRail rideId="r1" organizerId="pl" organizer={host} isUpcoming />)
   })
 })
 
@@ -95,7 +93,7 @@ function tapRetry() {
   })
 }
 
-describe('ClubMemberRail — tapping a failed rail', () => {
+describe('RideCrewRail — tapping a failed rail', () => {
   it('expands in place instead of navigating, and says the read failed', () => {
     expect(container.querySelector('[role="alert"]')).toBeNull()
 
@@ -105,33 +103,23 @@ describe('ClubMemberRail — tapping a failed rail', () => {
       'true'
     )
     expect(container.querySelector('[role="alert"]')?.textContent).toContain(
-      'could not load the members'
+      'could not load the crew'
     )
   })
 
-  it('keeps the See all entrance to the roster page — PD-262 is not reversed by the error state', () => {
+  it('keeps the See all entrance to the crew page', () => {
     tapHeader()
 
     const link = container.querySelector('a')
     expect(link?.textContent).toBe('See all')
-    expect(link?.getAttribute('href')).toContain('/clubs/detail/members')
-  })
-
-  it('retries the read rather than leaving the rider with a dead panel', () => {
-    tapHeader()
-    tapRetry()
-
-    expect(refetch).toHaveBeenCalledTimes(1)
+    expect(link?.getAttribute('href')).toContain('/rides/detail/crew')
   })
 
   it('stays open across the retry, so See all does not vanish while the rider waits', () => {
     tapHeader()
     tapRetry()
 
-    // `refetch` has cleared the error and the retry has not resolved: the rail
-    // is neither loaded nor failed. Returning the collapsed shell here would
-    // take the panel — and its only route to the roster — out from under the
-    // finger that just asked for it.
+    expect(refetch).toHaveBeenCalledTimes(1)
     expect(container.querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe(
       'true'
     )

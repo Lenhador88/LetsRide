@@ -12,6 +12,7 @@ security-advisor sweep, and any assertion about a grant that must name a *role* 
 attempt a statement, because the suite runs as the table owner for whom neither RLS nor the
 `private` USAGE barrier exists (`031`'s lesson).
 ## Requirements
+
 ### Requirement: A notification SHALL be readable by its recipient and by nobody else
 
 `public.notifications` SHALL be readable only by the rider named in `user_id`. There SHALL be no
