@@ -457,7 +457,7 @@ rather than through a single label on the whole section.
 | | Not settled, and why |
 |---|---|
 | `boot-restore.ts` | answers a webview **process restore**; a hand launch does not reproduce one |
-| Push registration | needs a signed device — a simulator gets no APNs token |
+| Push registration | needs a signed device — a simulator gets no APNs token. **The project can now ask**; §Push registration is provisioned in the project has what changed and what a device still settles |
 | Universal links | no Associated Domains entitlement exists yet (PD-205) |
 | The location prompt | not exercised; the string is verified in the bundle, the dialog is not |
 | `clearSessionStore`'s sweep | **still unexercised.** Sign-out was run, but auth-js removes the `sb-` keys by name first, so the sweep had nothing to find |
@@ -535,6 +535,41 @@ print(p['UIDeviceFamily'], p['UISupportedInterfaceOrientations'])"   # [1] ['UII
 
 **Reversing it is one build setting and one plist array**, so this is a pause rather than a
 door closing. What it costs today is nothing: no iPad layout exists to lose.
+
+### Push registration is provisioned in the project — 2026-09-08
+
+**What the first build's table calls "needs a signed device" was two claims wearing one label, and
+only one of them was true.** Verifying a token needs a device. *Being able to ask for one* is three
+pieces of project text, and all three were missing — so a device trip made before this change would
+have come back with `stalled` and no way to tell which of them caused it.
+
+| | Where | Without it |
+|---|---|---|
+| `aps-environment` | `ios/App/App/App.entitlements` | iOS refuses `registerForRemoteNotifications()`; nothing leaves the phone |
+| `CODE_SIGN_ENTITLEMENTS` | both **target** configurations in `project.pbxproj` | the file exists and is not applied to the bundle |
+| The two APNs posts | `AppDelegate.swift` | iOS answers and the plugin never hears it |
+
+**All three fail identically** — `PushNotifications.register()` resolves, the `registration`
+listener never fires, `pushPrimingState` reports `stalled` — which is why
+`src/lib/push/__tests__/native-project.test.ts` pins them here rather than leaving them to the trip.
+
+**`aps-environment` is `$(APS_ENVIRONMENT)`, not a literal, and that is correctness rather than
+neatness.** Automatic signing picks a development profile for Debug and a distribution one for
+Release; an entitlement that does not match the profile fails to sign. Pinned to `development` the
+archive is refused, and pinned to `production` the device build is. Xcode expands build variables in
+an entitlements file at `ProcessProductPackaging`, the same mechanism behind `$(AppIdentifierPrefix)`
+— so a value that does not expand fails **loudly**, at signing, rather than shipping a TestFlight
+build that registers against the sandbox and receives nothing.
+
+**No `UIBackgroundModes` / `remote-notification` is declared, and the absence is a decision.** The
+ride reminders group 3 sends are alert notifications; a background mode buys them nothing and adds a
+review question about behaviour the app does not have. A silent push would need it, and that is
+group 3's to add.
+
+**What a device still has to settle** — `tasks.md` 2.15–2.19a, none of which this reaches: a real
+token arriving, the decline path, `stalled` deliberately caused with the capability absent from the
+profile, and two riders on one phone. **The provisioning profile carrying the Push capability is
+still an owner action**; a simulator never gets a token whatever the project says.
 
 ### Store readiness — assessed 2026-08-06
 
