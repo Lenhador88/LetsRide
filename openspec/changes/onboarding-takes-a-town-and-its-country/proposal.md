@@ -206,8 +206,9 @@ Eleven. The full scenarios are in `specs/`; this is the index.
     `reason` value, `'no_town'`, rides on `status: 'completed'` rather than on a rejection — it marks
     the escape the step opens when the lookup is unavailable, so the rider finished carrying a
     country and no town. It is NOT a refusal, and it is not `'no_country'`: `114` makes completing
-    without a country impossible, so that name would record an unreachable state. The one rejection
-    this change adds. **The general rule stands and SHALL be recorded where the union is declared:
+    without a country impossible, so that name would record an unreachable state. **This change adds
+    no rejection reason at all** — the four that exist are untouched. **The general rule stands and
+    SHALL be recorded where the union is declared:
     once a step key has real history behind it, it is a position rather than a description and
     renaming it is not free.**
 11. **Two inputs named `country`.** The fallback `CountrySelect` renders a hidden input named

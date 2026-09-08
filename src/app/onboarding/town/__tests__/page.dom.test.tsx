@@ -135,12 +135,11 @@ describe('the lookup is unavailable — the escape', () => {
     // over lives in `PlaceSearchField`, and `place-search-field.test.tsx` is
     // where that allowlist is pinned.
     //
-    // **The gap the pre-merge review found was there, not here.** The field
-    // originally forwarded every error, including `PlaceSearchOfflineError` —
-    // raised from `navigator.onLine === false` alone, so a rider could open the
-    // escape by toggling airplane mode, and this page's flag is deliberately
-    // sticky so the blip would outlive it. Putting the filter here instead
-    // would have made every future caller of the callback re-derive it.
+    // **The filter belongs there rather than here.** The field owns its own
+    // error taxonomy, so a second allowlist on this page would be a copy to
+    // drift — and every future caller of the callback would have to re-derive
+    // it. What matters for this page is only that the escape is opened by a
+    // callback and never by a control the rider can operate.
     const anything = new Error('whatever the field decided to forward')
     act(() => handers.onLookupFailure!(anything))
     expect(container.textContent).toContain('Country')

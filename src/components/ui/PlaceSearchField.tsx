@@ -152,8 +152,11 @@ export type PlaceValue = {
  * That is the `Skip` decision #5 forbids, reached by a control a rider operates
  * at will.
  *
- * Matched on `name` rather than `instanceof`: `usePlaceLookup` wraps a
- * non-`Error` rejection, and a wrapped value is not an instance of anything.
+ * Matched on `name` rather than `instanceof`, for the reason `lib/data/places.ts`
+ * already branches that way: a class identity does not survive minification or a
+ * duplicated module instance, where the string does. (`usePlaceLookup` also
+ * wraps a non-`Error` rejection — but that fails `instanceof` and the name test
+ * alike, so it is not what decides this.)
  *
  * An allowlist rather than a denylist, so a future error class is refused by
  * default rather than silently opening a caller's fallback. Exported so the
@@ -357,13 +360,15 @@ export function PlaceSearchField({
   const notifiedFailure = useRef<Error | null>(null)
   useEffect(() => {
     if (!failure || !onLookupFailure) return
-    // Once per distinct failure. `usePlaceLookup` holds the error until the
-    // next successful lookup, so this effect re-runs on every unrelated
-    // re-render while it stands.
     // The allowlist — see `isForwardableLookupFailure`. An unrecognised failure
     // is not forwarded, and the field still shows it with its retry exactly as
     // it does for a caller that passes no callback at all.
     if (!isForwardableLookupFailure(failure)) return
+    // Once per distinct failure. `usePlaceLookup` holds the error until the
+    // next successful lookup, so this effect re-runs on every unrelated
+    // re-render while it stands. Below the allowlist rather than above it, so a
+    // refused failure never occupies the slot — the ordering is not load-bearing
+    // (an `Error`'s `name` cannot change), it just keeps the ref meaningful.
     if (notifiedFailure.current === failure) return
     notifiedFailure.current = failure
     onLookupFailure(failure)

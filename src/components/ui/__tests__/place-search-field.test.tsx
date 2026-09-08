@@ -300,9 +300,10 @@ describe('isForwardableLookupFailure — the escape\'s allowlist', () => {
    * no new rider anywhere can finish onboarding, because `search-places`'s
    * ceiling is application-wide and decision #5 forbids a skip.
    *
-   * **Which failures qualify is a correctness gate, not a filter**, and the
-   * pre-merge review caught it being wrong: the effect originally forwarded
-   * every error.
+   * **Which failures qualify is a correctness gate rather than a filter**, so
+   * the predicate is pinned here and the EFFECT that consults it is pinned in
+   * `place-search-field-notify.test.ts` — a green predicate with an effect that
+   * ignores it is the shape this pair exists to refuse.
    */
   it('forwards the two failures a rider cannot cause', () => {
     for (const name of ['PlaceSearchUnavailableError', 'PlaceSearchCeilingError']) {
