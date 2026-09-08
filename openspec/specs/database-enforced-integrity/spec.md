@@ -774,9 +774,24 @@ choice, not part of this contract — `design.md` §D2 makes it and owns it.
 
 ### Requirement: Every role's reach into a rider's identity SHALL be stated
 
-The rule above changes what one role may write. Each role that can reach `profiles.username` at
-all SHALL have its access stated so that each line maps onto an assertion, because an unstated
-negative silently becomes whatever the migration author assumed.
+Every role's reach into another rider's identity SHALL be stated and asserted, including the roles
+that reach nothing.
+
+**The signed-out visitor's reach is no longer uniformly zero, and the requirement SHALL say so.**
+`anon` holds no grant on `public.profiles` and never will — that half is unchanged and stays measured
+— but since `115` (PD-430) a signed-out caller holding a ride invite token can obtain **one rider's
+username**: the organiser of the ride that token names, through
+`public.ride_invite_link_public_preview`. A requirement about *every role's reach into identity* that
+omits the app's only anonymous read is wrong by omission, which is precisely the failure mode this
+capability exists to prevent.
+
+**The boundary SHALL be the projection.** No other column of `profiles` — not the id, not the avatar
+path, not `location`, `home_country`, `terms_accepted_at`, `onboarding_completed_at` or
+`analytics_opt_out_at` — SHALL be reachable anonymously by any route, and the anonymous function SHALL
+select exactly one column from `profiles`.
+
+**No role SHALL gain the ability to write, clear or edit another rider's identity**, and this change
+adds no writer of any kind: the anonymous path performs no INSERT, UPDATE or DELETE.
 
 #### Scenario: The rider themselves
 
@@ -802,33 +817,54 @@ negative silently becomes whatever the migration author assumed.
   block-aware SELECT policy and reports it free. That asymmetry predates this change, is unaltered
   by it, and is the reason the mid-onboarding scenario above is worded against the index rather
   than against the availability check
+- **AND** a **signed-out** blocked rider holding a ride invite token is the one case this change
+  changes: they reach the organiser's username through the anonymous preview, because no identity is
+  available to filter on. It is the accepted residual recorded in `anonymous-ride-preview`, and it
+  SHALL NOT be extended to any other column or any other rider
+- **AND** their reach into *identity* SHALL remain exactly that one username however the ride
+  projection grows — the ride's own fields, `meeting_point` included, are facts about a **ride** and
+  SHALL NOT be read as widening this rule. `username` SHALL stay the only `profiles` column the
+  anonymous function names
 
 #### Scenario: Club owner, admin, member and non-member
 
 - **WHEN** a rider holding any `club_members.role` — `owner`, `admin` or `member` — or holding no
-  membership at all, reaches another rider's profile through a club roster, a ride crew, a
-  postcard byline or Explore
-- **THEN** they SHALL read exactly the columns the `profiles` SELECT policy already admits and
-  SHALL write nothing
+  membership at all, reaches another rider's profile through a club roster, a ride crew, a postcard
+  byline or Explore
+- **THEN** they SHALL read exactly the columns the `profiles` SELECT policy already admits and SHALL
+  write nothing
 - **AND** no role SHALL gain the ability to clear, set or edit another rider's username; club role
   confers no authority over another rider's identity, and `club_members` has no UPDATE policy to
   change a role with in any case
 
 #### Scenario: Signed-out visitor
 
-- **WHEN** a request arrives with no session
+- **WHEN** a request arrives with no session and names `public.profiles` directly, by any statement
 - **THEN** zero rows SHALL be returned and zero rows written, because `anon` holds no grant on
   `profiles` — measured, `has_table_privilege('anon','public.profiles','SELECT')` is `false`
-- **AND** no rule in this change SHALL be expressed in a way that admits `anon`, per decision #1
+- **AND** that measurement SHALL be unchanged by `115`, which grants EXECUTE on a function and no
+  privilege on any table
+
+#### Scenario: Signed-out visitor holding a ride invite token
+
+- **WHEN** a signed-out caller passes a live token to `public.ride_invite_link_public_preview`
+- **THEN** exactly one rider's `username` — the organiser's — SHALL be returned, and no other column
+  of `profiles` and no other rider SHALL be
+- **AND** the same caller SHALL reach nothing further: the organiser's other rides, their clubs,
+  their postcards and their profile SHALL all return zero rows
+
+#### Scenario: The anonymous projection selects one identity column
+
+- **WHEN** the anonymous function's return signature and body are read from the catalogue
+- **THEN** `username` SHALL be the only `profiles` column it names
+- **AND** the assertion SHALL be a catalogue read rather than an inspection of a returned row, since a
+  row whose other values happen to be NULL cannot distinguish "not selected" from "empty"
 
 #### Scenario: The route guard is not the enforcement
 
-- **WHEN** a rider defeats or bypasses the client-side route guard
-- **THEN** the durability of their username SHALL be unaffected, because the guard is a UX
-  affordance and this rule lives in the database
-- **AND** conversely the guard SHALL NOT be modified to compensate for this defect, since a
-  client-side check cannot constrain a request the client itself composes
-
+- **WHEN** any rule above is tested
+- **THEN** it SHALL be asserted against the database as the role in question, never against a
+  redirect, and never as the table owner — for whom neither a policy nor a grant exists
 ### Requirement: A table whose rows are addressed to a rider other than their writer SHALL grant no INSERT to any client role
 
 Where a row's `user_id` names somebody other than the rider whose action created it, `authenticated`
