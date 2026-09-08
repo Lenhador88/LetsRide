@@ -330,11 +330,17 @@ insert into public.club_messages (id, thread_id, author_id, body, created_at) va
 -- `formatRide*` helper mean: the instant is derived from the local date and
 -- time in the ride's own zone rather than written as UTC and hoped for.
 --
--- Three upcoming and one past, because `/rides` draws upcoming first and then a
--- "Past rides" section, and a screenshot of the section header needs a row
--- under it. **The past one is CLUB-attached for that reason** — `/rides` opens
--- on the `From clubs` tile, so a clubless past ride leaves the default screen
--- with no past section at all. Measured: it did, until the club id landed.
+-- Three upcoming and one past, and **the default screen shows two of the three**
+-- — `/rides` opens on the `From clubs` tile (`getRides`' unfiltered arm runs
+-- `.in('club_id', clubIds)`), so the clubless Ardennes ride is reached through
+-- `Your rides` and `/rides/explore` rather than there. That one is clubless on
+-- purpose: a seed in which every ride belongs to a club never renders the
+-- audience the app spends a trigger and a policy arm on.
+--
+-- **The PAST ride is club-attached for the opposite reason.** A clubless past
+-- ride leaves the default screen with no "Past rides" header at all, and the
+-- header is the thing it was seeded to make photographable. Measured: absent
+-- until the club id landed, present afterwards.
 --
 -- The organizer's crew row is `103`'s trigger, like the club owner's above.
 -- Coordinates and both map paths are deliberately absent — see the header.

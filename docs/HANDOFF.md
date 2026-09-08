@@ -49,12 +49,11 @@ history.
 
 ## In flight
 
-- **`Queued (AI)` holds PD-447 only** (the Explore *"Still in Hoorn?"* row) — an `L`, so a group
-  holding it caps at two, and safer built ON TOP of PD-445 than beside it: both touch
-  `src/lib/location/` and `setRiderTown`.
-  **`Needs help` is empty.**
-- **`Development (AI)`:** PD-448 in `slot-2`; PD-421 carries no slot label, so it occupies no slot
-  — deliberate rather than a gap. `slot-1` is free.
+- **`Queued (AI)` and `Needs help` are both empty**, so the next firing has nothing to take.
+- **`Development (AI)` holds both slots:** PD-447 in `slot-1` (the Explore *"Still in Hoorn?"* row
+  — an `L`, so its group caps at two, and it sits ON TOP of PD-445 since both touch
+  `src/lib/location/` and `setRiderTown`), PD-448 in `slot-2`. PD-421 carries no slot label, so it
+  occupies no slot — deliberate rather than a gap.
 - **Onboarding's terminal step is `/onboarding/town`** (PD-445), behind `setHomeTown`; the
   guard's `isOnboarding` catch-all is what makes `/onboarding/country` safe. **A town is answered
   by a THIRD PARTY at the app's most critical gate** — `search-places` has an application-wide
