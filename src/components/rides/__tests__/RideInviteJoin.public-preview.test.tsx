@@ -4,10 +4,14 @@ import { renderToStaticMarkup } from 'react-dom/server'
 /**
  * The signed-out, live-token render — `115`, PD-430. Task 6.2.
  *
- * `RideInviteJoin.test.tsx` (if it existed) would be the place for this, but
- * there is no test file for that component yet; this one is scoped to exactly
- * the state `115` adds, matching `ClubInviteJoin.test.tsx`'s own narrower
- * sibling files rather than growing one monolith.
+ * **`RideInviteJoin.test.tsx` exists** (since `41ee83b`, PD-330) and this is
+ * deliberately not it. That file mounts the component with no session and
+ * pins `091`'s contract — chiefly that nothing here spends a token without a
+ * tap. This one needs a different module mock: `useQuery` stubbed per key so
+ * the signed-out-with-token states can be rendered at all. `vi.mock` is
+ * hoisted to module scope, so the two cannot share a file without one set of
+ * mocks fighting the other. Same reason `ClubInviteJoin` has narrower sibling
+ * files rather than one monolith.
  *
  * `environment: 'node'` and a static render, per this repo's default: `useQuery`
  * is mocked directly (`BlockedRidersList.test.tsx`'s own pattern) rather than
@@ -20,8 +24,16 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: () => {}, replace: () => {}, refresh: () => {} }),
 }))
 
+/**
+ * Mutable for the same reason `publicPreviewResult` below is: `vi.mock` is
+ * hoisted to module scope, and the dead-link block needs to render the SAME
+ * dead state to both audiences to pin that the message does not vary with
+ * them. Defaults to the signed-out visitor, which is every other case here.
+ */
+let signedInResult: boolean | undefined = false
+
 vi.mock('@/lib/auth/use-session', () => ({
-  useSignedIn: () => false,
+  useSignedIn: () => signedInResult,
 }))
 
 vi.mock('@/components/ui/OfflineState', () => ({
@@ -163,18 +175,78 @@ describe('RideInviteJoin — a dead token, signed out', () => {
   })
 
   /**
-   * **The dead message must not vary with WHICH dead state it is.** The
-   * component cannot tell them apart — the RPC answers `null` for all six — so
-   * this pins that the copy carries no discriminator a prober could read.
+   * **The message must not vary with the audience — asserted structurally, not
+   * against a list of words.**
+   *
+   * A denylist of causes (`revoked`, `departed`, …) fails in both directions: a
+   * harmless rewording to "once the ride **has departed**" turns it red, and
+   * the regression actually worth catching — `DeadLink` growing a `cause` prop
+   * and rendering "The organizer turned this link off" — contains none of those
+   * words and would pass.
+   *
+   * So render the SAME dead state to both audiences, strip the controls, and
+   * require what is left to be byte-identical. That is the property itself: the
+   * only thing the session may change is the way out. A `DeadLink` that took a
+   * cause, or that reworded itself for strangers, fails here whatever words it
+   * chose.
    */
-  it('says the same thing it says for every other dead state', () => {
-    withDeadToken((html) => {
-      expect(html).not.toMatch(/revoked|expired token|deleted|departed|blocked|not found/i)
-      expect(html).toContain('Ask them for a new one')
-    })
+  it('renders a message that does not vary with the session, only the control', () => {
+    // The message is the heading and the paragraph. Taking them by ELEMENT
+    // rather than stripping controls is what makes this robust: the signed-out
+    // branch wraps its two buttons in a flex `div` and the signed-in one does
+    // not, so removing the anchors alone would leave that wrapper behind and
+    // the comparison would fail on markup neither audience reads.
+    // `[\s\S]` rather than the `s` flag: this repo's `tsconfig` target predates
+    // es2018, so `/…/s` is a `tsc` error even though vitest runs it happily —
+    // which is exactly the kind of thing only the type check catches.
+    const message = (html: string) => (html.match(/<h1\b[^>]*>[\s\S]*?<\/p>/) ?? [''])[0]
+
+    const previousPreview = publicPreviewResult
+    const previousSignedIn = signedInResult
+    let signedOut = ''
+    let signedIn = ''
+    try {
+      publicPreviewResult = null
+      signedInResult = false
+      signedOut = renderToStaticMarkup(<RideInviteJoin token={TOKEN} />)
+      // The authenticated path reaches `DeadLink` through `preview.data`, which
+      // the mock leaves `undefined` — so drive it through the `token === null`
+      // arm instead, which is the same `DeadLink` with `signedIn`.
+      signedInResult = true
+      signedIn = renderToStaticMarkup(<RideInviteJoin token={null} />)
+    } finally {
+      publicPreviewResult = previousPreview
+      signedInResult = previousSignedIn
+    }
+
+    expect(message(signedIn)).toBe(message(signedOut))
+    expect(message(signedOut)).not.toBe('')
+    // Guard the guard: the FULL renders must still differ, or the assertion
+    // above would pass on a build where the control never split at all.
+    expect(signedIn).not.toBe(signedOut)
+    expect(signedOut).toContain('Ask them for a new one')
   })
 
-  /** The live-token fixture is restored, so ordering between blocks is not load-bearing. */
+  /**
+   * **The signed-in arm, which nothing else in this file reaches.** Inverting
+   * the ternary is caught by the first case, but deleting the true arm — or
+   * making both arms the signup pair — would ship a signed-in rider a "Create
+   * an account" button with no test moving.
+   */
+  it('still offers a signed-in rider their rides, not an account', () => {
+    const previous = signedInResult
+    try {
+      signedInResult = true
+      const html = renderToStaticMarkup(<RideInviteJoin token={null} />)
+      expect(html).toContain('See your rides')
+      expect(html).toContain('"/rides"')
+      expect(html).not.toContain('/auth/signup')
+    } finally {
+      signedInResult = previous
+    }
+  })
+
+  /** Both fixtures are restored, so ordering between blocks is not load-bearing. */
   it('leaves the live-token render unaffected', () => {
     const html = renderToStaticMarkup(<RideInviteJoin token={TOKEN} />)
     expect(html).toContain('Sunday coastal run')

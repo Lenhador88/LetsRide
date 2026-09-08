@@ -391,7 +391,8 @@ function SignedOutInvite() {
  * Splitting on the session is safe *here* precisely because it is the one fact
  * this screen already knows without asking the database. It says nothing about
  * the token, so the six dead states stay one indistinguishable answer for each
- * audience — which is the property `115`'s `2.9` asserts across all six.
+ * audience — which is the property `115.9` asserts across all six in
+ * `supabase/tests/rls_test.sql`.
  */
 function DeadLink({ signedIn }: { signedIn: boolean }) {
   return (
