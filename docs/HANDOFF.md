@@ -33,41 +33,40 @@ history.
   (`anon_security_definer_function_executable`) is now on both projects rather than DEV alone.
   `docs/reference/migrations.md` §Applied state has the per-file log.
 - **Edge Functions: the two projects DISAGREE, and that is the resting state after a merge.**
-  #434 touched `supabase/functions/resolve-ride-location/` (comments only), so
-  `deploy-functions.yml` redeployed all three to **DEV at 2026-09-07T20:42Z**; **PROD is still on
-  the 2026-09-06T22:20Z dispatch**. `resolve-ride-location` is DEV `v8` / PROD `v6`, and the
-  `ezbr_sha256` differs. The next promotion to `main` levels them. Read the `deploy` job's
-  conclusion, never the run's — without the token the job skips and the run is still green.
+  `resolve-ride-location` is DEV `v8` (2026-09-07T20:42Z) / PROD `v6` (the 2026-09-06T22:20Z
+  dispatch), and the `ezbr_sha256` differs. The next promotion to `main` levels them. Read the
+  `deploy` job's conclusion, never the run's — without the token the job skips and the run is
+  still green.
 - **The walk is green on DEV** as both fixture accounts (2026-09-06 baselines in
   `docs/reference/running-locally.md` §The walk). In CI it is still **skipped** — the Actions
   secrets name PROD and `WALK_CI` is unset (see §Blocked on the owner).
-- **OpenSpec has 31 open changes and 21 archived**
-  (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`) — 14 archived on
-  2026-09-08, each verified shipped first, and `openspec/specs/` went from 11 capabilities to 24.
+- **OpenSpec has 33 open changes and 21 archived**
+  (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`).
   **Archiving one is not two commands**: a stale `## MODIFIED Requirements` block drops scenarios
-  wholesale, so diff scenario names per requirement before merging one. It also strands every
-  pointer **into** the change — a path in a code comment or a doc still naming
-  `openspec/changes/<name>/`, which only the crossrefs test's own citation form catches; re-point
-  them in the same commit. `docs/reference/journal.md` §The open OpenSpec changes has the check
+  wholesale, so diff scenario names per requirement first, and re-point any pointer **into** the
+  change in the same commit. `docs/reference/journal.md` §The open OpenSpec changes has the check
   that proves nothing was lost.
 
 ## In flight
 
-- **`Queued (AI)` and `Needs help` are both empty**, so the next firing has nothing to take and
-  ends `idle`.
-- **`Development (AI)`:** PD-302 in `slot-2`, and PD-421 (the log digest's HTTP call has never
-  succeeded) carrying no slot label — so it occupies no slot, which is deliberate rather than a
-  gap. `slot-1` is free.
-- **PD-431 is `Duplicate`; its three-option table was answered by queueing PD-302.** Child B of
-  `openspec/changes/deliver-push-notifications` is now complete **in the repository** — #438 built
-  the TypeScript half, #446 the iOS project half — and **unverified on a device**: tasks 2.15–2.19a
-  wait on a provisioning profile carrying the Push capability, which is an owner action. **Child C
-  (PD-303) is the sender**, blocked on the APNs `.p8` and the FCM service account (task 0.4).
-  PD-291 stays open until C lands.
-- **Two stories are open on purpose.** **PD-385**: 9 DEV rides carry a coordinate and no tile,
-  repairable only by each ride's own organizer. **PD-428**: `114` is written and applied to DEV, so
-  what it still owes is a way to change the country after onboarding — a decision rather than a
-  branch.
+- **`Queued (AI)` holds PD-447 only** (the Explore *"Still in Hoorn?"* row), left because it is an
+  `L` and a group holding one caps at two — and safer built ON TOP of PD-445 than beside it, since
+  both touch `src/lib/location/` and `setRiderTown`. **`Needs help` is empty.**
+- **`Development (AI)`:** PD-421 alone, carrying no slot label — so it occupies no slot, which is
+  deliberate rather than a gap. Both slots are free.
+- **Onboarding's terminal step is `/onboarding/town`** (PD-445), behind `setHomeTown`; the
+  guard's `isOnboarding` catch-all is what makes `/onboarding/country` safe. **A town is answered
+  by a THIRD PARTY at the app's most critical gate** — `search-places` has an application-wide
+  ceiling (2000/24h across all riders) — so a lookup failure reveals a country select on its own
+  and the rider finishes with no town. The promise is *every rider who can reach the geocoder gets
+  a town*. Every walk run spends two credits against that ceiling: the mint and the fixture club.
+- **Push, `openspec/changes/deliver-push-notifications`:** child B is complete in the repository
+  (#438, #446) and **unverified on a device** — tasks 2.15–2.19a wait on a provisioning profile
+  carrying the Push capability, an owner action. **Child C (PD-303) is the sender**, blocked on the
+  APNs `.p8` and the FCM service account. PD-291 stays open until C lands.
+- **PD-385 is open on purpose**: 9 DEV rides carry a coordinate and no tile, repairable only by
+  each ride's own organizer. **PD-428's open half is closed** by PD-445 — changing your town now
+  changes your country.
 
 Re-derive rather than trust the list: `list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`
 filtered by status, and `list_pull_requests state=open`.
@@ -91,9 +90,15 @@ body carries its own steps.
 
 ## Next action
 
-**Finish the OpenSpec archive backlog — the 31 left need the expensive half.** The 14 archived on
-2026-09-08 were the ones the tool took unedited; each one left is refused for a reason its message
-names, and the three shapes, their cost and the current ordering chain are in
+**Archive `require-a-home-country-at-onboarding` FIRST, then the two changes this branch shipped.**
+Not a preference: two requirements `onboarding-takes-a-town-and-its-country` MODIFIES live only in
+that change's delta, so the wrong order leaves them with no base. `a-club-says-where-it-is-based`
+shares its `ride-start-location` requirement with the unarchived
+`inline-place-search-with-recent-starts`; it is composed against that version and carries all
+three of its scenarios, so it is safe either way — check that before trusting it.
+
+**Then the rest — the 31 others need the expensive half.** Each one left is refused for a reason
+its message names; the three shapes, their cost and the current ordering chain are in
 `docs/reference/journal.md` §The open OpenSpec changes. **Re-probe the order rather than reading a
 list — archiving one change moves the others.**
 
