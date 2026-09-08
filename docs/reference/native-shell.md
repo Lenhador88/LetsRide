@@ -236,8 +236,9 @@ still emits 34 documents and the route table still shows 34 rows, boundaries bei
 rather than routes.
 
 **What is still unverified after the first build — and the cold-start restore is the sharp one.**
-The app has now run on a **simulator** (§`ios/` COMPILES AND RUNS), which settles the build, the
-launch, the guard and the keychain round-trip. It does not settle `src/lib/native/boot-restore.ts`:
+The app has now run on a **simulator** — see the `ios/` COMPILES AND RUNS paragraph above — which
+settles the build, the launch, the guard and the keychain **read**. It does not settle
+`src/lib/native/boot-restore.ts`:
 that module answers a **webview process restore**, and nothing in a hand-driven launch reproduces
 one, so it stays **written and unverified**. Neither does it settle anything requiring a signed
 device — a real APNs token, a universal link, or the archive.
@@ -286,16 +287,35 @@ copied web bundle (`App/App/public`) and the generated config are gitignored by 
 `cap add` would scaffold it, but nobody has asked for the Android half and an unbuilt platform is
 review surface for no current gain. **So PD-95 stays open** — it names both platforms.
 
-**`ios/` COMPILES AND RUNS — 2026-09-08, on the product owner's Mac, Xcode 26.6 (17F113).** The
-first build of this app: `App` scheme, Debug, `iPhone 17 Pro` simulator, **491s, 0 errors**, one
-warning that is not ours (`appintentsmetadataprocessor` skipping metadata for an absent
-`AppIntents.framework`). It launched, the guard resolved, the webview rendered the postcard deck,
-and **the keychain returned a session written by an earlier install** — so `secure-store.ts` is no
-longer inferred over a mocked plugin, it has round-tripped a real refresh token through the
-platform keychain.
+**`ios/` COMPILES AND RUNS — 2026-09-08, on the product owner's Mac, Xcode 26.6 (17F113).**
+`App` scheme, Debug, `iPhone 17 Pro` simulator, **491s, 0 errors**, one warning that is not ours
+(`appintentsmetadataprocessor` skipping metadata for an absent `AppIntents.framework`). It
+launched, the guard resolved, the webview rendered the postcard deck, and `/profile` drew the
+signed-in rider.
 
-**No build container can do this**, so the label on `ios/` now splits rather than lifting: what a
-**simulator** exercises is verified, and what needs a signed device or the store is not. The
+**It is NOT the first build of this app, and the claim that it was survived a whole draft of this
+section.** A build from **2026-08-25** sits on the same Mac, from a since-deleted checkout at
+`…/LetsRide/ios/App/App.xcodeproj`, with an `App.app` dated Aug 25 21:47 and a matching install on
+this same simulator. The sentence that used to stand here — *"nothing here has ever been built or
+run"* — was scoped to the build container and was true of it; read as a claim about the project it
+was already false. What is genuinely first about 2026-09-08 is the **plugin graph**: the August
+bundle links Capacitor and Cordova only, this one links Sentry and push notifications too. Read the
+machine rather than either sentence:
+
+```bash
+for d in ~/Library/Developer/Xcode/DerivedData/App-*/; do
+  /usr/libexec/PlistBuddy -c "Print :WorkspacePath" "$d/info.plist" 2>/dev/null
+  ls -ld "$d/Build/Products/Debug-iphonesimulator/App.app" 2>/dev/null; done
+```
+
+**The keychain read back a session that a PREVIOUS build wrote** — that August install — so what is
+verified is `secure-store.ts`'s **read** path against a real platform keychain, over a real refresh
+token, rather than the mocked plugin the unit tests use. The **write** was performed by a different
+binary and the **clear** was not run at all, so *round-tripped* is the word this section must not
+use.
+
+**No build container can do any of this**, so the label on `ios/` now splits rather than lifting:
+what a **simulator** exercises is verified, and what needs a signed device or the store is not. The
 per-item state is §What the first build settled below; do not read this paragraph as clearing the
 section.
 
@@ -324,9 +344,17 @@ ios/App/App.xcodeproj/project.pbxproj`. `IPHONEOS_DEPLOYMENT_TARGET` is `15.0`, 
 `Package.swift`'s `.iOS(.v15)` — a mismatch there is an SPM **resolution refusal**, so it surfaces
 as a dependency problem rather than a compile error. `CODE_SIGN_STYLE` is `Automatic`, and
 **`DEVELOPMENT_TEAM` is now set in both configurations — `6V6M44T7KV`, committed 2026-09-08** — so
-the Team is no longer a step a Mac has to perform before the first build. A **simulator** build
-needs no profile at all, which is what that first build demonstrated; a **device** build still
-needs the UDID registered against that team, and that is unexercised. `SWIFT_VERSION`
+the Team is no longer a step a Mac has to perform before the first build. A Team ID is not signing
+material (`.claude/agents/native.md` scopes that to certificates, profiles, keystores and API keys)
+and ships in the `_CodeSignature` of every distributed binary anyway.
+
+**What the 2026-09-08 build demonstrates about signing is narrower than it looks**: it ran as a
+member of that team, so it says a simulator build needs no provisioning profile *for someone in the
+team* and nothing about anyone else. **A contributor outside `6V6M44T7KV` inheriting this hardcoded
+value is untested** — that is the case the deleted sentence (*"which is why setting the Team is a
+step and not a merge conflict"*) used to cover, and `ios/debug.xcconfig` is already tracked if it
+ever needs a per-Mac override. A **device** build additionally needs the UDID registered against
+the team, also unexercised. `SWIFT_VERSION`
 is `5.0`, so the template's `@UIApplicationMain` is a deprecation **warning** — under Swift 6 it is
 an error, worth knowing before anyone raises that setting. And the plugin resolves:
 `@aparajita/capacitor-secure-storage@8.0.0` ships its `ios/Sources/SecureStoragePlugin` in the npm
@@ -348,9 +376,13 @@ synced manifest naming all three plugins, and the resolution pinning `sentry-coc
 writes it and no CI job runs `cap sync`. So the check survives its own fix — compare it against
 `package.json` rather than trusting either:
 
+**`@capacitor/core` is the runtime, not a plugin, and it never appears in `Package.swift`** — so
+the obvious filter reports 3-against-4 on a correct tree and sends the next session to run a
+needless `cap sync` or file a phantom finding. Exclude it, and check the filter both ways:
+
 ```bash
-grep -c '\.package(name:' ios/App/CapApp-SPM/Package.swift        # one per plugin
-node -p "Object.keys(require('./package.json').dependencies).filter(d=>/^@capacitor\/|^@aparajita\/|^@sentry\/capacitor/.test(d)).join('\n')"
+grep -c '\.package(name:' ios/App/CapApp-SPM/Package.swift        # one per plugin — 3
+node -p "Object.keys(require('./package.json').dependencies).filter(d=>/^@capacitor\/|^@aparajita\/|^@sentry\/capacitor/.test(d) && d !== '@capacitor/core').join('\n')"
 ```
 
 What a session CAN now do, all of it exercised on 2026-08-25:
@@ -408,7 +440,9 @@ rather than through a single label on the whole section.
 | Automatic signing provisions a simulator build | no profile, no device registration |
 | The app launches and the webview loads the export | postcard deck rendered from `App/App/public` |
 | `RouteGuard` resolves inside a webview | reached `/postcards`, then `/profile`, no splash lock |
-| The keychain round-trips a real session | signed in from a store written by an earlier install |
+| The keychain **read** returns a real session | written by the Aug 25 install; the write and clear paths are still unexercised |
+| The app icon renders, correctly masked | white motorcycle on `#3D996B` — generated headlessly in August and never once looked at until now |
+| `LSApplicationCategoryType` reaches the bundle | only after this change: the `INFOPLIST_KEY_*` form was inert |
 | Supabase reads work from the bundle | DEV data, avatars and covers from Storage |
 | The shipped `Info.plist` carries what was written | bundle id, display name, `15.0`, the location string |
 
@@ -431,7 +465,7 @@ the words *"stopped being **Owner**"*, so the obvious command counts its own obi
 
 | | Blocker | Why it blocks |
 |---|---|---|
-| 1 | **The shell itself** | **`ios/` is generated and committed — 2026-08-25, from this container** (§The shell has the detail and the reason the old "needs a Mac" answer was wrong: Capacitor 8 uses Swift Package Manager, not CocoaPods). `capacitor.config.ts`, the secure store, a building `out/`, the iOS icon set and the location permission string are all in. **`android/` is still absent**, by choice rather than obstacle. **`ios/` COMPILED AND RAN for the first time on 2026-09-08** — the owner's Mac, Xcode 26.6, `iPhone 17 Pro` simulator, 491s and 0 errors, launching into a signed-in session restored from the platform keychain. The signing Team (`6V6M44T7KV`), the synced `Package.swift` and `Package.resolved` are committed, so the next build starts from a resolved graph. **What is left needs a signed DEVICE rather than a compiler**: a device run, push registration, universal links, and the archive to TestFlight — §What the first build settled has the row-by-row split, and it is the thing to read rather than this cell |
+| 1 | **The shell itself** | **`ios/` is generated and committed — 2026-08-25, from this container** (§The shell has the detail and the reason the old "needs a Mac" answer was wrong: Capacitor 8 uses Swift Package Manager, not CocoaPods). `capacitor.config.ts`, the secure store, a building `out/`, the iOS icon set and the location permission string are all in. **`android/` is still absent**, by choice rather than obstacle. **`ios/` COMPILED AND RAN on 2026-09-08** — the owner's Mac, Xcode 26.6, `iPhone 17 Pro` simulator, 491s and 0 errors, launching into a session read back from the platform keychain. **Not the project's first build** — one from 2026-08-25 sits in DerivedData from a since-deleted checkout — but the first recorded in this repo and the first to link the three-plugin graph. The signing Team (`6V6M44T7KV`), the synced `Package.swift` and `Package.resolved` are committed, so the next build starts from a resolved graph. **What is left needs a signed DEVICE rather than a compiler**: a device run, push registration, universal links, and the archive to TestFlight — §What the first build settled has the row-by-row split, and it is the thing to read rather than this cell |
 | 2 | **Account deletion — built, deployed, exercised against that build 2026-08-19, and UNGATED the same day. The row is live on `/profile`** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, groups 3/4/7 and 6.1 landed 2026-08-16 (`PD-102`): `ProfileMenu`'s Delete account row, the `DeleteAccountSheet` confirmation (a second bottom sheet over `/profile`, not a route — the Figma tree says so, `tasks.md` 3.3 used to assume otherwise), `deleteAccount` in `lib/actions/auth.ts`, one shared `not-found.tsx` for the four "content is unavailable" screens, and the route guard's `gone` state destroying local session data the moment a device discovers its own account is gone (`client-session-storage`'s ADDED requirement). **The re-authentication proof (D6/Q7) is deployed** — by hand on 2026-08-17T14:32Z (PROD v9 / DEV v5, `ezbr_sha256` `9793933d…`), and redeployed by the 2026-09-06 catch-up dispatch from `771f650` (**PROD v10 / DEV v6, `11600c52…` on both**). The digest moved and the behaviour did not: every commit under that directory between the two is comment-only, which is the case the currency check cannot distinguish on its own (`list_edge_functions`, against `TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/delete-account/` — and read what that range *contains*, because a comment-only commit lands in it too and reads as stale). That closes the redeploy window three tasks shared (2.2, 2.3a, `add-ride-map-tiles` 8.3), **none of whose boxes reflect it yet** — see PD-249, which also covers `resolve-ride-location` being deployed while four places including the public privacy page say it is not. **The behaviour is now verified too, not just the digest — 2026-08-19, seven cases against DEV, all passing** (`openspec/changes/add-account-deletion/tasks.md` §2.6 carries the table). Both free probes ran: a request with **no** `password` and separately a **wrong non-empty** one both answer `reauth_required` — the second being the one that matters, since an empty password never reaches `signInWithPassword` and so never exercises `classifyAuthError`. Replaying a real token against a deleted account answers `unauthorized`, which was reasoned from GoTrue's docs until this run. DEV's and PROD's digests are equal, which is no currency check but does make the two builds byte-identical, so the run describes PROD's function; PROD's own `SERVICE_ROLE_KEY` is separately proven by PD-86. **Nothing now stands between a rider and this flow.** `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED` and `src/lib/flags.ts` were deleted on 2026-08-19 at the product owner's instruction, once the redeploy they were waiting for had been verified by content — so the row renders on every build, and the promotion to `main` is what puts it in front of real riders. No session can redeploy — there is no `supabase` CLI here, and the MCP server's `deploy_edge_function` is one of the four Supabase operations on `.claude/settings.json`'s `deny` list. Count what is still open rather than enumerating it — `grep -c '^- \[ \]' openspec/changes/add-account-deletion/tasks.md` — because **`1.6b` is still a live, undecided defect** (a club's last member leaving can destroy third-party postcards — PO decision, not built) and **Q4 is still open** (legal, blocking before launch not before build); `2.4` (idempotency under concurrency) and `6.3` (the live walk) are also open — `6.3` doubly so, because every one of 2.6's seven cases is `curl`, which needs no preflight, so the browser path is the untested half — **and the flag removal is what unblocked it**, so walking the sheet on DEV is now the thing owed before the promotion to `main`. `2.6` itself is closed |
 | 3 | ~~**Inbox is a disabled stub**~~ — **resolved 2026-08-07** | The tab is **gone**, not fixed: the owner chose to drop it rather than build the epic before submission (PD-100). `Navbar.tsx` draws four tabs and the `UNBUILT` machinery is deleted — `sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx \| grep -c "href:"` is 4. The Inbox *domain* is still unbuilt; it stopped being a **store** blocker when nothing pointed at it |
 | 4 | ~~**No edit or delete UI for rides or clubs**~~ — **resolved, `PD-101` is in production** | `updateRide`/`deleteRide`/`updateClub`/`deleteClub` are in `src/lib/actions/`, `/rides/detail/edit` and `/clubs/detail/edit` exist, and both delete confirmations enumerate the blast radius. Club delete goes through `delete_owned_club` (`043`), never a bare `.delete()` |
