@@ -4,6 +4,7 @@ import { useId, useState } from 'react'
 import Link from 'next/link'
 import { ChevronDownIcon, ChevronRightIcon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
+import { ErrorState } from '@/components/ui/ErrorState'
 import { ListUser } from '@/components/ui/ListUser'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { RIDE_AVATAR_LIMIT, getRideCrew, withOrganizer } from '@/lib/data/rides'
@@ -44,11 +45,23 @@ import type { PublicProfile, RideCrew } from '@/types'
  *
  * `undefined` draws the rail's shell with a skeleton in it, at the same height
  * the loaded rail has, so the sections under it do not jump when the roster
- * lands. A **failed** read does not take the screen down and does not offer a
- * retry: it falls back to the link this rail replaced. A rider who cannot see
- * who is coming can still get to the page that lists them, which is strictly
- * better than an error where a roster should be — and the plan page's own
- * `ErrorState` already owns the case where the *ride* could not be read.
+ * lands. A **failed** read keeps the rail a rail: the header stays a disclosure
+ * button and the panel it opens carries `ErrorState`'s retry and the `See all`
+ * link. The plan page's own `ErrorState` still owns the separate case where the
+ * *ride* could not be read.
+ *
+ * **The failed state used to REPLACE the whole rail with a `<Link>` to the crew
+ * page** — same box, same height, same chevron — so a failed read was
+ * indistinguishable from a working rail except that tapping it navigated
+ * instead of expanding. `ClubMemberRail` shipped the identical fallback and
+ * PD-382 is the report of it on the club screen; this is the same defect one
+ * screen over, fixed with it rather than left to be reported again.
+ *
+ * **Data outranks a stale error.** A refetch that fails leaves the previous
+ * crew in the cache (`queryClient.ts` writes `error` without clearing `data`),
+ * and `isStale` already treats an error as always-stale, so foregrounding or
+ * reconnecting retries it. Drawing the crew we hold beats blanking it over a
+ * failure the next sweep is about to clear.
  */
 export function RideCrewRail({
   rideId,
@@ -66,19 +79,12 @@ export function RideCrewRail({
   const panelId = useId()
   const roster = useQuery(queryKeys.rides.crew(rideId), () => getRideCrew(rideId))
 
-  if (roster.error) {
-    return (
-      <Link
-        href={routes.rideCrew(rideId)}
-        className="mx-4 flex min-h-[46px] items-center gap-3 rounded-lg border border-border px-3"
-      >
-        <span className="flex-1 text-sm font-semibold text-foreground">See who’s riding</span>
-        <ChevronRightIcon className="h-5 w-5 shrink-0 text-muted" aria-hidden="true" />
-      </Link>
-    )
-  }
+  // A read that failed with nothing cached. Not `roster.error` alone: an error
+  // over data we already hold is a failed *refetch*, and the crew in hand is
+  // the better answer — see the header.
+  const failed = !roster.data && !!roster.error
 
-  if (!roster.data) {
+  if (!roster.data && !failed) {
     return (
       <div className="mx-4 flex min-h-[46px] items-center gap-3 rounded-lg border border-border px-3">
         <Skeleton className="h-8 w-8 rounded-full" />
@@ -87,8 +93,9 @@ export function RideCrewRail({
     )
   }
 
-  const crew = withOrganizer(roster.data, organizerId, organizer)
-  const { shown, overflow, label } = crewRailSummary(crew, isUpcoming)
+  const crew = roster.data ? withOrganizer(roster.data, organizerId, organizer) : null
+  const summary = crew ? crewRailSummary(crew, isUpcoming) : null
+  const label = summary ? summary.label : 'Who’s riding'
 
   return (
     <div className="mx-4 rounded-lg border border-border">
@@ -114,40 +121,42 @@ export function RideCrewRail({
             on the one element whose announcement is the whole point of the
             rail. The names are not lost: the panel this opens lists them as
             rows, which is where a screen reader should meet them. */}
-        <span aria-hidden="true" className="flex shrink-0 -space-x-2">
-          {shown.map((member) => (
-            <Avatar
-              key={member.user_id}
-              src={member.profile?.avatar_url}
-              // A profile the viewer cannot read comes back null — blocked, or
-              // a rider who never finished onboarding. The row still counts, so
-              // it still draws, exactly as the crew page draws it.
-              name={member.profile?.username ?? 'Rider'}
-              size="xs"
-              className={cn(
-                'h-8 w-8 border-background text-2xs',
-                // The host's ring is drawn outside the photo, so it has to sit
-                // above the avatar overlapping it — `RideCard` does the same.
-                //
-                // **`is_host`, never `i === 0`.** This read the index until
-                // PD-429, which was correct only while `withOrganizer` prepended
-                // the host to `going` unconditionally. Now that they lead
-                // whichever section their own RSVP names, `going[0]` is an
-                // ordinary crew member the moment the organizer answers Maybe —
-                // and the ring would knight them as the host on a screen the
-                // organizer is looking at. Every other host-marking site in this
-                // repo reads the flag; this one no longer infers it from order.
-                member.is_host &&
-                  'relative z-10 ring-2 ring-accent ring-offset-2 ring-offset-background'
-              )}
-            />
-          ))}
-          {overflow > 0 && (
-            <span className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-background bg-track text-2xs font-semibold text-foreground">
-              +{overflow}
-            </span>
-          )}
-        </span>
+        {summary && (
+          <span aria-hidden="true" className="flex shrink-0 -space-x-2">
+            {summary.shown.map((member) => (
+              <Avatar
+                key={member.user_id}
+                src={member.profile?.avatar_url}
+                // A profile the viewer cannot read comes back null — blocked, or
+                // a rider who never finished onboarding. The row still counts, so
+                // it still draws, exactly as the crew page draws it.
+                name={member.profile?.username ?? 'Rider'}
+                size="xs"
+                className={cn(
+                  'h-8 w-8 border-background text-2xs',
+                  // The host's ring is drawn outside the photo, so it has to sit
+                  // above the avatar overlapping it — `RideCard` does the same.
+                  //
+                  // **`is_host`, never `i === 0`.** This read the index until
+                  // PD-429, which was correct only while `withOrganizer` prepended
+                  // the host to `going` unconditionally. Now that they lead
+                  // whichever section their own RSVP names, `going[0]` is an
+                  // ordinary crew member the moment the organizer answers Maybe —
+                  // and the ring would knight them as the host on a screen the
+                  // organizer is looking at. Every other host-marking site in this
+                  // repo reads the flag; this one no longer infers it from order.
+                  member.is_host &&
+                    'relative z-10 ring-2 ring-accent ring-offset-2 ring-offset-background'
+                )}
+              />
+            ))}
+            {summary.overflow > 0 && (
+              <span className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-background bg-track text-2xs font-semibold text-foreground">
+                +{summary.overflow}
+              </span>
+            )}
+          </span>
+        )}
 
         <span className="min-w-0 flex-1 text-sm font-semibold text-foreground">{label}</span>
 
@@ -163,28 +172,9 @@ export function RideCrewRail({
           hands every one of them to the accessibility tree and to ⌘F. */}
       {open && (
         <div id={panelId} className="pb-1">
-          {crew.going.map((member) => (
-            <ListUser
-              key={member.user_id}
-              name={member.profile?.username ?? 'Rider'}
-              avatarUrl={member.profile?.avatar_url}
-              isHost={member.is_host}
-              note={member.is_host ? 'Ride host' : undefined}
-            />
-          ))}
-
-          {crew.maybe.length > 0 && (
+          {crew ? (
             <>
-              <p className="px-4 pt-2 text-2xs font-semibold tracking-wider text-muted uppercase">
-                May be going
-              </p>
-              {/* **The same two host props the `going` rows carry**, and they
-                  became reachable here with PD-429: the organizer can answer
-                  Maybe, so `withOrganizer` can place the host in this section.
-                  Without them the rail drops the `Ride host` label for a rider
-                  the crew page one tap away still labels — two adjacent screens
-                  disagreeing about who is hosting the ride. */}
-              {crew.maybe.map((member) => (
+              {crew.going.map((member) => (
                 <ListUser
                   key={member.user_id}
                   name={member.profile?.username ?? 'Rider'}
@@ -193,13 +183,44 @@ export function RideCrewRail({
                   note={member.is_host ? 'Ride host' : undefined}
                 />
               ))}
+
+              {crew.maybe.length > 0 && (
+                <>
+                  <p className="px-4 pt-2 text-2xs font-semibold tracking-wider text-muted uppercase">
+                    May be going
+                  </p>
+                  {/* **The same two host props the `going` rows carry**, and they
+                      became reachable here with PD-429: the organizer can answer
+                      Maybe, so `withOrganizer` can place the host in this section.
+                      Without them the rail drops the `Ride host` label for a rider
+                      the crew page one tap away still labels — two adjacent screens
+                      disagreeing about who is hosting the ride. */}
+                  {crew.maybe.map((member) => (
+                    <ListUser
+                      key={member.user_id}
+                      name={member.profile?.username ?? 'Rider'}
+                      avatarUrl={member.profile?.avatar_url}
+                      isHost={member.is_host}
+                      note={member.is_host ? 'Ride host' : undefined}
+                    />
+                  ))}
+                </>
+              )}
             </>
+          ) : (
+            <ErrorState
+              message="We could not load the crew. It is usually temporary — try again in a moment."
+              onRetry={roster.refetch}
+            />
           )}
 
           {/* The open state shows what `getRideCrew` returned, which is capped
               at `RIDE_CREW_LIMIT`. The crew page reads the same capped list, so
               this is not "the rest of them" — it is the roster with its own
-              header and its own room, and it stays the specified destination. */}
+              header and its own room, and it stays the specified destination.
+              It stays under a FAILED read too: the page it points at is the
+              escape hatch the old link fallback was, and it is the one thing
+              that read has not made useless. */}
           <Link
             href={routes.rideCrew(rideId)}
             className="mt-1 block border-t border-border px-4 py-3 text-sm font-semibold text-accent"

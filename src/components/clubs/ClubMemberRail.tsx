@@ -4,6 +4,7 @@ import { useId, useState } from 'react'
 import Link from 'next/link'
 import { ChevronDownIcon, ChevronRightIcon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
+import { ErrorState } from '@/components/ui/ErrorState'
 import { ListUser } from '@/components/ui/ListUser'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { CLUB_AVATAR_LIMIT, getClubMembers } from '@/lib/data/clubs'
@@ -47,31 +48,36 @@ import type { ClubRosterMember } from '@/types'
  *
  * `undefined` draws the rail's shell with a skeleton in it, at the same
  * height the loaded rail has, so the sections under it do not jump when the
- * roster lands. A **failed** read does not take the screen down and does not
- * offer a retry: it falls back to the link this rail replaced. A rider who
- * cannot see who is in the club can still get to the page that lists them,
- * which is strictly better than an error where a roster should be — and the
- * page's own `ErrorState` already owns the case where the *club* could not
- * be read.
+ * roster lands. A **failed** read keeps the rail a rail: the header stays a
+ * disclosure button and the panel it opens carries `ErrorState`'s retry and
+ * the `See all` link. The page's own `ErrorState` still owns the separate
+ * case where the *club* could not be read.
+ *
+ * **The failed state used to REPLACE the whole rail with a `<Link>` to
+ * `/clubs/detail/members`** — same box, same height, same chevron — so a
+ * failed read was indistinguishable from a working rail except that tapping
+ * it navigated instead of expanding. That is PD-382 word for word, and it
+ * read as a design bug for five days because the source's happy path does
+ * expand. A rail must never silently become a link: whatever the read did,
+ * tapping the section opens it here.
+ *
+ * **Data outranks a stale error.** A refetch that fails leaves the previous
+ * roster in the cache (`queryClient.ts` writes `error` without clearing
+ * `data`), and `isStale` already treats an error as always-stale, so
+ * foregrounding or reconnecting retries it. Drawing the roster we hold beats
+ * blanking it over a failure the next sweep is about to clear.
  */
 export function ClubMemberRail({ clubId }: { clubId: string }) {
   const [open, setOpen] = useState(false)
   const panelId = useId()
   const roster = useQuery(queryKeys.clubs.members(clubId), () => getClubMembers(clubId))
 
-  if (roster.error) {
-    return (
-      <Link
-        href={routes.clubMembers(clubId)}
-        className="mx-4 flex min-h-[46px] items-center gap-3 rounded-lg border border-border px-3"
-      >
-        <span className="flex-1 text-sm font-semibold text-foreground">See members</span>
-        <ChevronRightIcon className="h-5 w-5 shrink-0 text-muted" aria-hidden="true" />
-      </Link>
-    )
-  }
+  // A read that failed with nothing cached. Not `roster.error` alone: an
+  // error over data we already hold is a failed *refetch*, and the roster in
+  // hand is the better answer — see the header.
+  const failed = !roster.data && !!roster.error
 
-  if (!roster.data) {
+  if (!roster.data && !failed) {
     return (
       <div className="mx-4 flex min-h-[46px] items-center gap-3 rounded-lg border border-border px-3">
         <Skeleton className="h-8 w-8 rounded-full" />
@@ -80,7 +86,8 @@ export function ClubMemberRail({ clubId }: { clubId: string }) {
     )
   }
 
-  const { ordered, shown, overflow, label } = clubRailSummary(roster.data)
+  const summary = roster.data ? clubRailSummary(roster.data) : null
+  const label = summary ? summary.label : 'Members'
 
   return (
     <div className="mx-4 rounded-lg border border-border">
@@ -101,30 +108,32 @@ export function ClubMemberRail({ clubId }: { clubId: string }) {
             join its computed name, on the one element whose announcement is
             the whole point of the rail. The panel this opens lists them as
             rows, which is where a screen reader should meet them. */}
-        <span aria-hidden="true" className="flex shrink-0 -space-x-2">
-          {shown.map((member, i) => (
-            <Avatar
-              key={member.user_id}
-              src={member.profile?.avatar_url}
-              // A profile the viewer cannot read comes back null — blocked, or
-              // a rider who never finished onboarding. The row still counts,
-              // so it still draws, exactly as the members page draws it.
-              name={member.profile?.username ?? 'Rider'}
-              size="xs"
-              className={cn(
-                'h-8 w-8 border-background text-2xs',
-                i === 0 &&
-                  member.role === 'owner' &&
-                  'relative z-10 ring-2 ring-accent ring-offset-2 ring-offset-background'
-              )}
-            />
-          ))}
-          {overflow > 0 && (
-            <span className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-background bg-track text-2xs font-semibold text-foreground">
-              +{overflow}
-            </span>
-          )}
-        </span>
+        {summary && (
+          <span aria-hidden="true" className="flex shrink-0 -space-x-2">
+            {summary.shown.map((member, i) => (
+              <Avatar
+                key={member.user_id}
+                src={member.profile?.avatar_url}
+                // A profile the viewer cannot read comes back null — blocked, or
+                // a rider who never finished onboarding. The row still counts,
+                // so it still draws, exactly as the members page draws it.
+                name={member.profile?.username ?? 'Rider'}
+                size="xs"
+                className={cn(
+                  'h-8 w-8 border-background text-2xs',
+                  i === 0 &&
+                    member.role === 'owner' &&
+                    'relative z-10 ring-2 ring-accent ring-offset-2 ring-offset-background'
+                )}
+              />
+            ))}
+            {summary.overflow > 0 && (
+              <span className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-background bg-track text-2xs font-semibold text-foreground">
+                +{summary.overflow}
+              </span>
+            )}
+          </span>
+        )}
 
         <span className="min-w-0 flex-1 text-sm font-semibold text-foreground">{label}</span>
 
@@ -140,23 +149,32 @@ export function ClubMemberRail({ clubId }: { clubId: string }) {
           tree and in ⌘F. */}
       {open && (
         <div id={panelId} className="pb-1">
-          {ordered.map((member) => (
-            <ListUser
-              key={member.user_id}
-              name={member.profile?.username ?? 'Rider'}
-              avatarUrl={member.profile?.avatar_url}
-              isHost={member.role === 'owner'}
-              note={
-                member.role === 'member' ? undefined : member.role === 'owner' ? 'Owner' : 'Admin'
-              }
+          {summary ? (
+            summary.ordered.map((member) => (
+              <ListUser
+                key={member.user_id}
+                name={member.profile?.username ?? 'Rider'}
+                avatarUrl={member.profile?.avatar_url}
+                isHost={member.role === 'owner'}
+                note={
+                  member.role === 'member' ? undefined : member.role === 'owner' ? 'Owner' : 'Admin'
+                }
+              />
+            ))
+          ) : (
+            <ErrorState
+              message="We could not load the members. It is usually temporary — try again in a moment."
+              onRetry={roster.refetch}
             />
-          ))}
+          )}
 
           {/* The open state shows what `getClubMembers` returned, which is
               capped at `CLUB_ROSTER_LIMIT`. The members page reads the same
               capped list, so this is not "the rest of them" — it is the
               roster with its own header and its own room, and it stays the
-              specified destination. */}
+              specified destination. It stays under a FAILED read too: the
+              page it points at is the escape hatch the old link fallback
+              was, and it is the one thing that read has not made useless. */}
           <Link
             href={routes.clubMembers(clubId)}
             className="mt-1 block border-t border-border px-4 py-3 text-sm font-semibold text-accent"
