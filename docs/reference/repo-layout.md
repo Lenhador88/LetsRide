@@ -109,6 +109,7 @@ scripts/native/             # the two build-shape guards — the bundle carries 
 scripts/probes/             # hand-run probes — the confirmation-on signup arm, which no automated gate may reach (PD-252)
 scripts/brand/              # favicon + OG card generation
 scripts/storage/            # sweep-orphans — Storage objects with no row pointing at them
+scripts/dev/                # seed-screenshot-media — bytes and map tiles behind the screenshot seed (PD-448)
 openspec/                   # config.yaml, plus:
 ├── specs/                  # Standing capability specs — the current contract
 └── changes/                # Active proposals; archive/ holds shipped ones
