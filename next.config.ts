@@ -306,7 +306,7 @@ const capacitorConfig: NextConfig = {
    *   `capacitor.config.ts`'s `webDir` pointing at nothing, which `cap sync`
    *   copies without complaint and which fails on a device as a white screen.
    *
-   * `openspec/changes/add-static-export-bundle/design.md` §D2 and §D4 carry the
+   * `openspec/changes/archive/2026-09-08-add-static-export-bundle/design.md` §D2 and §D4 carry the
    * measurements.
    */
 }

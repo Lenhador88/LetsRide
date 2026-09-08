@@ -1,7 +1,7 @@
 ## Purpose
 
 **Delta note.** `photo-capture-metadata` is not yet a standing capability: it exists at
-`openspec/changes/capture-photo-time-and-place/specs/photo-capture-metadata/spec.md`, whose change
+`openspec/changes/archive/2026-09-08-capture-photo-time-and-place/specs/photo-capture-metadata/spec.md`, whose change
 is shipped (`064` applied to both projects) and unarchived. Every `MODIFIED` requirement below
 names the requirement it replaces in that file. Nothing in `064`'s spec that is not named here is
 touched — in particular the capture-time requirements, the read-before-compression ordering, and

@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 <!-- This requirement currently lives in
-     openspec/changes/add-ride-start-location-search/specs/ride-start-location/spec.md,
+     openspec/changes/archive/2026-09-08-add-ride-start-location-search/specs/ride-start-location/spec.md,
      which cannot be archived yet (34 open tasks), so `ride-start-location` is not
      in openspec/specs/. It is restated here IN FULL. -->
 

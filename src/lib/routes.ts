@@ -13,7 +13,7 @@
  * A query string is not part of the path, so **one prerendered document serves
  * every ride**, and no navigation can hard-navigate out of the app's own
  * document looking for a payload that was never emitted. Product owner's
- * decision, 2026-08-10 — `openspec/changes/add-static-export-bundle/design.md`
+ * decision, 2026-08-10 — `openspec/changes/archive/2026-09-08-add-static-export-bundle/design.md`
  * §D3 carries the full pricing of the alternative, which was two different
  * native routing implementations, one of them impossible on Android under
  * Capacitor's defaults.

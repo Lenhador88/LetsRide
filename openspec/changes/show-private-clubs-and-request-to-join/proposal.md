@@ -27,7 +27,7 @@ Concretely, for the reader:
   applied-migration position and every count are re-derived in task 0.3/0.4 rather than trusted.
 - **The `openspec` CLI is not installed** (`npm run openspec -- list` → `sh: 1: openspec: not
   found`), so these artifacts were written by hand against the structure
-  `openspec/changes/invite-riders-to-a-ride/` establishes. `openspec validate` has not run on them.
+  `openspec/changes/archive/2026-09-08-invite-riders-to-a-ride/` establishes. `openspec validate` has not run on them.
 
 `CLAUDE.md` §Working Principles: *"Never let an inferred value pass silently as a known one."*
 Nothing below is inferred and unmarked.

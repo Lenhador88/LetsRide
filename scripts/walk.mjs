@@ -4,7 +4,7 @@
  *
  * ## Why this exists
  *
- * `openspec/changes/migrate-to-client-rendered-shell/tasks.md` 7.2 says it
+ * `openspec/changes/archive/2026-08-06-migrate-to-client-rendered-shell/tasks.md` 7.2 says it
  * plainly: "Load the app against the real database and walk every screen in
  * each of its states — the class of defect that produced the /rides/new/crew
  * 500 was found this way and by nothing else." Every other gate in this repo —
@@ -2246,7 +2246,7 @@ async function checkInviteLanding({ kind, path, rpc, dataMarker, claim, signedOu
 
 /**
  * The anonymous ride preview, signed OUT, holding a LIVE token — PD-430,
- * tasks 6.4/6.4b, `openspec/changes/preview-a-ride-before-signing-up/`.
+ * tasks 6.4/6.4b, `openspec/changes/archive/2026-09-08-preview-a-ride-before-signing-up/`.
  *
  * `checkInviteLanding` above proves the shape of every state with a DEAD
  * token, deliberately, so it writes nothing. It cannot prove the one thing

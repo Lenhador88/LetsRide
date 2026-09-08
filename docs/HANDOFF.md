@@ -25,17 +25,13 @@ history.
 - **`development` is the default branch and deploys to DEV** (`app-dev.letsride.social`);
   `main` is production (`app.letsride.social`). `development` is normally ahead of `main`, and
   that is the steady state.
-- **Migrations: 116 files on `development`. DEV is at `116`, PROD at `112`.** `list_migrations`
-  against both refs is the check. **The promotion is `113`, `114`, `115`, `116`, and `113` then
-  `114` must not be collapsed** — `114` refuses a NULL country, so applied ahead of the bundle that
-  writes one it strands every new signup in a wizard with no skip. Promote `113`, deploy, confirm
-  `READY` with `aliasError` null on `app.letsride.social`, then `114`; `115` and `116` are
-  independent of both and of each other. **`115` grants `anon` EXECUTE on one function — the first
-  exception to decision #1**, and it puts a new advisor class
-  (`anon_security_definer_function_executable`) on DEV alone until it promotes. **`116` is
-  migration-first and the bundle READS its column** — a build serving ahead of it answers `42703` on
-  every club and ride detail. `docs/reference/migrations.md` §Applied state has the per-file log and
-  both gates.
+- **Migrations: 116 files, and BOTH projects are at `116`** — the `113`/`114`/`115`/`116` promotion
+  applied to PROD on 2026-09-08, `113` ahead of `114` as its gate required. `list_migrations`
+  against both refs is the check; DEV answers 119 rows because **three are hand-applied with no
+  file** and PROD records none of them. `115` grants `anon` EXECUTE on one function — the first
+  exception to decision #1 — so its advisor class
+  (`anon_security_definer_function_executable`) is now on both projects rather than DEV alone.
+  `docs/reference/migrations.md` §Applied state has the per-file log.
 - **Edge Functions: the two projects DISAGREE, and that is the resting state after a merge.**
   #434 touched `supabase/functions/resolve-ride-location/` (comments only), so
   `deploy-functions.yml` redeployed all three to **DEV at 2026-09-07T20:42Z**; **PROD is still on
@@ -45,15 +41,15 @@ history.
 - **The walk is green on DEV** as both fixture accounts (2026-09-06 baselines in
   `docs/reference/running-locally.md` §The walk). In CI it is still **skipped** — the Actions
   secrets name PROD and `WALK_CI` is unset (see §Blocked on the owner).
-- **OpenSpec has 45 open changes and 7 archived**
-  (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`) — a backlog no
-  hook clears; see §Next action. **Archiving one is not two commands**: every change old enough to
-  matter carries a stale `## MODIFIED Requirements` block that would drop scenarios. PD-359's two
-  needed seven requirements refreshed, and PD-430's — written the same day it archived — carried a
-  block that would have dropped **eight** scenarios and imported a ninth from an unrelated
-  requirement. **Diff scenario names per requirement before merging any block.**
-  `docs/reference/journal.md` §The open OpenSpec changes has the check that proves nothing was
-  lost.
+- **OpenSpec has 31 open changes and 21 archived**
+  (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`) — 14 archived on
+  2026-09-08, each verified shipped first, and `openspec/specs/` went from 11 capabilities to 24.
+  **Archiving one is not two commands**: a stale `## MODIFIED Requirements` block drops scenarios
+  wholesale, so diff scenario names per requirement before merging one. It also strands every
+  pointer **into** the change — a path in a code comment or a doc still naming
+  `openspec/changes/<name>/`, which only the crossrefs test's own citation form catches; re-point
+  them in the same commit. `docs/reference/journal.md` §The open OpenSpec changes has the check
+  that proves nothing was lost.
 
 ## In flight
 
@@ -95,14 +91,25 @@ body carries its own steps.
 
 ## Next action
 
-**Archive the OpenSpec changes whose code is in production.** 45 are open against 7 archived, so
-`openspec/specs/` no longer describes the app and the next proposal is written against specs that
-are missing what shipped. One docs-only PR, in `npm run openspec -- list` order, archiving only
-changes whose migrations and screens are on `main`, budgeting for §Position's refresh; a change with an open decision inside it
-(`add-account-deletion`, and the `enforce-creator-membership` / `add-account-deletion` collision —
-`docs/reference/journal.md` §The open OpenSpec changes) stays open with a one-line note. **PD-436
-blocks archiving `enforce-ride-capacity`** specifically, so that one stays open too. The Stop hook
-keeps the backlog from growing; nothing else shrinks it.
+**Finish the OpenSpec archive backlog — the 31 that are left need the expensive half.** The 14 that
+archived on 2026-09-08 were the ones the tool accepted unedited; every remaining shipped change is
+refused for a reason that costs real work, and the refusal message names it. Three shapes, in
+rising cost: a requirement whose **body** carries no `SHALL`/`MUST` (one inserted sentence
+restating the header — that is how four of the 14 were unblocked); a **stale `MODIFIED` block**
+that would drop named scenarios (refresh it, then diff scenario names per requirement); and a
+change whose delta targets a spec **that does not exist yet**, which is an ordering constraint —
+`introduce-yourself-on-joining-a-club` must archive before `deferred-club-join-introduction` and
+`an-introduction-appears-only-as-its-announcement`, and `show-private-clubs-and-request-to-join`
+before `invite-riders-to-a-club`.
+
+**Verify shipped before archiving, and do not trust `tasks.md`.** Tick counts are wrong in both
+directions here — `add-club-timeline` reads 0/38 and is live, `capture-photo-time-and-place` reads
+3/81 and is live. Check `src/` and `supabase/migrations/` instead, matching a migration by SUBJECT
+rather than the filename the proposal guessed. Two verified **NOT BUILT** and must not be archived:
+`place-backdated-postcards-on-the-timeline` (decision-only) and
+`postcard-audience-follows-its-entry-point` (the form still draws both selects it removes).
+`add-account-deletion` carries an open decision, collides with `enforce-creator-membership`, and
+**PD-436 blocks `enforce-ride-capacity`** — all three stay open.
 
 ## Test accounts
 

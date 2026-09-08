@@ -230,7 +230,7 @@ Measured on this branch:
 
 - `openspec/changes/add-ride-chat-unread/specs/ride-chat/spec.md` — `MODIFIED` *The surfaces this
   change does not build SHALL be named rather than half-built*
-- `openspec/changes/invite-riders-to-a-ride/specs/ride-chat/spec.md` — `MODIFIED` *Chat visibility
+- `openspec/changes/archive/2026-09-08-invite-riders-to-a-ride/specs/ride-chat/spec.md` — `MODIFIED` *Chat visibility
   SHALL be the intersection of ride visibility and crew membership, never crew membership alone*
 
 Both are unarchived. `openspec archive` folds a delta in by replacing a requirement wholesale, so if

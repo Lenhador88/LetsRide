@@ -1165,7 +1165,7 @@ into SQL: a club count that outgrows `CLUBS_PAGE_SIZE`, at which point the quest
 `postcards` — `taken_at`, `taken_at_offset_minutes`, `taken_latitude`, `taken_longitude`,
 `taken_location_precision` — with four CHECKs and two absolute grant statements, and **no policy,
 no trigger, no index and no backfill**. The specification is
-`openspec/changes/capture-photo-time-and-place/`.
+`openspec/changes/archive/2026-09-08-capture-photo-time-and-place/`.
 
 Three things about it that a reader will otherwise reach the wrong conclusion about:
 

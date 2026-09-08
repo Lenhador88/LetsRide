@@ -1,5 +1,6 @@
-## Purpose
+# club-postcard-strip Specification
 
+## Purpose
 What a club's postcard surfaces show, which postcards they may show to which reader, how the
 audience arm and the ride-tag arm compose, and what the marker may say — for every role that can
 reach a club: owner, admin, member, non-member of a public club, non-member of a private club,
@@ -15,9 +16,7 @@ postcards belong to this club's ride set — and that correlation is the whole o
 in `supabase/tests/rls_test.sql`.** Two are named as exceptions where they are stated: the merge of
 the two club reads under one cache key is a query shape rather than a policy, and the marker's
 placement is a component contract.
-
-## ADDED Requirements
-
+## Requirements
 ### Requirement: A club's postcard surfaces SHALL show the postcards tagged to its rides, and SHALL decide that in the database
 
 A club's postcard strip and its `See all` destination SHALL both show, in one list: the postcards
@@ -244,6 +243,9 @@ It SHALL NOT be overlaid inside the masked photo block, and it SHALL NOT add a t
 
 ### Requirement: The surfaces this change does not move SHALL be named rather than half-built
 
+Every surface this change leaves untouched SHALL be named here, so an unmoved surface reads as a
+decision rather than as work left half-done.
+
 #### Scenario: The club's unread badge is unchanged and the gap is stated
 - **WHEN** a postcard arrives on the strip only through the tag arm
 - **THEN** `club_unread_counts()` SHALL NOT count it, and the club card SHALL show no badge
@@ -260,3 +262,4 @@ It SHALL NOT be overlaid inside the masked photo block, and it SHALL NOT add a t
 - **WHEN** either this change or PD-309 lands second
 - **THEN** the size of the tag arm's exclusive contribution SHALL be re-measured with the query in
   `design.md` §Interaction with PD-309, before any claim that either has made the other redundant
+

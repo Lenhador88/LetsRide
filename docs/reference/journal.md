@@ -1306,7 +1306,7 @@ npx openspec validate refuse-a-removed-rider-a-live-invite-link --strict
 
 **PD-404, [PR #401](https://github.com/Lenhador88/LetsRide/pull/401) — the proposal only, and the
 story moved to `Needs decision` rather than `Deployed to DEV`.**
-`openspec/changes/replace-the-create-bar-with-a-floating-action/`. **No code, deliberately**: the
+`openspec/changes/archive/2026-09-08-replace-the-create-bar-with-a-floating-action/`. **No code, deliberately**: the
 issue says *"the build must not pick one silently"* about its frame decision, and both ways forward
 are closed to an unattended session — option 1 needs a Figma write (explicit owner ask), option 2
 contradicts an approved v2 frame against decision #4.

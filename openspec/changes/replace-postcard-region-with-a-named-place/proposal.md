@@ -139,7 +139,7 @@ None. Every requirement here belongs to a capability that already exists.
 > **All three of these live only as deltas in unarchived changes, not in `openspec/specs/`.**
 > `openspec/specs/` holds eight standing capabilities and `database-enforced-integrity` is the
 > only one of the three among them. `photo-capture-metadata` exists at
-> `openspec/changes/capture-photo-time-and-place/specs/`, whose `tasks.md` reads 3 of 81 boxes
+> `openspec/changes/archive/2026-09-08-capture-photo-time-and-place/specs/`, whose `tasks.md` reads 3 of 81 boxes
 > ticked while `064` is applied to **both** projects and the code has shipped; `place-search` is
 > split across `replace-places-index-with-geocoder/` and `inline-place-search-with-recent-starts/`,
 > both likewise shipped and unarchived. So the deltas below are written against text that is not
