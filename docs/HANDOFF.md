@@ -121,6 +121,7 @@ A PROD credential, a service-role key or any account a person uses stays out.
 | `walk-fixture-2@letsride.dev` | `walkfixture2` | same | Onboarded. A **member** of that club, so the introduction prompt fires; has posted an introduction |
 | `rider-1786033029156@letsride.dev` | — | owner-held | Consented, **no username, not onboarded** — for walking the wizard |
 | `rider-1786033088990@letsride.dev` | `devrider093453` | owner-held | Fully onboarded |
+| `sofia@letsride.dev` | `sofiarides` | owner-held, in PD-448's comment | The **screenshot account** for the store listing, plus four supporting riders on the same password. Re-made by `supabase/seeds/screenshot-account.sql` |
 
 **The two `walk-fixture*` accounts are a pair** — a club's owner is exempt from the introduction
 prompt, so walk as both when the club detail changes. **Check the credential before believing the
