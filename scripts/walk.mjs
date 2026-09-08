@@ -1477,6 +1477,70 @@ async function provision(wanted, existing = {}) {
   return created
 }
 
+/**
+ * A LIVE invite token for `rideId` — PD-430, task 6.4. Reused if the ride
+ * already carries one, minted through `/rides/detail/invite`'s own "Create an
+ * invite link" control otherwise, exactly the way `provision()` above creates
+ * a ride or a club: through the app's own form, never a direct insert, so the
+ * write exercises `createRideInviteLink` end to end rather than proving
+ * nothing about it.
+ *
+ * **Gated by the identical `fixturesPermitted` every other write in this file
+ * goes through** — a rerun with fixtures off, or against a non-writable ref,
+ * must not mint a new link on shared DEV.
+ *
+ * **The token is read off the network response, never off the DOM** — nothing
+ * on this screen ever prints a token as text; `InviteLinkRow`'s Share control
+ * hands it to `navigator.share`/the clipboard, neither of which this harness
+ * can read back. `getRideInviteLinks`' own SELECT includes `token` (the
+ * organizer's row security, not `anon`'s), so the REST response this
+ * `useQuery` call makes on every load already carries it.
+ *
+ * Liveness is computed the same way `InviteLinkRow` computes `dead` —
+ * `revoked_at === null` and `expires_at` still in the future — rather than
+ * trusted from a display label, since a walk running against a DEV ride
+ * dated a year out (see `provision()`) will always find its own link live.
+ *
+ * Returns the token string, or `null` when there is no live link and none
+ * could be created (fixtures off, or the project is not writable).
+ */
+async function provisionInviteToken(rideId) {
+  const isLinksGet = (r) =>
+    r.url().includes('/rest/v1/ride_invite_links') && r.request().method() === 'GET'
+
+  const liveToken = (rows) => {
+    if (!Array.isArray(rows)) return null
+    const now = Date.now()
+    const live = rows.find(
+      (r) => r.revoked_at === null && new Date(r.expires_at).getTime() > now
+    )
+    return live?.token ?? null
+  }
+
+  const initial = page
+    .waitForResponse(isLinksGet, { timeout: 20_000 })
+    .then((r) => r.json())
+    .catch(() => null)
+  await page.goto(`${BASE}/rides/detail/invite?id=${rideId}`, { waitUntil: 'networkidle' })
+  const existing = liveToken(await initial)
+  if (existing) return existing
+
+  const permit = fixturesPermitted(await authenticatedProjectRef())
+  if (!permit.ok) return null
+
+  const refetch = page
+    .waitForResponse(isLinksGet, { timeout: 20_000 })
+    .then((r) => r.json())
+    .catch(() => null)
+  const clicked = await page
+    .click('button:has-text("Create")', { timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (!clicked) return null
+
+  return liveToken(await refetch)
+}
+
 let fixtureFailures = 0
 
 /**

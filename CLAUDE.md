@@ -184,7 +184,7 @@ never the **guarantee**. **Forms are hand-rolled** — controlled inputs plus `u
 | Kind | Tool | Status |
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | Gates every PR touching `supabase/**` |
-| Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard, the session store | Vitest — `npm run test:unit` | Gates every PR that touches code. `src/lib/auth/guard.ts` (57 cases, replacing the untestable `proxy.ts`). `lib/actions/__tests__/` reads every action module on comment-stripped source to assert each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Forty-eight** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence, verified both ways. Almost all render through `renderToStaticMarkup` under `environment: 'node'`; **jsdom is the answer only when something needs a mounted effect, a layout, an event or a portal**, and each jsdom test states which in its header — `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'` |
+| Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard, the session store | Vitest — `npm run test:unit` | Gates every PR that touches code. `src/lib/auth/guard.ts` (57 cases, replacing the untestable `proxy.ts`). `lib/actions/__tests__/` reads every action module on comment-stripped source to assert each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Forty-nine** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence, verified both ways. Almost all render through `renderToStaticMarkup` under `environment: 'node'`; **jsdom is the answer only when something needs a mounted effect, a layout, an event or a portal**, and each jsdom test states which in its header — `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'` |
 | Edge Functions | `deno check`, CI's `functions` job | Type-checks every `index.ts` under Deno when `supabase/functions/**` changes. `tsconfig.json` excludes the directory, so `tsc` never sees the entrypoints |
 | Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything**: signs in, walks every screen including discovered detail routes, checks the guard's redirects and sign-out. `WALK_FIXTURES=1` creates the rows the detail routes need; a shrunken `N/N` is a skip, not a pass. In CI as the `walk` job, minting its own rider, **skipped until the repository variable `WALK_CI=1` is set** because the Actions secrets name PROD. Not a required check yet (PD-370) |
 | End-to-end | Playwright | Deferred as a full suite. The walk asks one question per route — did this render — and asserts behaviour only in named phases, each covering a defect no other gate can see |
@@ -323,7 +323,7 @@ repointed. `docs/ENVIRONMENTS.md` is the contract. **Never promote a Vercel prev
 — both Supabase variables are inlined at build time and promote does not rebuild. **Check drift
 rather than claiming it**: `npm run db:drift` compares migration *names*.
 
-**Applied state: 114 files. DEV is at `114` and PROD at `112` — measured 2026-09-07.** DEV-ahead
+**Applied state: 115 files. DEV is at `115` and PROD at `112` — measured 2026-09-08.** DEV-ahead
 is the resting state between a merge and its promotion; promote everything the gap contains, in
 filename order, per `docs/ENVIRONMENTS.md` §Migrations, and record each file's ordering in
 `docs/reference/migrations.md` §Applied state. Count rather than trust it — `list_migrations`
@@ -353,7 +353,7 @@ before it applies** — every affected path exercised on DEV, in a rolled-back t
 recorded statement that does not equal `md5sum` of its file is the NORM; compare the OBJECT
 (`docs/reference/migrations.md` §Applying a large file, §What reads as drift).
 
-Suite **3724** assertions — re-derive rather than trust it:
+Suite **3800** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs.
 
@@ -367,8 +367,10 @@ inside a `security definer` function `current_user` is the owner and the
 `if current_user <> 'authenticated'` guards never run.
 
 **Security advisors: one WARN per `security definer` RPC in `public` and one INFO per table whose
-client grants were revoked outright, and those are chosen.** The only outstanding one is
-`auth_leaked_password_protection`, a dashboard click. Re-derive with `get_advisors(security)`;
+client grants were revoked outright, and those are chosen.** `115` added a **second WARN class**,
+`anon_security_definer_function_executable` (lint `0028`) — one finding, and it is decision #1's
+named exception rather than a 39th of the `authenticated_*` class, whose count did not move. The
+only outstanding one is `auth_leaked_password_protection`, a dashboard click. Re-derive with `get_advisors(security)`;
 `docs/reference/migrations.md` §Security advisors has the per-migration accounting. A one-advisor
 difference between the projects is almost always a pending promotion.
 
