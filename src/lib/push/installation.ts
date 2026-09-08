@@ -50,7 +50,7 @@ import { INSTALLATION_ID_KEY, resolveSessionStore } from '@/lib/supabase/session
  * for push, because the value outlives any one channel or rider.
  *
  * **It survives `clearSessionStore()` on sign-out**, which is the correct
- * direction and the opposite of the four things sign-out clears: those are
+ * direction and the opposite of the six things sign-out clears: those are
  * traces of a *rider*, and this names a *device*. Clearing it would mint a fresh
  * id on the next sign-in, which makes every sign-in look like a reinstall — a
  * new `push_devices` row each time, the old one surviving until a provider

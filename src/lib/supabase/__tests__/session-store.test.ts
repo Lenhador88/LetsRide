@@ -204,12 +204,19 @@ describe('sign-out destroys the session', () => {
     expect(storedKeys(globals.window!.localStorage!)).toEqual([INSTALLATION_ID_KEY])
   })
 
-  it('still removes a Supabase key written the same way, so the exemption is not a hole', async () => {
-    // The inverse, and it is what stops the fix being "stop tracking writes".
-    // Without it, `DEVICE_SCOPED_KEYS` growing a `sb-` entry — or the tracked
-    // pass being dropped altogether — would leave this file green.
+  it('still removes a non-Supabase key that is NOT device-scoped, which only the tracked pass can do', async () => {
+    // The inverse of the case above, and it has to use a key **no prefix sweep
+    // matches**. A `sb-` key would be removed by two other passes — the prefix
+    // sweep and the unconditional `localStorage` sweep — so asserting on one
+    // pins nothing: it stays green with the tracked pass deleted outright.
+    //
+    // This is also the assertion that distinguishes the fix taken from the one
+    // rejected. Narrowing the tracked pass to `sb-` instead of exempting one key
+    // would satisfy every other test in this file and fail here, which is the
+    // whole reason the tracked pass exists: a session key the library names in a
+    // way a prefix would miss.
     const { store } = resolveSessionStore()
-    await store.setItem('sb-ref-auth-token-code-verifier', 'pkce')
+    await store.setItem('some-future-auth-key', 'a session under another name')
 
     await clearSessionStore()
     expect(storedKeys(globals.window!.localStorage!)).toEqual([])

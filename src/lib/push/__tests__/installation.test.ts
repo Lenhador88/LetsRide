@@ -4,7 +4,11 @@ import {
   installationId,
   resetInstallationIdForTests,
 } from '@/lib/push/installation'
-import { resetSessionStoreForTests, type SessionStore } from '@/lib/supabase/session-store'
+import {
+  clearSessionStore,
+  resetSessionStoreForTests,
+  type SessionStore,
+} from '@/lib/supabase/session-store'
 
 /**
  * `installationId()` — the stable name a device has, and the value `078`'s
@@ -107,6 +111,31 @@ describe('installationId', () => {
 
     expect(id).toMatch(UUID)
     expect(backing.map.get(INSTALLATION_ID_KEY)).toBe(id)
+  })
+
+  it('survives a sign-out that happens in the same load that minted it — PD-443', async () => {
+    // The defect, end to end and through the real writer. `session-store.test.ts`
+    // pins the mechanism with a literal key; this pins the SCENARIO, on the
+    // enumerable secure store the harm actually lives on rather than the
+    // `localStorage` fallback.
+    //
+    // Why it matters more than a tidy invariant: `signOut()` swallows a failed
+    // `releaseCurrentDevice()` on purpose, and bounds the row that leaves behind
+    // by "the next boot re-homes this installation". That bound is this value
+    // being stable. Mint a new one and the orphaned `push_devices` row keeps
+    // naming the rider who left, and `register_push_device`'s cap-delete is
+    // scoped to the caller, so nobody else's registration ever clears it.
+    const backing = install()
+    const minted = await installationId()
+    expect(backing.map.get(INSTALLATION_ID_KEY)).toBe(minted)
+
+    await clearSessionStore()
+
+    expect(backing.map.get(INSTALLATION_ID_KEY)).toBe(minted)
+    // And the app agrees, rather than the store merely still holding bytes:
+    // a fresh read after sign-out returns the same device.
+    resetInstallationIdForTests()
+    await expect(installationId()).resolves.toBe(minted)
   })
 
   it('does not cache a failure, so a transient store error is retryable', async () => {

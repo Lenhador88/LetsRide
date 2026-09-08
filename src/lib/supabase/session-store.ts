@@ -93,15 +93,24 @@ const SUPABASE_KEY_PREFIX = 'sb-'
 export const INSTALLATION_ID_KEY = 'letsride-installation-id'
 
 /**
- * Keys in this store that name the DEVICE rather than the rider, and therefore
- * must survive sign-out.
+ * Keys in this store that name the DEVICE rather than the rider, and are
+ * therefore kept out of the tracked pass below.
+ *
+ * **That is narrower than "survives sign-out", and the difference is a trap for
+ * whoever adds the second entry.** Only the tracked pass consults this set. A
+ * member carrying the `sb-` prefix would still be deleted by the prefix sweep
+ * and by the unconditional `localStorage` sweep, so listing one here would read
+ * as protection and provide none. **A device-scoped key must not start with
+ * `sb-`**, and the exemption is what protects it *given* that.
  *
  * **The tracked set is documented as "every key this module has handed to
  * Supabase", and until PD-443 that was false.** `lib/push/installation.ts`
- * writes through the same resolved store, so on the one page load that *mints*
- * an installation id — the first launch after install, the only load where
- * `readOrMint` calls `setItem` — the id landed in `written` and sign-out
- * destroyed it, while `installation.ts`'s own comment said it survived.
+ * writes through the same resolved store, so on any page load that *writes* an
+ * installation id the id landed in `written` and sign-out destroyed it, while
+ * `installation.ts`'s own comment said it survived. That is usually the first
+ * launch after install — but `readOrMint` also **replaces** a stored value that
+ * fails the UUID shape, on any load, so "first launch" is the common case rather
+ * than the only one.
  *
  * The consequence is not cosmetic. `signOut()` swallows a failed
  * `releaseCurrentDevice()` on purpose, so that an offline sign-out still signs
@@ -232,7 +241,10 @@ export function describeSessionStore(): string {
  *
  * Two passes, and both are needed. The tracked set covers keys written during
  * *this* page load, including any the library names in a way a prefix would
- * miss. The prefix sweep covers a session written before a reload, which the set
+ * miss — **every one except the `DEVICE_SCOPED_KEYS` above, which never enter
+ * the set**; leaving that out of this sentence is what let PD-443 sit, one
+ * function down. The prefix sweep covers a session written before a reload,
+ * which the set
  * cannot know about — and it is why the fallback store is `localStorage` rather
  * than something unenumerable: a store you cannot enumerate is a store you
  * cannot prove you cleared.
