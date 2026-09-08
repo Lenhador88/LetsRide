@@ -2086,7 +2086,6 @@ async function checkInviteLanding({ kind, path, rpc, dataMarker, claim, signedOu
   let anonPreviewCalls = 0
   let anonPublicPreviewCalls = 0
   anonPage.on('request', (r) => {
-    if (r.url().includes('ride_invite_link')) console.log(`  [DEBUG-PROBE url] ${r.url()}`)
     if (r.url().includes(rpc)) anonPreviewCalls += 1
     if (anonRpc && r.url().includes(anonRpc)) anonPublicPreviewCalls += 1
   })
@@ -2139,7 +2138,7 @@ async function checkInviteLanding({ kind, path, rpc, dataMarker, claim, signedOu
       'the anonymous read was skipped — a live token would render nothing either'
     )
     report(
-      anonPublicPreviewCalls === 2,
+      anonPublicPreviewCalls === 1,
       'signed out: the ANONYMOUS preview RPC is called exactly once',
       `${anonPublicPreviewCalls} request(s) to ${anonRpc}`
     )
