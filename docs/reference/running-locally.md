@@ -91,7 +91,7 @@ Neither number in the old argument was right, which is why the argument could no
 
 | Account | Screens | Checks | Command |
 |---|---|---|---|
-| **Minted** (no `WALK_EMAIL`) — CI's path | **26** | **75** | `npm run walk` |
+| **Minted** (no `WALK_EMAIL`) — CI's path | **24** | **81** | `npm run walk` |
 | **Named** (`walk-fixture@letsride.dev`) | **26** | **78** | `WALK_EMAIL=… WALK_PASSWORD=… npm run walk` |
 
 Both green, exit 0, on `development` at `cdeefe5` plus PD-411's introduction cleanup in
@@ -105,8 +105,15 @@ green and exit 0: **24/24 screens, 81/81 checks**. A third route joins when the 
 that session created one, so that route had never been walked at all and its skip notice was
 honest. With one present the run walks **25** screens.
 
-**The minted row was NOT re-measured and its checks figure is stale in an unknown direction.** Do
-not derive it — deriving is the exact error PD-390 was filed over. Run it.
+**The minted row WAS re-measured on 2026-09-08 (PD-447)** — `24/24` screens, `81/81` checks, exit
+0, 417s, against `development` at `dadceb2` plus that branch. The table above carries it. Two
+things about that run are worth knowing before the next one is compared against it: the geocoder
+answered nothing for `Amsterdam`, so the minted rider took the town step's country-only escape and
+finished **with no town** — which is the state the Explore question's `ask` row draws for, and a
+run whose geocoder DOES answer exercises `refine` instead. And **Realtime was not exercised at
+all**: the relay does not proxy the WebSocket upgrade, so four failures were suppressed. Neither is
+a regression and neither is a pass. Do not derive either total — deriving is the exact error PD-390
+was filed over. Run it.
 
 **Repeated walks hit a VENDOR quota, and the failure looks like broken screens.** Measured
 2026-09-07: three named runs inside ~25 minutes, and from the second onward eight screens reported
