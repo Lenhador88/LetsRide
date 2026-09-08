@@ -2,89 +2,31 @@
 
 > Linear **PD-430**. This file is the specification; the issue is the decision and the reason.
 
-## Two things the build must settle before it writes a line
+## The one thing the build must settle before it writes a line
 
-Both are at the top rather than in *Open questions* because each one changes a file name or a
-column list, and neither can be discovered later without rework.
-
-### 1. `114` IS SPOKEN FOR. This change's migration is `115`.
-
-The task that commissioned this proposal said the migration would be numbered `114`. **It cannot
-be**, and the conflict is recorded rather than assumed:
-
-> `docs/reference/migrations.md` §Applied state, on `113_home_country`: *"Its partner `114` is
-> deliberately unwritten. It arms `complete_onboarding` to refuse a NULL country, which is a
-> NARROWING: applied before the new bundle serves, the old bundle's `complete_onboarding(null)` is
-> refused on every signup and every new rider is stuck in the wizard. So it must not exist until
-> the merge sha is `READY` with `aliasError` null on `development`."*
-
-`114` is not free; it is **owed**, held open on purpose for a file whose only constraint is *when*
-it may exist. Taking it either collides at the filename or silently displaces a documented plan,
-and *filename order equals apply order* means the collision is not cosmetic.
-
-**So: `115`, and `tasks.md` 0.2 re-derives it rather than trusting this sentence.** If the owner
-would rather the home-country partner move later and this change take `114`, that is their call
-and it is one rename — but it must be a decision, not a default.
-
-### 2. THERE IS NO TOWN ON A RIDE. The fifth field the owner asked for has no column behind it.
-
-Measured on DEV (`fpmrimzxadewsaiwpsel`, `information_schema.columns`, 2026-09-07). `public.rides`
-holds seventeen columns and **not one of them is a locality**:
-
-```
-id, title, description, route_description, meeting_point, departure_at, is_public,
-club_id, organizer_id, created_at, latitude, longitude, geocode_confidence,
-map_card_path, map_detail_path, start_place_id, timezone
-```
-
-`meeting_point` is **not** a town, and it is not a town even for a *picked* start. The picker
-writes `boundName(placeLabel(place))` into it (`PlaceSearchField`, `RIDE_LOCATION_FIELD_NAMES.name
-= 'meeting_point'`), which is the place **name** — *Shell Pernis*, *Café de Molen*. The vendor's
-`meta` line, *"street and locality, comma-joined"* (`PlaceSearchResult.meta`), is the only field
-that has ever carried a locality and **it is discarded at submit**. A *typed* start is whatever the
-rider typed, which may be a full street address or "my place".
-
-So *"the town, not the exact meeting point"* cannot be served by projecting an existing column, and
-the three ways of faking it are each worse than not shipping it:
-
-- **Truncating `meeting_point`** — the string's first segment is frequently the *precise* place,
-  which is the one thing the owner ruled out. There is no parse that is right for both a picked
-  place name and a typed address.
-- **Reverse-geocoding at read time** — a `security definer` SQL function cannot call a geocoder,
-  and moving the preview into an Edge Function to do so changes the whole shape of the change.
-- **Falling back to the organiser's `profiles.location`** — that is where the *organiser lives*,
-  not where the ride starts. It would disclose a rider's home city to strangers to answer a
-  question about a ride. Named here so nobody reaches for it.
-
-**Recommended default, and everything below is written to it: ship four of the five fields now**
-— title, start time, organiser's username, CTA — **and specify the town as a column that does not
-yet exist**, so the day it is populated the preview gains it without a second security argument.
-The honest sourcing is `rides.locality`, written at pick time from the vendor `meta` the client
-already holds and at geocode time by `resolve-ride-location`, which already `update`s `rides` with
-a geocode verdict in hand. That is a second migration, a client change, an Edge Function deploy
-(merge-gated) and a backfill decision for every existing ride — a change of its own, not a rider
-on this one.
-
-**This is blocking and it is the owner's**, phrased as the rider's state in *Open questions* #1.
-A reviewer should read the rest of this proposal as complete and correct with or without the town:
-the projection is a fixed list either way, and the security-critical requirement — that the
-preview **never** returns `meeting_point`, `latitude`, `longitude` or a map path — does not move.
+**The migration is `115`, and `tasks.md` 0.2 re-derives it rather than trusting this sentence.**
+`supabase/migrations/` holds 114 files and the last is `114_a_completion_carries_a_country.sql`
+(measured 2026-09-08), so `115` is the next free number. *Filename order equals apply order*, which
+makes a taken number a real collision rather than a naming quibble, and the queue runs two slots —
+so 0.2 re-derives from `ls supabase/migrations/*.sql | tail -3` against `list_migrations` on DEV
+(`fpmrimzxadewsaiwpsel`) **and** PROD (`zwprydcyryvudhurbnye`).
 
 ## What was read first-hand, and what was not
 
-**Everything below is first-hand.** The Linear connector answered: PD-430's body and its **one**
-comment were read directly (the comment is a territory marker — slot 1, grouped with PD-429 — and
-carries no correction to the body). The Supabase connector answered: DEV was read live for
-`public.rides`' column list and for the applied migration ledger. `091`, `111` and `069` were read
-from the migration files in this repo; `src/lib/data/ride-invite-links.ts`,
-`src/app/rides/join/page.tsx`, `src/lib/auth/guard.ts`, `src/lib/validation/rides.ts` and
-`supabase/tests/harness.sql` were read from the working tree. The `ride-invite-links` base spec was
-read from `openspec/changes/share-a-ride-invite-link/`, not from prose about it.
+**Everything below is first-hand.** The Linear connector answered: PD-430's body and **all four**
+of its comments were read directly. The Supabase connector answered: DEV was read live for
+`public.rides`' column list and for the applied migration ledger. `091` was read from the migration
+file in this repo — its `ride_invite_link_preview` column list, its `reachable_by` conjuncts and
+its header are quoted from that file, not from prose about it. `111` and `069` were read the same
+way; `src/lib/data/ride-invite-links.ts`, `src/app/rides/join/page.tsx`,
+`src/components/rides/RideInviteJoin.tsx`, `src/lib/auth/guard.ts`, `src/lib/validation/rides.ts`
+and `supabase/tests/harness.sql` were read from the working tree. The `ride-invite-links` base spec
+was read from `openspec/changes/share-a-ride-invite-link/`. The design snapshot was read offline
+with `npm run figma -- ls "Join ride"` and `text … --all`.
 
-**One mechanical note.** `node_modules` did not exist in this container, so the OpenSpec CLI was
-installed with `npm install --no-save @fission-ai/openspec` purely to run `validate --strict`.
-Nothing was added to `package.json` or `package-lock.json`; the runtime dependency count is
-unchanged at twelve.
+**The owner's decision that this revision implements is second-hand to this file**: it was taken in
+chat and reaches these artifacts through the spawning message. The Linear issue and the PR body
+carry it, and the main thread writes both.
 
 ## Why
 
@@ -109,22 +51,43 @@ The `share-a-ride-invite-link` spec states that outcome as a requirement and ass
 **This change narrows that requirement rather than deleting it.** Everything it refuses stays
 refused except four named fields.
 
-## The exposure argument, stated rather than left to a reviewer
+## The safety argument: anonymous ⊂ authenticated, and the subset is read off `091`
 
-**The token is already a bearer credential, and it already buys more than this.** Anyone holding it
-can call `public.claim_ride_invite_link(t)` and become a member of the ride — reaching its crew, its
-thread and its exact meeting point. `091`'s own table comment says it: *"POSSESSION OF THE TOKEN IS
-THE CREDENTIAL, which is the only grant in this schema that is not a fact about an identity."*
+**This is the spine of the change and every other section hangs off it.** A signed-out caller
+holding a token sees strictly less than a signed-in caller holding the same token already sees,
+and the subset relation is measured rather than argued.
 
-So the delta this change introduces is: **title, start time and the organiser's username, to
-somebody who could already have all of it and more by signing up and tapping Join.** It is strictly
-less than the token already permits, it is disclosed by the sharer's own act of pasting the URL
-into a group, and it is bounded by a link that dies at the ride's departure or fourteen days,
-whichever is sooner.
+`public.ride_invite_link_preview(t)` returns **eight named columns to any token holder, before they
+claim anything**: `ride_id`, `title`, `departure_at`, `timezone`, `meeting_point`,
+`organizer_username`, `organizer_avatar_path`, `crew_count`. **Its gate is not ride membership.** It
+is `private.ride_invite_link_reachable_by`, whose three conjuncts are — in `091`'s own words — *"Live
+… AND not blocked in either direction … AND both participation stamps on the caller."*
+
+So the meeting point is **already disclosed to exactly this audience**: somebody holding the token,
+who is a member of nothing. And `091`'s header names the threat that gate was written against,
+which is not a stranger reading a meeting point:
+
+> without the stamp test an account created by calling GoTrue's `/auth/v1/signup` directly and
+> never calling `accept_terms()` — the precise threat `023` exists for — could hold a forwarded
+> token and read a private ride's title, meeting point, departure, organizer and crew count.
+
+The gate is about **who is allowed to participate in this app at all**, not about the sensitivity of
+the meeting point. What actually stands between a link recipient and the meeting point today is the
+forced onboarding wizard — decision #5, plus a home country since `114`. That is friction, not a
+boundary, and every link is shared precisely so that its recipients will push through it.
+
+**The anonymous projection is five data fields — `title`, `departure_at`, `timezone`,
+`meeting_point`, `organizer_username` — plus the Sign-up call to action, which is UI and not data.**
+Every one of the five is in `091`'s eight. **`crew_count` and `organizer_avatar_path` are left out
+deliberately**: the owner did not ask for them, and holding the anonymous projection *strictly
+inside* the authenticated one is what keeps the safety argument to one checkable sentence. Anyone
+wanting either of them anonymously is proposing to widen the subset and owes the argument again.
 
 **What it is not:** it is not a public ride index, not a search surface, and not reachable without
 128 bits of secret. There is no route from this function to a second ride, to a rider list, or to
-any row a token does not name.
+any row a token does not name. **The bound is the link's own lifetime**, which `091` already
+enforces: `least(rides.departure_at, created_at + 14 days)`, re-read from `rides` at every use, plus
+the organiser's revoke.
 
 ## This breaks architectural decision #1, deliberately, and the wording change is owed here
 
@@ -141,9 +104,10 @@ the main thread applies it verbatim rather than paraphrasing:
 > `anon`, ever. `is_public = true` means "visible to any signed-in rider", never "visible to the
 > internet". **The one exception is EXECUTE on `public.ride_invite_link_public_preview(t)`**
 > (`115`, PD-430): a single `security definer` function, reachable only by a 128-bit bearer token,
-> returning the title, start time and organiser username of exactly one ride. A second such
-> function, a column added to it, or any grant to `anon` on a table or policy is a **new** decision
-> and not an extension of this one.
+> returning the title, start time, zone, meeting point and organiser username of exactly one ride —
+> a strict subset of what `091`'s authenticated preview already returns to any holder of the same
+> token. A second such function, a column added to it, or any grant to `anon` on a table or policy
+> is a **new** decision and not an extension of this one.
 
 **What stays forbidden, in as many words:**
 
@@ -197,25 +161,25 @@ exactly one ride**, never `rides.*`:
 | `title` | The owner's list. |
 | `departure_at` | The owner's list. |
 | `timezone` | **Inseparable from `departure_at`.** A ride's times are wall-clock at its meeting point (`080`); without `rides.timezone` the only fallback is the viewer's own zone, which `CLAUDE.md` says is never the answer. It is the same instant expressed correctly, not a second fact. |
+| `meeting_point` | **The owner's decision, and already in `091`'s authenticated projection for the same audience.** A rider deciding whether to ride needs to know where it leaves from; the token holder could read it today by finishing the wizard. |
 | `organizer_username` | The owner's list. |
-| *(`locality`)* | **The owner's fifth field, and it has no column — see the top of this file.** Specified, gated on Open question #1. |
 
-**Absent, each for a stated reason:**
+**Absent, each for a stated reason. The first two are the ones a builder will be tempted by,
+because `091` returns them to a signed-in holder of the same token:**
 
-- **`meeting_point`** — the exact start. The owner's decision names it. This is the single most
-  important absence in the change and it is asserted rather than left to the column list.
-- **`latitude`, `longitude`, `geocode_confidence`** — coordinates are the exact meeting point in a
-  different notation.
+- **`crew_count`** — the authenticated preview returns one; this must not. The owner did not ask for
+  it, it is a fact about *riders* rather than about the ride, and it makes the endpoint a
+  popularity oracle for anyone holding a token. Leaving it out is also what keeps the projection
+  strictly inside `091`'s, which is the whole safety argument.
+- **`organizer_avatar_path`** — likewise not asked for, and it could not render anyway: signing an
+  avatar URL is `resolveAvatarUrls`' job and `anon` holds no reach into `storage.objects`. Adding
+  the column would be a path disclosed for nothing.
+- **`latitude`, `longitude`, `geocode_confidence`** — **not** because they are more sensitive than
+  `meeting_point`; a machine-readable pin is simply not what a human reading an invite needs, and
+  `091` does not return them either. Keeping them out holds the subset.
 - **`map_card_path`, `map_detail_path`** — a Storage path, and a tile of the start point. `anon`
   cannot sign a Storage URL in any case (`harness.sql` reproduces Supabase's grants and the suite
   asserts anon's reach into `storage.objects`), so this would be a leak with no render behind it.
-- **`crew_count`** — the authenticated preview returns one; this must not. It is a fact about how
-  many riders are going, and the owner's decision says **not the crew list**. A count is the same
-  disclosure at lower resolution, and it makes the endpoint a popularity oracle for anyone holding
-  a token.
-- **`organizer_avatar_path`** — not on the owner's list, and it could not render anyway: signing an
-  avatar URL is `resolveAvatarUrls`' job and `anon` holds no reach into `storage.objects`. Adding
-  the column would be a path disclosed for nothing.
 - **`club_id`, `is_public`, `description`, `route_description`, `start_place_id`** — the owner's
   decision says **nothing about clubs**, and the rest are not a decision the invitee is making.
 
@@ -228,30 +192,59 @@ that is a stronger property than filtering: there is no field to infer from.
 approximated — it is unavailable by construction**, and pretending otherwise (a NULL passed into
 `private.is_blocked`) would be worse than its absence.
 
-**The decision: serve the preview anyway, because the projection carries no rider-identifying data
-beyond the organiser's username.** Stated in full rather than implied:
+**The anonymous reach is therefore one conjunct, not three: the link is live.** No block test, no
+participation stamps, because both are statements about a caller who does not exist. That is stated
+here rather than left for a reader of the function body to notice.
 
-- The four fields are facts about **a ride**, not about riders. There is no crew, no count, no id,
-  no second rider, and nothing that says who else is going.
+**The decision: serve the preview anyway.** Stated in full rather than implied:
+
+- The five fields are facts about **a ride**, not about riders. There is no crew, no count, no
+  rider id, no second rider, and nothing that says who else is going.
 - The one rider-identifying field is **the organiser's username**, which is the fact the sharer
   disclosed by pasting *this organiser's* link into a group chat.
-- **The residual, named because it is real:** a rider the organiser has blocked can sign out, paste
-  a token they hold, and read the organiser's username beside a ride title. Decision #2 — blocking
-  enforced in RLS — is narrowed **for this projection only**, and it cannot be otherwise: symmetric
-  blocking is a statement about two identities and one of them is absent. **What the block still
-  holds completely** is everything that matters: the blocked rider cannot claim (the claim is
-  `authenticated` and goes through `reachable_by`'s `is_blocked` conjunct), cannot join, cannot
-  reach the crew, the thread or the meeting point, and remains invisible in every list.
+- **The residual, named because it is real and because it grew:** a rider the organiser has blocked
+  can sign out, paste a token they hold, and read the ride's title, time, organiser and **meeting
+  point**. Under an earlier draft of this change they would have read four harmless fields; they now
+  read where the ride leaves from. Decision #2 — blocking enforced in RLS — is narrowed **for this
+  projection only**, and it cannot be otherwise: symmetric blocking is a statement about two
+  identities and one of them is absent.
+- **What the block still holds completely.** The blocked rider **cannot claim** — the claim is
+  `authenticated`-only and goes through `reachable_by`'s `is_blocked` conjunct — so they cannot
+  join, cannot reach the crew, the thread, the photos or any message, cannot see the organiser's
+  other rides or profile, and remain invisible in every list. Signed in, the authenticated preview
+  still returns them zero rows.
+- **What bounds it.** They must already hold the token, which the organiser or somebody they shared
+  it with gave them; it dies at the ride's departure or fourteen days; and the organiser can revoke
+  it. It is the same reach any other holder of that URL has, which is the point of a bearer
+  credential. **A block is not a mechanism for withholding a shared URL from somebody who already
+  has it**, and this change does not pretend otherwise.
 - **The participation gate is in the same position** and gets the same answer. `091` gated the
   *authenticated* preview on both stamps for a concrete threat — an account made by calling
   GoTrue's `/auth/v1/signup` directly, never accepting the terms, reading a private ride off a
   forwarded token. That threat is unchanged and the gate is unchanged; what this change adds is a
   strictly thinner projection which that same actor could reach anyway by simply **not signing in
-  at all**. Widening `anon`'s reach past the four fields would reopen it.
+  at all**. Widening `anon`'s reach past the five fields would reopen it.
 
-**This is the argument for keeping the projection thin, and it is why the projection is a closed
-list with an assertion on it rather than a column list somebody may extend.** Every field added to
-this function is a field disclosed to a blocked rider and to an un-onboarded account.
+**This is the argument for keeping the projection closed, and it is why it is a fixed list with an
+assertion on it rather than a column list somebody may extend.** Every field added to this function
+is a field disclosed to a blocked rider and to an un-onboarded account, and every field added past
+`091`'s eight is a field disclosed to somebody no signed-in caller could ever have been.
+
+## The accepted cost: an anonymous read leaves no attributed record
+
+Recorded once, as a cost the owner accepted knowingly, and not as an open question.
+
+Every authenticated use of an invite link is attributable: the claim writes a `ride_invites` row
+carrying `link_id`, and the organiser can see who came in through which link. **An anonymous
+preview writes nothing and is attributable to nobody** — the organiser cannot know their link was
+opened, or how often, or by whom. That is inherent: the whole point is a caller with no identity,
+and manufacturing one would mean an IP-keyed or fingerprint-keyed table, which is personal data
+with its own retention window and its own visibility decision.
+
+**What bounds it is machinery `091` already built**: the link expires at
+`least(rides.departure_at, created_at + 14 days)` with departure re-read at every use, the organiser
+can revoke it at any moment, and the token is 128 bits so the audience is exactly the set of people
+the URL was given to. `design.md` D11 records it as an accepted cost.
 
 ## Guessability, metering, and the one honest answer
 
@@ -307,6 +300,36 @@ trusted from `expires_at`. So a departed ride's link is **already dead** and the
 returns zero rows for it through the same door as a revoked one. No branch, no second message, and
 a stranger can never be shown a ride that has already left.
 
+## The grant follows the token and nothing else — a public ride without one shows nothing
+
+**`is_public = true` still does not mean "visible to the internet", and this change is where that
+sentence would be easiest to break.** The new function takes a token, matches on it, and never reads
+`is_public` at all. There is no route into it that does not begin with 32 hex characters somebody was
+given.
+
+So a signed-out visitor who opens `/rides/join` with **no** token, an **empty** token, or a token
+that matches nothing sees exactly what they see today: the generic invite copy and the sign-in /
+create-account controls. **A public ride opened without a token is not previewed** — not by id, not
+by slug, not by any listing — and there is no endpoint that turns a ride id into a preview. This is
+written as an explicit negative case rather than left to follow from the signature, because "it is
+public anyway" is precisely the reasoning that would widen it later.
+
+## The signed-out preview SHALL be `noindex, nofollow`
+
+**The authenticated wall was blocking crawlers by accident.** Every route but `/auth/*` and
+`/legal/*` needed a session, so nothing a crawler fetched had anything on it; `/rides/join` rendered
+a generic sentence. After this change it renders a real ride to an unauthenticated fetch, and the
+accident stops covering it. **Make it a stated requirement with its own scenario** rather than
+relying on the property that used to hold for another reason.
+
+**Say the exposure accurately.** The token is 32 random hex characters and unguessable, so a crawler
+cannot reach a preview by walking the site — there is no link to `/rides/join?token=…` anywhere in
+the app or on the marketing site. The realistic path is a **link somebody published**: pasted into a
+public forum, a shared Google Doc that gets indexed, a chat export, a Discord channel a crawler
+reads. `noindex, nofollow` is what stops that one published URL from becoming a permanently
+searchable page naming a ride, its time and its meeting point long after the link itself has died.
+It is cheap, it is stated, and it is not a substitute for the token's entropy.
+
 ## What Changes
 
 ### New
@@ -316,9 +339,11 @@ a stranger can never be shown a ride that has already left.
   nothing else. **EXECUTE granted to `anon` alone.**
 - **One `src/lib/data/` read** beside `getRideInviteLinkPreview`, returning a **different, thinner
   type** — not a nullable-field variant of `RideInviteLinkPreview`, because a type whose fields are
-  sometimes present is how a screen ends up rendering a meeting point it was not given.
+  sometimes present is how a screen ends up rendering a crew count or an avatar it was never given.
 - **One no-session state on `/rides/join`**, replacing the generic sentence with the preview card
   and a `Sign up to RSVP` call to action.
+- **`noindex, nofollow` on `/rides/join`**, stated as a requirement with its own assertion rather
+  than inherited from the authenticated wall that used to cover it.
 
 ### Changed
 
@@ -335,10 +360,12 @@ a stranger can never be shown a ride that has already left.
   **calls neither RPC**"*; *"Decision #1 is untouched and no `anon` grant is added to make this
   screen richer"*; the **seven-state** list, which gains one; and the paragraph refusing the
   temptation — *"an invite page naming the ride would convert better… Anyone can hold a URL, and
-  the ride may be a private club's."* That last one is the decision being reversed, so it is
-  **rewritten rather than deleted**: it should say what the owner decided on 2026-09-05, that a
-  club-private ride *is* previewed, and why the class stays unobservable. A reader who finds only
-  the new behaviour learns nothing about why the old argument was abandoned.
+  the ride may be a private club's."* That last one is the argument being replaced, so it is
+  **rewritten rather than deleted**: it should carry the subset argument — that `091`'s
+  authenticated preview already returns these five fields to any holder of the same token, so what
+  stood in front of them was the onboarding wizard rather than a boundary — and that a club-private
+  ride *is* previewed while its class stays unobservable. A reader who finds only the new behaviour
+  learns nothing about why the old argument does not apply.
 
 ### Explicitly NOT in this change
 
@@ -348,23 +375,27 @@ a stranger can never be shown a ride that has already left.
   anonymous path.** `private.ride_invite_link_reachable_by` is not modified.
 - **`public.claim_ride_invite_link` stays `authenticated`.** Joining is a signed-in act. Nothing
   anonymous writes anything, anywhere.
-- **No crew count, no avatar, no map, no club, no meeting point, no coordinates** — see the
-  projection table.
+- **No crew count, no avatar, no map, no coordinates, no club, no description** — see the
+  projection table. The projection stays **strictly inside `091`'s eight columns**.
 - **No rate-limit table, no ledger, no lockout, no new dependency, no Edge Function**, and nothing
   resembling a service worker, manifest or Web Push.
-- **No `rides.locality` column** — that is Open question #1's change, and writing a column with no
-  writer would leave a dead column that reads as live.
+- **No new column on `public.rides`.** The projection is built entirely from columns that exist
+  today, and `115` alters no table.
+- **No anonymous route to a ride without a token** — no id lookup, no listing, no search, and
+  nothing that consults `is_public`.
 
 ## Capabilities
 
 ### New Capabilities
 
 - `anonymous-ride-preview`: the app's first and only anonymous read — what it returns, what it must
-  never return, which role holds EXECUTE and which roles must not, why blocking and the
-  participation gate are unavailable rather than skipped, why every failure is one outcome, and the
-  exception's exact boundary. Stated per role: the ride's organiser, a crew member, a club admin, a
-  club member, a non-member, a **blocked rider in either direction**, an **un-onboarded** account,
-  and a **signed-out visitor with** and **without** a token.
+  never return, why the projection is a strict subset of `091`'s, which role holds EXECUTE and which
+  roles must not, why blocking and the participation gate are unavailable rather than skipped, why
+  every failure is one outcome, that the grant follows the token and never `is_public`, that the
+  page is `noindex, nofollow`, and the exception's exact boundary. Stated per role: the ride's
+  organiser, a crew member, a club admin, a club member, a non-member, a **blocked rider in either
+  direction**, an **un-onboarded** account, and a **signed-out visitor with** and **without** a
+  token.
 
 ### Modified Capabilities
 
@@ -389,38 +420,17 @@ row in a table that already exists.
 
 ## Open questions
 
-Each carries a recommended default so the build is not stalled, and says who answers it.
+Each carries a recommended default so the build is not stalled, and says who answers it. **None of
+them is blocking**: the projection, the grant and every negative case are settled.
 
-### 1. The town. **BLOCKING — the owner's.**
-
-Put as the rider's state:
-
-> A stranger taps an invite link in a group chat. The ride starts at a café the organiser typed by
-> hand, and the app has never known which town that café is in. Do they see a place at all?
-
-- **Default (recommended): no place line, and the preview ships with four fields.** The card reads
-  title, date and time, organiser, and `Sign up to RSVP`. Nothing wrong is shown, nothing precise
-  leaks, and the change ships this week.
-- **The alternative: hold the change until `rides.locality` exists.** A second migration, a client
-  change at pick time, an `update` payload change in `resolve-ride-location` (deployed by a merge,
-  not by a session), and a decision about the several hundred existing rides that would have a NULL
-  town forever unless somebody backfills them. Every one of those is worth doing; none of them is
-  worth blocking the preview on.
-- **Not an option:** deriving a town from `meeting_point`, from coordinates, or from the
-  organiser's home city. See the top of this file.
-
-**The spec is written so the answer is one column wide.** The requirement states the projection as
-a closed list *plus a town when and only when a column holds one*, and the negative — never
-`meeting_point`, never coordinates — is unconditional and identical under both answers.
-
-### 2. Does the preview's copy name the app, and what does the CTA do? **Non-blocking — the owner's, with `product`.**
+### 1. Does the preview's copy name the app, and what does the CTA do? **Non-blocking — the owner's, with `product`.**
 
 **Default: `Sign up to RSVP`, exactly as PD-430 words it**, routing to `/auth/signup` with the
 token still stashed — the existing `pending-token` round trip, unchanged. The question is only
 whether a first-time visitor also gets a sentence saying what Let's Ride is, which is
 `positioning.md`'s territory and `product`'s to write, not this change's to invent.
 
-### 3. Does the anonymous endpoint need metering beyond the token's entropy? **Non-blocking — the owner's.**
+### 2. Does the anonymous endpoint need metering beyond the token's entropy? **Non-blocking — the owner's.**
 
 **Default: no, and nothing is built.** The reasoning is in *Guessability* above: 128 bits, zero
 rows on every failure, no vendor credit spent, no write performed, and no subject to key a ledger
@@ -428,12 +438,12 @@ on. If the owner wants a ceiling anyway, the honest options are Supabase's platf
 (a dashboard setting, theirs to click) or an IP-keyed table — and the second is a personal-data
 table needing its own retention window, which is a change of its own.
 
-### 4. Should the *authenticated* preview also drop its crew count? **Non-blocking — the owner's. Out of scope either way.**
+### 3. Should the *authenticated* preview also drop its crew count? **Non-blocking — the owner's. Out of scope either way.**
 
 Raised only because this change makes the asymmetry visible: a signed-in token holder sees a crew
-count and an anonymous one will not. That is intended — the signed-in caller has passed a block
-check and a participation gate — but if the count was never wanted on that screen either, removing
-it is a one-column edit to `091`'s function and belongs in its own issue.
+count and an avatar, and an anonymous one will not. That is intended — it is what keeps the
+anonymous projection a strict subset — but if the count was never wanted on that screen either,
+removing it is a one-column edit to `091`'s function and belongs in its own issue.
 
 ## Impact
 
