@@ -159,15 +159,15 @@ export function RideInviteJoin({
     if (token === null) return <SignedOutInvite />
     if (publicPreview.error) return <ErrorState onRetry={publicPreview.refetch} />
     if (publicPreview.data === undefined) return <JoinSkeleton />
-    if (publicPreview.data === null) return <DeadLink />
+    if (publicPreview.data === null) return <DeadLink signedIn={false} />
     return <PublicRideInvite ride={publicPreview.data} online={online} onSignup={goToSignup} />
   }
 
-  if (token === null) return <DeadLink />
+  if (token === null) return <DeadLink signedIn />
 
   if (preview.error) return <ErrorState onRetry={preview.refetch} />
   if (preview.data === undefined) return <JoinSkeleton />
-  if (preview.data === null) return <DeadLink />
+  if (preview.data === null) return <DeadLink signedIn />
 
   const ride = preview.data
 
@@ -379,8 +379,21 @@ function SignedOutInvite() {
  * Expired, revoked, the ride deleted, the ride already departed, blocked in
  * either direction, or a token somebody typed — telling them apart is what would
  * make this an oracle for whether a given string is a real ride.
+ *
+ * **The CONTROL varies with the session and the message never does.** Before
+ * `115` only a signed-in rider could reach this screen, so `See your rides` was
+ * the only sensible way out. A signed-out visitor reaches it now — a stranger
+ * whose link expired — and `/rides` is not in `PUBLIC_PATHS`, so that button
+ * would hand them straight to the guard and land them on `/auth/login` with no
+ * explanation. They arrived from a friend's group chat; the useful offer is an
+ * account, which is what they would have been offered had the token been live.
+ *
+ * Splitting on the session is safe *here* precisely because it is the one fact
+ * this screen already knows without asking the database. It says nothing about
+ * the token, so the six dead states stay one indistinguishable answer for each
+ * audience — which is the property `115`'s `2.9` asserts across all six.
  */
-function DeadLink() {
+function DeadLink({ signedIn }: { signedIn: boolean }) {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
@@ -390,9 +403,20 @@ function DeadLink() {
           time. Ask them for a new one.
         </p>
       </div>
-      <Button href="/rides" variant="secondary" size="md">
-        See your rides
-      </Button>
+      {signedIn ? (
+        <Button href="/rides" variant="secondary" size="md">
+          See your rides
+        </Button>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <Button href="/auth/signup" size="lg">
+            Create an account
+          </Button>
+          <Button href="/auth/login" variant="secondary" size="md">
+            I already have an account
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

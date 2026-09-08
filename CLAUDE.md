@@ -572,9 +572,10 @@ Settled. Don't reopen these without an explicit decision to change them.
 `anon`, ever. `is_public = true` means "visible to any signed-in rider", never "visible to the
 internet". **The one exception is EXECUTE on `public.ride_invite_link_public_preview(t)`**
 (`115`, PD-430): a single `security definer` function, reachable only by a 128-bit bearer token,
-returning the title, start time, zone, meeting point and organiser username of exactly one ride —
-a strict subset of what `091`'s authenticated preview already returns to any holder of the same
-token. A second such function, a column added to it, or any grant to `anon` on a table or policy
+returning **six** columns of exactly one ride — its id, title, start time, zone, meeting point and
+organiser username — a strict subset of the eight `091`'s authenticated preview already returns to
+any holder of the same token. **Six, not the five a rider sees**: `ride_id` is in the projection as
+the screen's cache key. A second such function, a column added to it, or any grant to `anon` on a table or policy
 is a **new** decision and not an extension of this one.
 
 **2. Blocking is enforced in RLS, not in the UI.** One `security definer` helper applied across

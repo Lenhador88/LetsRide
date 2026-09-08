@@ -53,6 +53,17 @@ const PUBLIC_PREVIEW_WITH_EXTRA_FIELDS = {
   organizer_avatar_path: 'avatars/pedro.jpg',
 }
 
+/**
+ * What the mocked anonymous query answers with. Mutable because the two states
+ * this file covers — a live token and a dead one — differ ONLY in this value,
+ * and `vi.mock` is hoisted to module scope, so a second fixture would otherwise
+ * mean a second file.
+ *
+ * `null` is the dead answer for every one of the six dead states, since the RPC
+ * returns zero rows and raises for none of them.
+ */
+let publicPreviewResult: unknown = PUBLIC_PREVIEW_WITH_EXTRA_FIELDS
+
 vi.mock('@/lib/query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/query')>()
   return {
@@ -64,7 +75,7 @@ vi.mock('@/lib/query', async (importOriginal) => {
       // disabled here — asserted below by the token never appearing to it.
       if (key?.[1] === 'publicLink') {
         return {
-          data: PUBLIC_PREVIEW_WITH_EXTRA_FIELDS,
+          data: publicPreviewResult,
           error: null,
           isLoading: false,
           isRefetching: false,
@@ -109,5 +120,63 @@ describe('RideInviteJoin — the anonymous preview card, signed out with a live 
     const html = renderToStaticMarkup(<RideInviteJoin token={TOKEN} />)
     expect(html).not.toContain('map')
     expect(html).not.toContain('club')
+  })
+})
+
+/**
+ * **The dead-token state, signed out — the regression `115` introduced and the
+ * review caught.**
+ *
+ * Before `115` only a signed-in rider could reach `DeadLink`, so its single
+ * control, `See your rides` → `/rides`, was the only sensible way out. A
+ * stranger reaches it now, and **`/rides` is not in `PUBLIC_PATHS`** — that
+ * button would hand them to the route guard and land them on `/auth/login`
+ * with no explanation, having arrived from a friend's group chat. So the
+ * control splits on the session while the MESSAGE does not.
+ *
+ * Both halves are asserted, because either one alone passes a broken build: an
+ * assertion that the signup control is present passes a screen that also still
+ * offers `/rides`, and an assertion that `/rides` is absent passes a screen
+ * offering no way forward at all.
+ */
+describe('RideInviteJoin — a dead token, signed out', () => {
+  const withDeadToken = (assert: (html: string) => void) => {
+    const previous = publicPreviewResult
+    publicPreviewResult = null
+    try {
+      assert(renderToStaticMarkup(<RideInviteJoin token={TOKEN} />))
+    } finally {
+      publicPreviewResult = previous
+    }
+  }
+
+  it('offers an account rather than a link into the app the visitor cannot open', () => {
+    withDeadToken((html) => {
+      expect(html).toContain('This link has expired')
+      expect(html).toContain('/auth/signup')
+      expect(html).toContain('/auth/login')
+      // The guarded route, which would bounce a signed-out visitor to the
+      // login screen with nothing explaining why.
+      expect(html).not.toContain('"/rides"')
+      expect(html).not.toContain('See your rides')
+    })
+  })
+
+  /**
+   * **The dead message must not vary with WHICH dead state it is.** The
+   * component cannot tell them apart — the RPC answers `null` for all six — so
+   * this pins that the copy carries no discriminator a prober could read.
+   */
+  it('says the same thing it says for every other dead state', () => {
+    withDeadToken((html) => {
+      expect(html).not.toMatch(/revoked|expired token|deleted|departed|blocked|not found/i)
+      expect(html).toContain('Ask them for a new one')
+    })
+  })
+
+  /** The live-token fixture is restored, so ordering between blocks is not load-bearing. */
+  it('leaves the live-token render unaffected', () => {
+    const html = renderToStaticMarkup(<RideInviteJoin token={TOKEN} />)
+    expect(html).toContain('Sunday coastal run')
   })
 })

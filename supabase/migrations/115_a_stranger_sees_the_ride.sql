@@ -227,6 +227,22 @@ language sql
 -- believes the label does will be wrong in the dangerous direction — it would
 -- read "volatile is POST-only" and conclude the URL is safe to hand out.
 --
+-- ** AND THE TOKEN IS ALREADY IN A URL BY DESIGN, WHICH IS THE HALF THE OLD
+--    REASONING NEVER SAID OUT LOUD. ** The invite link IS
+-- `/rides/join?token=…`. It arrives as the document request, so it reaches the
+-- server log, any intermediary and the browser's history before
+-- `adoptInviteTokenFromLocation` clears it with `replaceState`. `091` accepted
+-- that: the token is a bearer credential and a URL is how it travels.
+--
+-- What `115` changes is not the exposure but ITS VALUE. Before, redeeming a
+-- leaked line of log needed an account that was onboarded and unblocked — the
+-- three conjuncts of `ride_invite_link_reachable_by`. Now the same string
+-- yields the title, time and meeting point to NOBODY, with no account at all.
+-- That is the accepted cost of the feature rather than a defect to fix here,
+-- and it is bounded the way the link itself is bounded: the expiry, the
+-- organizer's revoke, and 128 bits. It is written down so the next reader
+-- weighs the real exposure instead of the one the `volatile` label implied.
+--
 -- The label still stays, for two honest reasons rather than the false one: it
 -- is the safe default for a function reachable by an unauthenticated caller,
 -- and it matches `091`'s three RPCs, one of which (`claim_ride_invite_link`)
