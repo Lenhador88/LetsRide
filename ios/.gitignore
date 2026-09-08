@@ -11,3 +11,7 @@ capacitor-cordova-ios-plugins
 # Generated Config files
 App/App/capacitor.config.json
 App/App/config.xml
+
+# Xcode workspace prefs — empty plist Xcode rewrites; Package.resolved IS tracked
+App/App.xcodeproj/project.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/configuration
