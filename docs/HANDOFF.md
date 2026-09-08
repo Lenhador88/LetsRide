@@ -49,9 +49,9 @@ history.
 
 ## In flight
 
-- **`Queued (AI)` is empty and `Needs help` is empty.** **`Development (AI)`:** PD-448 on
-  `slot-2`, and PD-421 carrying no slot label — occupying no slot, which is deliberate rather
-  than a gap.
+- **`Queued (AI)` and `Needs help` are both empty**, so the next firing has nothing to take.
+- **`Development (AI)`:** PD-447 in `slot-1` and PD-448 in `slot-2`, both with their PR merged or
+  merging; PD-421 carries no slot label, so it occupies no slot — deliberate rather than a gap.
 - **Nothing in this app opens a sheet by itself** (PD-447, reversing PD-419). The Explore question
   is `LocationQuestionRow`, on the two Explore screens only. **`profiles.location` has TWO
   writers** — `setRiderTown` and `setHomeTown` — so anything keyed to "the rider stored a town"
@@ -128,6 +128,7 @@ A PROD credential, a service-role key or any account a person uses stays out.
 | `walk-fixture-2@letsride.dev` | `walkfixture2` | same | Onboarded. A **member** of that club, so the introduction prompt fires; has posted an introduction |
 | `rider-1786033029156@letsride.dev` | — | owner-held | Consented, **no username, not onboarded** — for walking the wizard |
 | `rider-1786033088990@letsride.dev` | `devrider093453` | owner-held | Fully onboarded |
+| `sofia@letsride.dev` | `sofiarides` | in PD-448's comment | The **screenshot account** and four supporting riders — `running-locally.md` §The screenshot seed |
 
 **The two `walk-fixture*` accounts are a pair** — a club's owner is exempt from the introduction
 prompt, so walk as both when the club detail changes. **Check the credential before believing the
@@ -139,13 +140,10 @@ curl -s --noproxy '*' -X POST 'http://localhost:3001/auth/v1/token?grant_type=pa
   -d '{"email":"walk-fixture-2@letsride.dev","password":"..."}'   # 200, not 400
 ```
 
-**Replacing them:** sign up through `/auth/v1/signup` (DEV autoconfirms), `accept_terms()`, then
-`PATCH /profiles?id=eq.<uid>&select=id` with a username, then `complete_onboarding({p_location: null})`.
-Setting a password for an owner-held one is one `update auth.users set encrypted_password =
-extensions.crypt('<generated>', extensions.gen_salt('bf'))` — derivable in ten seconds, never
-stored. If you walk the wizard with the un-onboarded fixture, put it back afterwards.
+**Replacing one** is `docs/reference/running-locally.md` §Replacing a fixture.
 
-**PROD holds two SQL-inserted `@letsride.test` accounts** (`duskrider`, `qa-verify`) whose
+**`screenshot-account.sql`'s guard reads the two rows below**, so deleting them leaves it on one
+arm. **PROD holds two SQL-inserted `@letsride.test` accounts** (`duskrider`, `qa-verify`) whose
 passwords are not in this repo; **delete both before launch**:
 `delete from auth.users where email like '%@letsride.test';`. The history behind all of these is
 `docs/reference/journal.md` §Test accounts — the full record.
