@@ -230,15 +230,16 @@ Measured on this branch:
 
 - `openspec/changes/add-ride-chat-unread/specs/ride-chat/spec.md` — `MODIFIED` *The surfaces this
   change does not build SHALL be named rather than half-built*
-- `openspec/changes/invite-riders-to-a-ride/specs/ride-chat/spec.md` — `MODIFIED` *Chat visibility
+- `openspec/changes/archive/2026-09-08-invite-riders-to-a-ride/specs/ride-chat/spec.md` — `MODIFIED` *Chat visibility
   SHALL be the intersection of ride visibility and crew membership, never crew membership alone*
 
-Both are unarchived. `openspec archive` folds a delta in by replacing a requirement wholesale, so if
-either archives **after** this change, it modifies a requirement that no longer exists.
+**The second of those archived on 2026-09-08; `add-ride-chat-unread` is still open.** `openspec
+archive` folds a delta in by replacing a requirement wholesale, so if it archives **after** this
+change, it modifies a requirement that no longer exists.
 
-**Recommended order: archive both of those before archiving this one.** Both describe work that
-shipped long ago (`061` and `083` are applied on both projects), so archiving them is bookkeeping
-rather than a decision. If that is not done, this change's archive step should be expected to need a
+**Recommended order: archive `add-ride-chat-unread` before archiving this one.** It describes work
+that shipped long ago (`061` and `083` are applied on both projects), so archiving it is
+bookkeeping rather than a decision. If that is not done, this change's archive step should be expected to need a
 manual reconciliation, and the `ride-chat` spec file should be confirmed **deleted** from
 `openspec/specs/` afterwards rather than left as an empty shell.
 

@@ -1429,7 +1429,7 @@ Deviations that are ours, not the design's:
 ### View someone else's profile — built 2026-08-14
 
 `/profile/detail?id=<uuid>`, from `Profile / View someone else's profile / Profile - Prescoll
-header` (`2084:9006`) — `openspec/changes/view-rider-profile/`. Reached from a postcard byline
+header` (`2084:9006`) — `openspec/changes/archive/2026-09-08-view-rider-profile/`. Reached from a postcard byline
 today (`PostcardCard`); the other four reach paths (comments, ride crew, club rosters, chat) are
 a deliberate follow-up, not this change.
 

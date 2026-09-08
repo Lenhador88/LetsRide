@@ -244,6 +244,9 @@ It SHALL NOT be overlaid inside the masked photo block, and it SHALL NOT add a t
 
 ### Requirement: The surfaces this change does not move SHALL be named rather than half-built
 
+Every surface this change does not move SHALL be named here, so an unmoved surface reads as a
+decision rather than as work left half-done.
+
 #### Scenario: The club's unread badge is unchanged and the gap is stated
 - **WHEN** a postcard arrives on the strip only through the tag arm
 - **THEN** `club_unread_counts()` SHALL NOT count it, and the club card SHALL show no badge

@@ -56,7 +56,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
  * `null` collapses every audience case `rider-profile-viewing` names: a
  * malformed id, no such row, a NULL-username row the `profiles` policy
  * withholds, and a block in either direction (`private.is_blocked` is
- * symmetric — `openspec/changes/view-rider-profile/design.md` §D1). The
+ * symmetric — `openspec/changes/archive/2026-09-08-view-rider-profile/design.md` §D1). The
  * screen renders one not-found for all of them, deliberately — telling them
  * apart would make the route an oracle for whether a given id exists or
  * whether a block is in place.
@@ -313,7 +313,7 @@ export async function getProfileCountries(userId: string): Promise<string[]> {
  * Whether this rider has opted out of analytics — PD-353.
  *
  * **Its own accessor rather than a field on `my_onboarding_state()`**, and the
- * four reasons are in `openspec/changes/add-analytics-consent/design.md`. The
+ * four reasons are in `openspec/changes/archive/2026-09-08-add-analytics-consent/design.md`. The
  * worst of them first: `guard-cache.ts` holds that call's answer for the whole
  * page load *because both onboarding stamps are immutable for a session's
  * lifetime*, and this one is a toggle a rider can flip twice in a minute. It

@@ -138,7 +138,7 @@ PROD-ref bundle passes and a DEV-ref one is refused by name.
 
 **It is deliberately not part of `npm run build:native`.** That runs `check-export.mjs` on every
 native build, including the local, CI and on-device ones which may point wherever they like as long
-as they never reach a store (`openspec/changes/add-static-export-bundle/design.md` §D7) — CI's own
+as they never reach a store (`openspec/changes/archive/2026-09-08-add-static-export-bundle/design.md` §D7) — CI's own
 bundle step builds against DEV. Wiring the release gate in there would either block every test
 build or get switched off.
 

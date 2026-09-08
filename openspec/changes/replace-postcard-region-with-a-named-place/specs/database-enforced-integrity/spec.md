@@ -2,9 +2,10 @@
 
 **Delta note.** `database-enforced-integrity` is a standing capability
 (`openspec/specs/database-enforced-integrity/spec.md`) and this delta is written against it.
-Two of its requirements are extended rather than replaced — the ones `064` added in
-`openspec/changes/capture-photo-time-and-place/specs/database-enforced-integrity/spec.md`, which
-is shipped and unarchived — and those are named where they apply.
+Two of its requirements are extended rather than replaced — the ones `064` added, which archived on
+2026-09-08 and are therefore **standing text now**, so diff this delta against
+`openspec/specs/database-enforced-integrity/spec.md` rather than against
+`openspec/changes/archive/2026-09-08-capture-photo-time-and-place/`. Both are named where they apply.
 
 ## ADDED Requirements
 

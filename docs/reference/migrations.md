@@ -329,18 +329,18 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**116 files. DEV is at `116` and PROD at `112` — measured 2026-09-08, after `116` applied.** `113`
+**116 files, and BOTH projects are at `116` — measured 2026-09-08, after the promotion.** `113`
 was applied to DEV migration-first, ahead of #428; the merge is what landed its file, so the
 row that read as file-less until then is an ordinary applied migration. DEV's row count reads
 **three** high — the three long-standing hand-applied rows — and **PROD's is exact**, which is the
 direction that matters: nothing is applied there without a file behind it. Neither is a gap.
 
-**The open promotion gap is `113`, `114`, `115` and `116` — in that order, and `113`/`114` NOT
-collapsed.**
-`114` is the narrowing half and must not reach PROD until the same bundle is serving there — see its
-entry below before promoting either. **`115` carries no such gate against the other two**: it
-creates one object nothing existing calls, so it neither depends on `113`/`114` nor is depended on
-by them. It is migration-first on its own account, for the reason its entry gives.
+**The `113`, `114`, `115`, `116` promotion applied to PROD on 2026-09-08, `113` ahead of `114` as
+its gate required, so there is no open gap today.** The ordering rule stands for the next one, and
+`114`'s entry below is why: it is the narrowing half and must not reach a project until the same
+bundle is serving there. **`115` carried no such gate against the other two** — it creates one
+object nothing existing calls, so it neither depended on `113`/`114` nor was depended on by them.
+It is migration-first on its own account, for the reason its entry gives.
 
 **`113_home_country` (PD-428), applied to DEV 2026-09-07T10:10:07Z as `20260907101007`.** Adds
 nullable `profiles.home_country` (ISO 3166-1 alpha-2), two VALIDATED CHECKs, three column grants
@@ -1165,7 +1165,7 @@ into SQL: a club count that outgrows `CLUBS_PAGE_SIZE`, at which point the quest
 `postcards` — `taken_at`, `taken_at_offset_minutes`, `taken_latitude`, `taken_longitude`,
 `taken_location_precision` — with four CHECKs and two absolute grant statements, and **no policy,
 no trigger, no index and no backfill**. The specification is
-`openspec/changes/capture-photo-time-and-place/`.
+`openspec/changes/archive/2026-09-08-capture-photo-time-and-place/`.
 
 Three things about it that a reader will otherwise reach the wrong conclusion about:
 

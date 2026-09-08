@@ -8,7 +8,7 @@
 > See `design.md` §Q1.
 
 > Linear **PD-299** — *"A club is a container, not a place"*. This extends **PD-355**
-> (`openspec/changes/add-club-timeline/`), which merged today as **#350**, **#351** and **#352**.
+> (`openspec/changes/archive/2026-09-08-add-club-timeline/`), which merged today as **#350**, **#351** and **#352**.
 > The story is **PD-356**.
 
 ## ⚠ Read this first

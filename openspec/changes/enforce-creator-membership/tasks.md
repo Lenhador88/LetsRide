@@ -135,7 +135,7 @@ that touches SQL is paired with its assertion task, per `openspec/config.yaml`.
   ambient `authenticated` role is a defect: it passes on a database full of orphans owned by riders
   the runner is blocked from.
 - [x] 2.8 ~~`public.protect_club_owner_membership()`~~ **MOVED 2026-08-31 to
-  `openspec/changes/an-owner-leaves-their-club/` (`095`, PD-194) §3.** That change decides what an
+  `openspec/changes/archive/2026-09-08-an-owner-leaves-their-club/` (`095`, PD-194) §3.** That change decides what an
   owner leaving means, so it owns the guard's two exceptions — the voluntary transfer and the club's
   own deletion — and shipping the guard here without them would only have to be undone there.
   `design.md` §D3's amendment note carries the split; that change's §D8 shows neither change blocks

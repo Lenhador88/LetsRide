@@ -36,6 +36,8 @@ nobody reads.
 
 ### Requirement: The timeline's reach SHALL be stated for every role that can reach a club
 
+The timeline's reach SHALL be stated for every role that can reach a club.
+
 Each role below is a testable statement about a role and a resource. Membership is
 `private.is_club_member(club_id)`, which is a `club_members` row **or** `clubs.owner_id` (`054`,
 split by `060`), so the owner is a member for every rule here whether or not they hold a roster
