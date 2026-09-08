@@ -252,9 +252,17 @@ export function LocationQuestionRow({
         // for a month from the one rider who just tried to answer it. The sheet
         // closes; the row stays.
         onClose={({ saveFailed }) => (saveFailed ? setAskingTown(false) : dismiss())}
-        // Answered, not dismissed: `setRiderTown` resets the ladder from inside
-        // the action, so nothing is recorded here.
-        onSaved={() => setAskingTown(false)}
+        // **Answered.** `setRiderTown` writes `{at, n: 0}` from inside the
+        // action, so nothing is recorded here — but the local `quiet` must be
+        // synced anyway, and forgetting it was a real defect the pre-merge
+        // review caught. `isQuestionQuiet()` is read once, in the mount effect;
+        // without this line the store says quiet and the component does not, so
+        // the row redraws `Still in {the town they just picked}?` until the
+        // rider navigates away. Same rule as `dismiss()` at the other two exits.
+        onSaved={() => {
+          setAskingTown(false)
+          setQuiet(true)
+        }}
       />
     </>
   )

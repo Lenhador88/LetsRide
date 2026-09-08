@@ -20,9 +20,11 @@ vi.mock('@/components/location/TownQuestionSheet', () => ({
   TownQuestionSheet: ({
     open,
     onClose,
+    onSaved,
   }: {
     open: boolean
     onClose: (info: { saveFailed: boolean }) => void
+    onSaved: () => void
   }) =>
     open ? (
       <div data-testid="town-sheet">
@@ -32,12 +34,17 @@ vi.mock('@/components/location/TownQuestionSheet', () => ({
         <button type="button" onClick={() => onClose({ saveFailed: true })}>
           save failed
         </button>
+        <button type="button" onClick={onSaved}>
+          town stored
+        </button>
       </div>
     ) : null,
 }))
 
 const { LocationQuestionRow } = await import('@/components/location/LocationQuestionRow')
-const { readDismissal, resetDismissalForTests } = await import('@/lib/location/dismissal')
+const { readDismissal, recordDismissal, resetDismissalForTests } = await import(
+  '@/lib/location/dismissal'
+)
 
 /**
  * The row's own decisions — PD-447, replacing `UseMyLocationRow.dom.test.tsx`.
@@ -58,7 +65,10 @@ const { readDismissal, resetDismissalForTests } = await import('@/lib/location/d
  * Verified both ways: restoring an automatic open fails *nothing opens by
  * itself*; routing `confirm` through the priming sheet fails *confirm goes
  * straight to the town sheet*; recording a dismissal on a failed save fails
- * *a save that did not land is not a dismissal*.
+ * *a save that did not land is not a dismissal*; dropping `clearDismissal()`
+ * from the grant path fails *clears the record when a fix comes back*; and
+ * dropping `setQuiet(true)` from `onSaved` fails *the row goes quiet in the
+ * same render*.
  */
 
 const PROFILE = { lat: 52.09, lon: 5.12, source: 'profile' as const }
@@ -253,8 +263,41 @@ describe('closing without an answer is a dismissal', () => {
   })
 })
 
+describe('answering the town question', () => {
+  it('takes the row away in the same render, without recording a dismissal', async () => {
+    // **The defect the pre-merge review caught.** `setRiderTown` writes
+    // `{at, n: 0}` from inside the action, but `isQuestionQuiet()` is read once
+    // in the mount effect — so without the local sync the store says quiet and
+    // the component does not, and the row redraws `Still in <the town they just
+    // picked>?` until the rider navigates away. It also contradicts the spec
+    // this branch archives, which says the row is quiet for 30 days after an
+    // answer.
+    deviceLocationPermission.mockResolvedValue('unavailable')
+    await render(<LocationQuestionRow position={null} town={null} />)
+    await click(row()!)
+
+    await click(buttonNamed('town stored'))
+
+    expect(townSheet()).toBeNull()
+    expect(row()).toBeNull()
+    // The action owns the record; the component must not write one too, or an
+    // answer would land on rung 1 instead of rung 0.
+    expect(readDismissal()).toBeNull()
+  })
+})
+
 describe('the device answer', () => {
   it('clears the record and the row when a fix comes back', async () => {
+    // **Seeded, and the seed is the whole assertion.** With an empty store
+    // `readDismissal()` is null however `onContinue` behaves, so deleting
+    // `clearDismissal()` would leave this green — the repo's asserts-the-wrong-
+    // zero shape, caught by the pre-merge review. An elapsed record is the
+    // state that matters: the row draws, so the rider can still reach the
+    // sheet, and the stale `n: 1` is what would otherwise put their NEXT
+    // dismissal on rung 2 after they had answered.
+    recordDismissal(Date.now() - 31 * 24 * 60 * 60 * 1000)
+    expect(readDismissal()?.n).toBe(1)
+
     requestDeviceLocation.mockResolvedValue(DEVICE)
     deviceLocationPermission.mockResolvedValueOnce('prompt').mockResolvedValue('granted')
 

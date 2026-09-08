@@ -24,10 +24,18 @@
  * quiet:   30d   30d   60d  120d  180d   180d
  * ```
  *
- * **The rider acting resets it** — a town stored through `setRiderTown`, which
- * is that column's only writer, or a device fix coming back. So the ladder only
- * ever climbs for a rider who keeps declining to answer, which is exactly the
- * rider who should be asked least often.
+ * **The rider acting resets it** — a stored town, or a device fix coming back.
+ * So the ladder only ever climbs for a rider who keeps declining to answer,
+ * which is exactly the rider who should be asked least often.
+ *
+ * **`profiles.location` has TWO writers and neither guarantees the other**:
+ * `setRiderTown` (the row's sheet and `/profile`'s setting) and `setHomeTown`
+ * (the wizard's town step, which writes the column directly). Each calls
+ * `recordAnswered` itself. There is no single writer to hang the reset on, so a
+ * third route into a stored town owes the call explicitly rather than getting
+ * it by construction — which is the sentence this header carried wrongly until
+ * the pre-merge review, and the reason a `git grep -n "recordAnswered"` is the
+ * check rather than this paragraph.
  *
  * ## Why it persists, where every other one-shot in this app does not
  *
@@ -166,8 +174,9 @@ export function recordDismissal(now: number = Date.now()): void {
 
 /**
  * The rider answered — quiet for the base interval, with the ladder back to
- * zero. Called from `setRiderTown`, the town column's only writer, so every
- * route into a stored town resets by construction.
+ * zero. Called from **both** writers of `profiles.location`, `setRiderTown` and
+ * `setHomeTown`, each on a successful write of a non-null town. Never on the
+ * clear path: removing a town is unanswering the question.
  */
 export function recordAnswered(now: number = Date.now()): void {
   write({ at: now, n: 0 })

@@ -1904,7 +1904,7 @@ item.
       the copy and the vertical rhythm are **written, not measured**. Everything they are built
       *from* is measured: `ContextMenu` is `v2 / Component / Context Menu` (390 wide, flush to
       the bottom edge, 16px radius on the top corners, padding 16/24/32/24), the buttons are
-      `Button / Regular / *` at `lg`, and `UseMyLocationRow` is `ExploreClubsStrip`'s row
+      `Button / Regular / *` at `lg`, and `LocationQuestionRow` is `ExploreClubsStrip`'s row
       verbatim — 56px on `White/100` at radius 8, 16px padding, 12px gap, a 24px `Location
       Filled` in `Accent Brand/100`, label at Poppins/14/Semibold, chevron trailing.
 - [ ] **Two claims in that copy are a store-review surface, not decoration.** Apple reads the
