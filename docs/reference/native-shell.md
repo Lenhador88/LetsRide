@@ -311,8 +311,9 @@ for d in ~/Library/Developer/Xcode/DerivedData/App-*/; do
 **The keychain read back a session that a PREVIOUS build wrote** — that August install — so what is
 verified is `secure-store.ts`'s **read** path against a real platform keychain, over a real refresh
 token, rather than the mocked plugin the unit tests use. The **write** was performed by a different
-binary and the **clear** was not run at all, so *round-tripped* is the word this section must not
-use.
+binary, so *round-tripped* is the word this section must not use. Sign-out was exercised later the
+same day and settles less than it looks — §Sign-out leaves no usable session in a platform keychain
+has what it does and does not prove.
 
 **No build container can do any of this**, so the label on `ios/` now splits rather than lifting:
 what a **simulator** exercises is verified, and what needs a signed device or the store is not. The
@@ -335,8 +336,14 @@ value is knowing which files are yours to suspect:
 ```bash
 t=$(mktemp -d) && tar xzf node_modules/@capacitor/cli/assets/ios-spm-template.tar.gz -C "$t"
 (cd "$t" && find . -type f | sed 's|^\./||') | while read f; do
-  cmp -s "$t/$f" "ios/$f" || echo "DIFFERS: $f"; done   # exactly 5 lines
+  cmp -s "$t/$f" "ios/$f" || echo "DIFFERS: $f"; done   # read the NAMES, not a count
 ```
+
+**Do not pin the count here.** It read *"exactly 5 lines"* and was 6 within a week of being
+written, because every later change to the shell adds to this list rather than replacing it —
+`.gitignore` grew two entries, `Info.plist` gained a category and lost its iPad orientations, and
+`project.pbxproj` gained a Team and a device family. The value is knowing **which** files are
+yours to suspect, and that survives; the number does not.
 
 Four more first-build inputs are sound, and they move with a file, so read them rather than this
 line — `grep -nE "IPHONEOS_DEPLOYMENT_TARGET|CODE_SIGN_STYLE|DEVELOPMENT_TEAM|SWIFT_VERSION"
@@ -441,7 +448,7 @@ rather than through a single label on the whole section.
 | The app launches and the webview loads the export | postcard deck rendered from `App/App/public` |
 | `RouteGuard` resolves inside a webview | reached `/postcards`, then `/profile`, no splash lock |
 | The keychain **read** returns a real session | written by the Aug 25 install; the **write** path is still unexercised |
-| The keychain **clear** actually clears | sign out, force-quit, cold launch → Login. Run twice, the second time uninterrupted |
+| Sign-out leaves no **usable** session | sign out, force-quit, cold launch → Login. Run twice. This is NOT the same as `clearSessionStore`'s sweep working — see its section for why |
 | The app icon renders, correctly masked | white motorcycle on `#3D996B` — generated headlessly in August and never once looked at until now |
 | `LSApplicationCategoryType` reaches the bundle | only after this change: the `INFOPLIST_KEY_*` form was inert |
 | Supabase reads work from the bundle | DEV data, avatars and covers from Storage |
@@ -453,33 +460,53 @@ rather than through a single label on the whole section.
 | Push registration | needs a signed device — a simulator gets no APNs token |
 | Universal links | no Associated Domains entitlement exists yet (PD-205) |
 | The location prompt | not exercised; the string is verified in the bundle, the dialog is not |
-| ~~Sign-out clearing the keychain~~ | **settled 2026-09-08** — see below |
+| `clearSessionStore`'s sweep | **still unexercised.** Sign-out was run, but auth-js removes the `sb-` keys by name first, so the sweep had nothing to find |
 | A device build, the archive, TestFlight | none attempted |
 
-### `clearSessionStore` really clears a platform keychain — 2026-09-08
+### Sign-out leaves no usable session in a platform keychain — 2026-09-08
 
-**The invariant this settles is the one `native-shell`'s own §The shell says has been broken once
-already**: `clearSessionStore` sweeps any store that can enumerate itself, rather than only
-`kind === 'local'`. The narrower version leaves yesterday's keychain entry behind on sign-out, in
-the store where a leftover credential matters most. Until now that was asserted against a **mocked**
-plugin.
+**Read the claim as written, because the obvious stronger one is what this test CANNOT support.**
 
-**The cold relaunch is the whole test, and sign-out landing on Login is not.** An app that merely
-forgot the session in memory also draws Login — and this same simulator had already proved a
-keychain entry survives a full app *reinstall*, which is how the very first launch of the day came
-up signed in from an August build. So the question is only ever answered after the process dies:
+What was run: sign out in the app, then
 
 ```
-sign out  →  xcrun simctl terminate <udid> social.letsride.app  →  xcrun simctl launch …
+xcrun simctl terminate <udid> social.letsride.app  →  xcrun simctl launch …
 ```
 
-Login, both times it was run — the second in one uninterrupted pass, because the first cycle was
-followed minutes later by a signed-in screen and the honest reading of that was *someone signed
-back in*, not *the sweep failed*. **Re-run it rather than reasoning about it**: an interrupted
-observation of a shared simulator is not evidence.
+Login, both times — the second in one uninterrupted pass, because the first cycle was followed
+minutes later by a signed-in screen and the honest reading of that was *someone signed back in*,
+not *the sweep failed*. **Re-run it rather than reasoning about it**: an interrupted observation
+of a shared simulator is not evidence.
 
-**The write path is still unexercised.** What has been proven is read and clear; the token this
-build read was written by a different binary.
+**The cold relaunch is load-bearing and sign-out landing on Login is not.** An app that merely
+forgot the session in memory draws the same screen, and this simulator had already proved a
+keychain entry survives a full app *reinstall* — which is how the first launch of the day came up
+signed in from an August build. There is no in-memory confounder to fall back on either:
+`guard-cache.ts` holds module state that dies with the process, no "signed out" flag is consulted
+ahead of the store, and `RouteGuard` reads the store for real on a cold launch.
+
+**What it does NOT settle is `clearSessionStore`'s sweep**, which is the invariant §The shell
+calls out as already broken once. `signOut()` calls `supabase.auth.signOut()` *before*
+`clearSessionStore()`, and auth-js's `_removeSession` deletes `sb-<ref>-auth-token`, the PKCE
+verifiers and the `-user` key **by name** out of whatever storage it was handed — here the secure
+store itself. So by the time the sweep enumerates, there is no `sb-`-prefixed key left for it to
+find: in this run the sweep was provably a no-op, and an implementation that had regressed to
+`kind === 'local'` would have passed identically.
+
+**Nor does it distinguish *absent* from *present but expired*.** `signOut()` defaults to
+`scope: 'global'`, so a surviving token would have been revoked server-side; on relaunch auth-js
+would refresh it, be refused, and draw the same Login. What the run *does* rule out is a live
+stored session, since an unexpired one is returned with no network call at all.
+
+So, precisely:
+
+> **Sign-out followed by a cold relaunch recovers no usable session from the platform keychain.**
+> `clearSessionStore`'s own sweep and the write path both remain unexercised against a real one.
+
+**The measurement that would settle the real claim needs no relaunch**: after sign-out and before
+`terminate`, read `SecureStorage.keys()` — or seed a `sb-probe-auth-token` that auth-js knows
+nothing about and read it back. Note the expected result is **not** an empty keychain: the
+installation id is meant to survive, and PD-443 is a live defect in exactly that.
 
 ### The bundle is iPhone-only and portrait-only — decided 2026-09-08
 
@@ -488,9 +515,18 @@ inferred from the Capacitor template: **pause iPad.** `TARGETED_DEVICE_FAMILY` i
 `UISupportedInterfaceOrientations` is portrait alone, with the `~ipad` key deleted.
 
 Both were stock defaults nobody had chosen — iPhone **and** iPad, three orientations — against a
-`design/` that is phone-portrait throughout, on a binary App Review runs on an iPad. Read the
-built bundle rather than the project file, because the previous commit shipped a category setting
-that was inert exactly because the project file said otherwise:
+`design/` that is phone-portrait throughout.
+
+**"Pause iPad" does NOT mean the app stops running on one, and reading it that way is the mistake
+this paragraph exists to prevent.** An iPhone-only binary still installs and runs on iPad, in
+iPhone compatibility mode, and guideline 2.4.1 expects exactly that — so App Review still opens it
+on an iPad. What changes is *what they see*: a scaled portrait iPhone window instead of a
+full-size iPad layout that nothing in `design/` describes. **The pause is the native bundle only**;
+the web app at `app.letsride.social` is untouched and still renders on iPad Safari, which is how
+the product owner uses it.
+
+Read the built bundle rather than the project file, because the previous commit shipped a category
+setting that was inert exactly because the project file said otherwise:
 
 ```bash
 python3 -c "import plistlib;p=plistlib.load(open('<built>/App.app/Info.plist','rb'));\
