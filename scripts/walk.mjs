@@ -1383,18 +1383,65 @@ function fixturesPermitted(ref) {
  * attached to the club they have. Passing it in is what keeps the fixture
  * ride clubbed on a second run.
  */
+/**
+ * Type a term into a `PlaceSearchField` and pick the first suggestion.
+ *
+ * **A pick, not a fill, and that is forced rather than tidy.** In place mode the
+ * visible input is nameless and carries a *search term*: the four hidden inputs
+ * the form actually submits are written from the PICK alone, and `onBlur` drops
+ * an unpicked draft. So filling the box and submitting posts an empty location —
+ * which since PD-446 `clubCreateSchema` refuses, leaving `provision` with a null
+ * club and every later phase failing far from the cause.
+ *
+ * **This spends a vendor credit against an app-wide ceiling** —
+ * `search-places` allows `APP_DAILY_SEARCH` per 24h across every rider, not per
+ * rider — so it is one lookup per fixture and never one per keystroke.
+ * `page.fill` sets the value in one input event, which is exactly one debounce
+ * cycle; typing the term character by character would be N searches for the
+ * same answer.
+ *
+ * Returns false rather than throwing, so a caller can say which fixture could
+ * not be built instead of failing the run with a Playwright stack.
+ */
+async function pickPlace(selector, term) {
+  await page.fill(selector, term)
+  try {
+    // The debounce is 400ms and the round trip is a live geocoder, so this
+    // waits on the RESULTS rather than on a timeout — a fixed sleep is the
+    // version that goes red on a slow morning and green on a fast one.
+    await page.waitForSelector('[role="option"]', { timeout: 15_000 })
+  } catch {
+    console.error(`  ! no place suggestions for "${term}" — the geocoder did not answer`)
+    return false
+  }
+  // The first row, unlike the country picker's exact-name match: the options
+  // here are vendor-returned, so there is no name this script can assert
+  // against without pinning the walk to one geocoder's phrasing.
+  await page.click('[role="option"]')
+  return true
+}
+
 async function provision(wanted, existing = {}) {
   const created = { ride: null, club: null }
 
   if (wanted.club) {
     await page.goto(`${BASE}/clubs/new`, { waitUntil: 'networkidle' })
     await page.fill('input[name="name"]', 'Walk fixture club')
+    // Required since PD-446. `/clubs/new` has one combobox — the place field;
+    // the club form has no other. Without a pick the submit is refused and
+    // `created.club` is null, which surfaces as the ride losing its club and
+    // `checkJoinClub` finding nothing.
+    const placed = await pickPlace('input[role="combobox"]', 'Amsterdam')
+    if (!placed) console.error('  ! the fixture club cannot be created without a location')
     await Promise.all([
       page.waitForURL((u) => !u.pathname.endsWith('/new'), { timeout: 30_000 }).catch(() => {}),
       page.click('button[type="submit"]'),
     ])
     await page.waitForTimeout(1200)
     created.club = new URL(page.url()).searchParams.get('id')
+    if (!created.club) {
+      console.error('  ! fixture club was not created — later club phases will find nothing')
+    }
   }
 
   if (wanted.ride) {

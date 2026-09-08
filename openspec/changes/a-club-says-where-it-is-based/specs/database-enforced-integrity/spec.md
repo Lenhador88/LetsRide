@@ -42,12 +42,16 @@ remains the only thing Postgres says about them.
 Two consequences, and the second is the dangerous one:
 
 - **A client that skips the gate creates a locationless club and is refused by nothing.** Accepted:
-  such a club is indistinguishable from the ones that already exist, and no policy, count or
-  visibility decision depends on the column.
+  the column has always permitted it, every reader already tolerates it, and no policy, count or
+  visibility decision depends on it. **Not** because such a club resembles the ones that exist —
+  measured 2026-09-08, DEV 15/15 and PROD 2/2 carry a location, so today it would resemble none of
+  them.
 - **A later reader must not turn "a club must say where it is based" into a non-null assumption.**
-  Seventeen clubs exist across both projects today and every one of them predates this gate; a
-  non-null type, a `!`, or a distance sort that reads absence as zero breaks on all of them, and
-  breaks silently.
+  A non-null type, a `!`, or a distance sort that reads absence as zero breaks the moment any row
+  carries NULL — an owner clearing the field on edit, or a club created before this gate — and
+  breaks silently. **The count of such rows today is zero, and that is exactly why this is written
+  down**: a reader who checks the database finds every row populated and concludes the assumption is
+  safe.
 
 #### Scenario: The gate is scoped to creation
 - **WHEN** a club is created through the app with no location

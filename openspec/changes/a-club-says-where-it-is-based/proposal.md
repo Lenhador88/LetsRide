@@ -55,8 +55,11 @@ is unchanged: it may be absent, for ever. What changes is what one screen refuse
 Two consequences follow and both are specified:
 
 - A rider who defeats the client gate creates a locationless club and **is not refused by anything**.
-  That is accepted, not a hole, because such a club is indistinguishable from the 17 that already
-  exist.
+  That is accepted, not a hole: it is the state the column has always permitted, every reader
+  already tolerates it, and the only cost is one club missing from a near-you list. **It is not
+  "indistinguishable from the clubs that already exist"** — measured 2026-09-08, DEV 15/15 and PROD
+  2/2 carry a location, so today it would be distinguishable from every one of them. The argument is
+  about what the schema allows, never about how many rows happen to share the state.
 - **Nothing downstream may start assuming a non-null location.** No non-null type, no `!`, no
   `location_name` read without a null branch, no distance sort that treats absence as zero. The
   existing readers already do this correctly — `src/lib/data/clubs.ts` carries
@@ -69,10 +72,23 @@ Two consequences follow and both are specified:
 
 `clubSchema` is parsed by **both** `createClub` and `updateClub` in `src/lib/actions/clubs.ts`.
 Making `clubSchema.location` non-nullable would gate **editing** too: a club owner could not change
-their club's name, description, avatar or privacy until they added a location — for the 17 clubs
-that exist today, and for every club created before this ships. The issue excludes exactly that
-(*"Clubs that already exist are untouched by a creation gate"*), so a single shared schema cannot
-express it.
+their club's name, description, avatar or privacy until they added a location. The issue excludes
+exactly that (*"Clubs that already exist are untouched by a creation gate"*), so a single shared
+schema cannot express it.
+
+**The reason is a permanent contract, not the current rows, and getting that backwards is how the
+split gets collapsed.** Measured 2026-09-08: DEV 15/15 and PROD 2/2 clubs carry a location, 0
+partial. So **no club alive today would be gated by a shared schema**, and a reader who checks
+"this protects the clubs that exist" finds it false and deletes the split. Two things it does
+protect, neither of which is a count:
+
+- **An owner CLEARING a location on edit.** `EditClubForm`'s place field has a Clear control,
+  `readClubLocation` reads the emptied form as `null`, and `updateClub` writes four NULLs. Under a
+  shared required schema that path is refused — the rider is told to pick where their club is based
+  in order to stop saying where their club is based.
+- **Every club created before this ships, and every row the column will ever legitimately hold.**
+  The column is permanently nullable by decision; the edit path is what keeps that true rather than
+  a claim about it.
 
 - **`clubCreateSchema`** — `clubSchema` with `location` required. Used by `createClub`, and by
   `CreateClubForm`'s focus-the-rejected-field effect, which parses the same schema so the two cannot
@@ -228,4 +244,5 @@ set or change a club's location; only the owner can, through `updateClub`, exact
   `clubs_location_coupling`; the `clubs` RLS policies and every role's reach into them;
   `readClubLocation`'s string-emptiness rule; `CLUB_LOCATION_FIELD_NAMES`; `updateClub` and
   `EditClubForm`; `/clubs/explore`, `ExploreClubsStrip` and every reader in `src/lib/data/clubs.ts`;
-  the ride forms and `rides.meeting_point`; and the 17 clubs that exist today.
+  the ride forms and `rides.meeting_point`; and every club that already exists — 17 across the two
+  projects on 2026-09-08, all of them carrying a location, none of them touched by a creation gate.

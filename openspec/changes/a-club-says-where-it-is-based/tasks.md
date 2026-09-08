@@ -97,9 +97,22 @@ lives in Linear); §6 names what it owes.
 - [ ] 4.8 **`npm test` is not required and the RLS suite gains no assertion** — no policy, constraint
       or migration moved, so `openspec/config.yaml`'s pairing rule does not fire. Say so in the PR
       rather than leaving a reviewer to read the absence as an omission.
-- [ ] 4.9 The walk touches `/clubs/new`. Run it against DEV per `docs/reference/running-locally.md`
-      §The walk and confirm the create phase still passes — a newly-required field is exactly the
-      shape that turns a green walk red.
+- [x] 4.9 **`scripts/walk.mjs`'s `provision()` builds the fixture club by filling `name` and
+      submitting — this change refuses that.** Not "the create phase might go red": `created.club`
+      comes back `null`, the fixture ride loses its club attachment, `checkJoinClub` finds nothing
+      and the discovered club detail routes are never walked. Every one of those fails **far from
+      the cause**. The fixture must PICK a place, because place mode submits from the pick alone and
+      `onBlur` drops an unpicked draft — a `page.fill` on the visible box posts an empty location.
+- [ ] 4.10 That pick is a live geocoder round trip inside the walk's own setup. Wait on
+      `[role="option"]` rather than a timeout, click the first row rather than an exact name (the
+      options are vendor-returned, so there is no string this repo owns to match), and spend **one**
+      lookup per fixture — `page.fill` is one input event and therefore one debounce cycle, where
+      typing the term would be one search per keystroke.
+- [ ] 4.11 **Record that every walk run now spends vendor credits against an app-wide ceiling.**
+      `search-places` allows `APP_DAILY_SEARCH` per 24h across all riders, not per rider, and once
+      `WALK_CI=1` is set the walk runs on every push. Nothing in this repo said so before.
+- [ ] 4.12 Run the walk against DEV per `docs/reference/running-locally.md` §The walk and confirm
+      the club phases pass — a shrunken `N/N` is a skip, not a pass.
 
 ## 5. Documentation
 

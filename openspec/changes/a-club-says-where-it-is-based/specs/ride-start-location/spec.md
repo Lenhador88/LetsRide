@@ -3,15 +3,30 @@ COORDINATION — checked 2026-09-08:
 
     grep -rn "^### Requirement:" openspec/changes/*/specs/ | grep -v archive
 
-`One picker SHALL exist, and this change SHALL extend it rather than fork it` is claimed by no active
-change. It lives in `ride-start-location` because PD-114 wrote it there, and it is a rule about the
-shared `ui/` primitive rather than about rides — so a club change extending that primitive modifies
-it here rather than restating it in a club capability.
+`One picker SHALL exist, and this change SHALL extend it rather than fork it` **IS claimed by another
+active change** — `inline-place-search-with-recent-starts`, which holds its own MODIFIED block on it
+and is unarchived. An earlier draft of this header said the opposite; the command above lists both.
+The requirement lives in `ride-start-location` because PD-114 wrote it there, and it is a rule about
+the shared `ui/` primitive rather than about rides — so a club change extending that primitive
+modifies it here rather than restating it in a club capability.
 
-**Scenario diff, stated because a stale MODIFIED block drops scenarios wholesale**
-(`docs/HANDOFF.md`): 2 scenarios in, 4 out. Both kept, verbatim in intent and unchanged in name:
-*The clubs form is unaffected*, *Rides pass their own names and bound*. Two added: *A third caller
-extends the picker*, *The seed is optional and its absence changes nothing*. Nothing dropped.
+**ARCHIVE ORDER IS LOAD-BEARING, and this is the failure it prevents.**
+`inline-place-search-with-recent-starts` renames *The clubs form is unaffected* to *The clubs form
+stores exactly what it stored before* and adds *There is one lookup surface in the app*. A MODIFIED
+block replaces a requirement's scenarios wholesale, so if this change is written against
+`openspec/specs/`'s two-scenario text and archived AFTER that one, it silently reverts both — a
+rename and a whole scenario, with nothing failing anywhere.
+
+**So this block is composed against `inline-place-search-with-recent-starts`'s version, not against
+`openspec/specs/`**, and it carries all three of that change's scenarios forward. It is therefore
+correct in either archive order: archived after, it preserves them; archived before, the other change
+restates them itself.
+
+**Scenario diff** (`docs/HANDOFF.md` — a stale MODIFIED block drops scenarios wholesale): 3 in from
+`inline-place-search-with-recent-starts`, 5 out. All three kept under their **current** names —
+*The clubs form stores exactly what it stored before*, *Rides pass their own names and bound*,
+*There is one lookup surface in the app*. Two added: *A third caller extends the picker*, *The seed
+is optional and its absence changes nothing*. Nothing dropped.
 
 `onboarding-takes-a-town-and-its-country` (PD-445) is the sibling change in this slot and also uses
 this picker — as a **fourth caller that adds no prop**. It is named in the added scenario so the two
@@ -36,15 +51,23 @@ picker for its own needs SHALL add optional, additive props whose absence leaves
 byte-identical, and SHALL assert that rather than assume it. A prop that changes default behaviour is
 a fork wearing a prop's clothes.
 
-#### Scenario: The clubs form is unaffected
-- **WHEN** the rides extension lands
-- **THEN** `CreateClubForm` and `EditClubForm` SHALL behave exactly as before, with the same four
-  hidden fields under the same names
+#### Scenario: The clubs form stores exactly what it stored before
+- **WHEN** a club is created or edited after the change
+- **THEN** its location SHALL be written from the same four hidden fields under the same names, all
+  four together or all four NULL
+- **AND** no typed text SHALL reach `clubs.location_name` without the pick that goes with it
+- **AND** the seeded search term SHALL be no exception: it lands in the draft, which place mode never
+  submits, so a rider who focuses the field and walks away SHALL store nothing
 
 #### Scenario: Rides pass their own names and bound
 - **WHEN** the field is used on a ride form
 - **THEN** it SHALL write the ride's own column names and SHALL bound the label at
   `rides.meeting_point`'s 120 characters, not the club's 200
+
+#### Scenario: There is one lookup surface in the app
+- **WHEN** any form in the app needs a place
+- **THEN** it SHALL use this field
+- **AND** no second search surface, sheet or screen SHALL exist for places
 
 #### Scenario: A third caller extends the picker
 - **WHEN** the club form adds an initial-query prop and a handle on the visible input
