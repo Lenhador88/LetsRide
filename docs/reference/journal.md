@@ -2302,6 +2302,30 @@ designed to protect third-party content can destroy it. `032` fixed the *rides* 
 proposal's default for the postcards half hands the club to the author of the oldest surviving
 postcard — which gives a club to someone who never joined it. Decide it before group 3.
 
+**Every change old enough to matter carries a STALE `## MODIFIED Requirements` block, and that
+is most of the cost of clearing this backlog — measured 2026-09-08 on PD-359.** A MODIFIED block
+replaces the standing requirement *wholesale*, so a block authored in August drops every scenario
+the standing spec has gained since. `openspec archive` refuses rather than dropping —
+*"current spec contains scenario(s) not present in the modified block"*, aborting with no files
+changed — which is the good half. The bad half is that PD-359's two changes needed **seven**
+requirements refreshed between them (`event-fanout-integrity`, `client-cache-invalidation`,
+`client-session-storage`, three in `database-enforced-integrity`, two in `ride-invites`), so
+*"two commands per change"* is the wrong estimate for this backlog by an order of magnitude.
+
+The refresh is mechanical: carry the standing scenarios the block is missing into it, in standing
+order, and leave everything the change itself rewrote alone. **Verify by scenario NAME, per
+capability, not by count** — a count cannot tell a dropped scenario from a rewritten one:
+
+```bash
+git show HEAD:openspec/specs/<cap>/spec.md | grep "^#### Scenario:" | sort > /tmp/a
+grep "^#### Scenario:" openspec/specs/<cap>/spec.md | sort > /tmp/b
+comm -23 /tmp/a /tmp/b        # must be empty — anything here was dropped by the archive
+```
+
+**The tool's refusal is not a full guard**, which is why that check runs anyway: it compares the
+block against the standing text and cannot see a scenario whose *header* survived while its body
+was replaced by an older one.
+
 **`enforce-creator-membership` and `add-account-deletion` collide, and OpenSpec will not warn
 you.** Both carry a delta modifying
 `database-enforced-integrity`'s *Club membership role SHALL NOT be self-assignable*, and

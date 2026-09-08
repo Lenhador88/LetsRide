@@ -47,6 +47,20 @@ being served.
 - **THEN** it SHALL be spelled in `src/lib/query/keys.ts` with the reconciliation note that file's
   header exists for, and never inline in a component
 
+#### Scenario: The invalidation set is derived, not reinvented
+- **WHEN** an action is migrated
+- **THEN** its new invalidation SHALL cover at least the routes its `revalidatePath` calls named
+- **AND** any route deliberately dropped SHALL be recorded with its reason, since three of
+  today's calls target routes chosen by convention rather than necessity
+#### Scenario: A mutation's own screen updates without a navigation
+- **WHEN** a rider likes, joins, leaves, hides, blocks, reports, comments or posts
+- **THEN** the screen they are on SHALL reflect the change without a manual refresh
+#### Scenario: A failed mutation leaves no false state behind
+- **WHEN** a mutation fails after an optimistic update
+- **THEN** the optimistic change SHALL be reverted and the failure SHALL be shown
+- **AND** a like, join or RSVP SHALL NOT remain visually applied after the write was refused
+
+
 ## ADDED Requirements
 
 ### Requirement: A cached capability preview SHALL be keyed by its token and SHALL NOT outlive the session

@@ -89,6 +89,35 @@ takes the ride away, so "holds a crew row" and "can see the ride" are **independ
 carries no block predicate. Copying that shape verbatim is therefore the specific trap this
 requirement exists to close.
 
+**Since `083` the intersection is non-trivial in the OTHER direction too, and that is new.** Until
+now every rider who could see a private ride was either its organizer or a member of its club, so
+"can see the ride and is not on the crew" was an edge case reached by leaving. An **invitee** is
+that state by design and from the first moment: the ride conjunct passes for them and the crew
+conjunct does not. The requirement's two halves are therefore both load-bearing for the first time,
+and the visible consequence — a rider who can open a ride and cannot open its chat — reads like an
+inconsistency to anyone who did not write this.
+
+**`private.is_ride_crew` SHALL NOT gain an invite arm.** It is what keeps an invitee out of the
+chat, and it is used by two other surfaces that would open silently with it: `ride_reads`' write
+predicate (`061`) and postcard ride-tagging (`041`). Its body SHALL be pinned by **equality** in the
+RLS suite, mentioning `ride_invites` nowhere, and the assertion's message SHALL name those two other
+surfaces, so the next session reads what the arm would cost before adding it.
+
+`034`'s own sentence is the answer to the apparent inconsistency and SHALL be the one quoted:
+*"seeing a ride is not being on it."*
+
+#### Scenario: An invitee sees the ride and not the chat
+- **WHEN** a rider holding a `pending` invite to a private ride reads `ride_messages`
+- **THEN** zero rows SHALL be returned and an insert SHALL be refused
+- **AND** the refusal SHALL come from the **crew** conjunct, asserted in isolation, because the ride
+  conjunct now passes for them — the mirror image of the blocked-crew-member case below
+
+#### Scenario: The crew helper is pinned against an invite arm
+- **WHEN** the RLS suite reads `private.is_ride_crew`'s `prosrc`
+- **THEN** it SHALL equal its current body exactly, matched by equality and never by `like`
+- **AND** the failure message SHALL name `ride_reads` and postcard ride-tagging as the surfaces an
+  invite arm would also open
+
 #### Scenario: A crew member who blocks the organizer loses the chat
 - **WHEN** a crew member blocks the ride's organizer, in either direction, and their
   `ride_members` row is untouched
@@ -104,6 +133,8 @@ requirement exists to close.
 - **AND** this SHALL be asserted separately from the blocking case, because a single assertion
   cannot say which conjunct did the work and a later edit could remove one while the suite stays
   green
+- **AND** it SHALL be asserted that an invite to that rider would restore the **ride** and not the
+  chat, because the two conjuncts answer independently
 
 #### Scenario: A club turning private takes its rides' chats with it
 - **WHEN** a public club is set private and its rides therefore cease to be public

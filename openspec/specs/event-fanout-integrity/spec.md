@@ -160,9 +160,35 @@ Recipient membership SHALL be evaluated with an explicit predicate naming the ca
 **Both helpers read `auth.uid()` internally** — verified 2026-08-07 — so each answers *"is the
 caller a member"* and never *"is this candidate a member"*. A fan-out reaching for one computes the
 actor's own membership and applies that single answer to every candidate: the set is either
-everybody or nobody, and it looks correct in a one-member test. `private.is_blocked(a, b)` and
-`private.is_club_public(club)` take their subject as an argument and are the only two a fan-out may
-use.
+everybody or nobody, and it looks correct in a one-member test. `private.is_blocked(a, b)`,
+`private.is_club_public(club)`, `private.can_read_ride(candidate, ride)` and
+`private.can_read_club(candidate, club)` take their subject as an argument and are the forms a
+fan-out may use.
+
+**The rule binds a fan-out whose recipient is a single named rider exactly as hard, and that is the
+reading this requirement previously left open.** Where the recipient comes straight out of `NEW` —
+`new.invitee_id`, `new.inviter_id` — no *set* is computed, so the sentence above has nothing to bite
+on and invites the conclusion that a caller-relative helper is harmless here. It is not. Every
+question a fan-out asks about that named rider is still a question about **somebody other than the
+caller**: whether they are blocked with the actor, and above all whether the read policy can ever
+return the row to them. A caller-relative helper answers all of those for the **actor**, and with a
+single recipient the wrong answer produces one wrong row rather than a wrong set, which is harder to
+see and not less wrong.
+
+Any new caller-relative helper introduced alongside a fan-out SHALL therefore ship with its
+candidate-relative form in the same migration, and the fan-out SHALL use the candidate form.
+
+#### Scenario: A single named recipient is still evaluated candidate-relative
+- **WHEN** a fan-out addresses one rider read out of `NEW`
+- **THEN** every predicate it evaluates about that rider SHALL take the rider as an argument
+- **AND** no helper reading `auth.uid()` SHALL appear in the fan-out, including one added by the
+  same migration for the policy's own use
+
+#### Scenario: A new visibility arm reaches the fan-out through the candidate form
+- **WHEN** a migration adds an arm to a policy that a fan-out's resolvability check restates
+- **THEN** the fan-out SHALL see the new arm through the candidate-relative restatement
+- **AND** a fan-out that would have written a row before the arm and not after it, or the reverse,
+  SHALL be treated as evidence the two copies have drifted
 
 #### Scenario: The owner union applies to `club_joined` and NOT to `ride_created_in_club`
 - **WHEN** a club's `owner_id` holds no `club_members` row
@@ -431,4 +457,121 @@ expectation rather than an assumption.
   the only one the insert maintains", which forbade exactly the indexes
   `add-account-deletion`'s `The cascade SHALL be indexed on every path it walks` requires; the two
   requirements collided and neither named the other
+
+### Requirement: A fan-out on a status transition SHALL fire on the transition and not on the row
+
+Where an event is a **change** to a row rather than the row's existence, the trigger SHALL be an
+`AFTER UPDATE` guarded on the transition itself — `old.status is distinct from new.status` and the
+new value — and SHALL NOT fire on any statement that touches the row for another reason.
+
+It SHALL carry **no** `when (current_user = …)` clause. `036` trap (a) applies with extra force
+here: the writers of these transitions are themselves `security definer` functions, for which
+`current_user` is the owner, so such a clause would disable the fan-out entirely rather than merely
+skipping seeds.
+
+#### Scenario: Only the transition fires
+- **WHEN** a statement updates an invite row without moving `status`
+- **THEN** no notification SHALL be written
+
+#### Scenario: The definer writer still fans out
+- **WHEN** the transition is made by a `security definer` RPC
+- **THEN** the fan-out SHALL fire, which SHALL be asserted directly, because a `when` clause added
+  later would silently stop it and nothing else would notice
+
+#### Scenario: Each terminal answer produces at most one live row per recipient
+- **WHEN** the same answer is submitted twice
+- **THEN** the second SHALL raise before reaching the fan-out, and the unique event key SHALL
+  additionally make a duplicate row impossible
+
+### Requirement: A retraction SHALL exist for any fan-out whose subject row can be withdrawn
+
+Where the row a fan-out fires on can be deleted by its author while the event it announced has not
+yet been acted on, an `AFTER DELETE` trigger SHALL delete exactly the notification the matching
+fan-out would have written, matched on the full event key.
+
+It SHALL NOT delete notifications recording an event that already happened — an answer, an
+acceptance, a join — because those are records rather than pending prompts.
+
+#### Scenario: Withdrawing the prompt withdraws the notification
+- **WHEN** an invite is revoked while pending
+- **THEN** the invitee's `ride_invited` notification SHALL be gone
+- **AND** the unread count SHALL agree, because both are read through the same policy
+
+#### Scenario: Records of answers survive
+- **WHEN** any invite row is deleted for any reason
+- **THEN** notifications recording an accept or a decline SHALL be unaffected by the retraction
+  trigger, and SHALL die only through their own subject and actor cascades
+
+### Requirement: A trigger whose event is sometimes not an event SHALL be narrowed by a `WHEN` clause, not by an early return
+
+Where a row-level trigger matches inserts that are not the event it exists to announce, the
+trigger SHALL be narrowed with a `WHEN` clause in its `CREATE TRIGGER`, and SHALL NOT rely on an
+early `return` inside the function body.
+
+The `WHEN` clause is the stronger form for two reasons: it is visible in `pg_get_triggerdef`, so
+an assertion can pin the narrowing itself rather than inferring it from behaviour; and it prevents
+the function from being entered at all, so a later edit to the body cannot silently widen it.
+
+**`notify_ride_invited` is the instance.** It is `AFTER INSERT ON public.ride_invites FOR EACH
+ROW` and was written when `pending` was the only status any insert could carry — true while the
+column grant and the INSERT policy were the only writers. `claim_ride_invite_link` is a
+`security definer` writer and inserts `accepted` rows, so without narrowing, a rider who joins a
+ride by tapping a link they were sent is told **"you have been invited to a ride"** about a ride
+they are already on.
+
+**`036`'s actor-is-not-recipient guard does not catch it**, and that is the part worth writing
+down. The row's `actor` is the link's `created_by` — the organizer — and its recipient is the
+claimer, so the two genuinely differ. The guard is working; the event is simply not an event.
+
+The clause SHALL be `WHEN (NEW.status = 'pending')`. It is a no-op for the in-app path, where the
+column grant and INSERT policy already make `pending` the only reachable status at insert, so it
+states an invariant that was previously implicit and holds it against a second writer.
+
+#### Scenario: A link claim notifies nobody of an invitation
+- **WHEN** a rider claims a live token and an `accepted` `ride_invites` row is inserted
+- **THEN** no `ride_invited` notification SHALL be written to anyone
+
+#### Scenario: An in-app invite still notifies
+- **WHEN** the organizer inserts a `pending` invite
+- **THEN** the invitee SHALL receive exactly one `ride_invited` notification, unchanged from `083`
+
+#### Scenario: The narrowing is pinned, not inferred
+- **WHEN** `pg_get_triggerdef` is read for `notify_ride_invited`
+- **THEN** it SHALL contain the `WHEN (status = 'pending')` clause
+- **AND** the assertion SHALL read the trigger definition rather than only observing that no
+  notification appeared, since an absent notification has several possible causes
+
+### Requirement: A rider joining by a route nobody initiated SHALL still reach the organizer through the existing join fan-out, and SHALL NOT gain a new type
+
+A claim SHALL produce notifications through the `ride_members` INSERT path alone. `055`'s
+`ride_joined` fan-out already tells the crew that a rider joined, which is exactly and truthfully
+what happened.
+
+**No new notification type SHALL be added by this change**, and `ride_invite_accepted` SHALL NOT
+be written on a claim. That type asserts that the organizer invited *this rider by name* and they
+answered — false on a link claim, where nobody named anyone.
+
+The one case where an accept notification is correct is the conflict branch: a rider who already
+held a `pending` or `declined` in-app invite and comes in through the link takes the UPDATE path,
+`notify_ride_invite_answered` fires, and the organizer is told their invite was accepted. **That
+is true and SHALL be left alone.**
+
+#### Scenario: The organizer learns a stranger joined
+- **WHEN** a rider with no prior invite claims a link
+- **THEN** the organizer SHALL receive a `ride_joined` notification and no `ride_invited` or
+  `ride_invite_accepted` notification
+
+#### Scenario: An outstanding invite answered by a link is reported as answered
+- **WHEN** a rider holding a `pending` invite claims the link instead of tapping Accept
+- **THEN** the organizer SHALL receive the `ride_invite_accepted` notification the UPDATE trigger
+  already writes, since the statement it makes is true
+
+#### Scenario: The type list does not grow
+- **WHEN** `notifications_type_check` is read after this change applies
+- **THEN** it SHALL hold the same **eleven** types it held before this change — `083` left it at
+  eight and `085` added three after, so the count this requirement originally named was already a
+  pre-`085` reading. Assert the NAMES, not the number: a count cannot tell an addition from a
+  rename, and it is the absence of a twelfth that this requirement is about
+- **AND** `NotificationType` in `src/types/index.ts` SHALL be unchanged, so no exhaustive `switch`
+  in `notificationCopy` or `NotificationsListItem` gains an arm
 

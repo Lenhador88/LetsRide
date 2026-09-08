@@ -42,12 +42,13 @@ history.
 - **The walk is green on DEV** as both fixture accounts (2026-09-06 baselines in
   `docs/reference/running-locally.md` §The walk). In CI it is still **skipped** — the Actions
   secrets name PROD and `WALK_CI` is unset (see §Blocked on the owner).
-- **The last process pass (2026-09-07) cut `CLAUDE.md` to ~12k tokens and this file to five
-  sections**, moved the dated record to `docs/reference/journal.md`, made the reviewer's findings
-  part of the PR, and made the Stop hook name unarchived OpenSpec changes. **OpenSpec has 47 open
-  changes and 4 archived** (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`)
-  — a backlog no hook clears; see §Next action. The 47th is
-  `preview-a-ride-before-signing-up`, which is **correctly** open: nothing in it is built.
+- **OpenSpec has 45 open changes and 6 archived**
+  (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`) — a backlog no
+  hook clears; see §Next action. `preview-a-ride-before-signing-up` is **correctly** open: nothing
+  in it is built. **Archiving one is not two commands**: every change old enough to matter carries
+  a stale `## MODIFIED Requirements` block that would drop scenarios, and PD-359's two needed
+  seven requirements refreshed. `docs/reference/journal.md` §The open OpenSpec changes has the
+  refresh and the per-capability check that proves nothing was lost.
 
 ## In flight
 
@@ -99,10 +100,10 @@ body carries its own steps.
 code is in production.** The first is one screen and it blocks the queue from picking the work up
 cleanly; the second is the standing backlog below.
 
-**Archive the OpenSpec changes whose code is in production.** 46 are open against 4 archived, so
+**Archive the OpenSpec changes whose code is in production.** 45 are open against 6 archived, so
 `openspec/specs/` no longer describes the app and the next proposal is written against specs that
 are missing what shipped. One docs-only PR, in `npm run openspec -- list` order, archiving only
-changes whose migrations and screens are on `main`; a change with an open decision inside it
+changes whose migrations and screens are on `main`, budgeting for §Position's refresh; a change with an open decision inside it
 (`add-account-deletion`, and the `enforce-creator-membership` / `add-account-deletion` collision —
 `docs/reference/journal.md` §The open OpenSpec changes) stays open with a one-line note. **PD-436
 blocks archiving `enforce-ride-capacity`** specifically, so that one stays open too. The Stop hook
