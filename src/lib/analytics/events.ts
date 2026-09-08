@@ -65,23 +65,44 @@ export type AnalyticsEvent =
       name: 'onboarding_step'
       properties: {
         /**
-         * The wizard as it stands: `075`/PD-286 dropped the location step and
-         * PD-428 added the home-country one, which is now the terminal step —
-         * so `country`, not `username`, is where `status: 'completed'` means
-         * onboarding actually finished.
+         * The wizard as it stands: `075`/PD-286 dropped the location step,
+         * PD-428 added the home-country one, and PD-445 turned that into the
+         * TOWN step — which is the terminal one, so `town`, not `username`, is
+         * where `status: 'completed'` means onboarding actually finished.
+         *
+         * **Renaming a step key was free exactly once, and this was it.**
+         * `'country'` shipped hours before `'town'` replaced it, to a
+         * population carrying no funnel history — measured 2026-09-08, PROD had
+         * 5 riders and none had ever reached that step with a country stored.
+         * So no series was split.
+         *
+         * **The general rule is the opposite and it applies from here on.**
+         * Once a step key has real history behind it, the key is a *position in
+         * a funnel* rather than a description of a screen, and renaming it
+         * silently ends one series and starts another — the two then look like
+         * a cliff in conversion that nothing in the product explains. Rename a
+         * screen, keep the key, and put the description in a comment.
          */
-        step: 'terms' | 'username' | 'country'
+        step: 'terms' | 'username' | 'town'
         status: 'submitted' | 'rejected' | 'completed'
         /**
          * Only on `rejected`, and only ever one of these — never the value.
-         * `incomplete` is the country step being refused by
+         * `incomplete` is the town step being refused by
          * `complete_onboarding`'s own guards (consent, username or — since
          * `114` — a stored country missing),
          * which is distinct from `invalid` — a code the CHECK constraints
          * refused — because they turn a rider away for different reasons and
          * the funnel question is *which*.
+         *
+         * **`no_country` is not a rejection and rides on `completed`**
+         * (PD-445): the rider finished, through the escape the town step opens
+         * when the geocoder is unavailable, so they carry a country and no
+         * town. It is the only way to ask *how often is onboarding completing
+         * without a town, and is the lookup the reason* — which matters because
+         * `search-places` has an application-wide ceiling, so the failure is
+         * correlated across riders rather than personal to one.
          */
-        reason?: 'taken' | 'invalid' | 'failed' | 'incomplete'
+        reason?: 'taken' | 'invalid' | 'failed' | 'incomplete' | 'no_country'
       }
     }
 

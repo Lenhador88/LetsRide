@@ -103,8 +103,13 @@ states, distinct from the submit's.
 - **AND** the submit SHALL be disabled until a town is picked — and, in the fallback branch below,
   until a country is chosen as well — so there is no state in which tapping it can mean *"whatever
   was preselected"*
-- **AND** a rider returning after a failed stamp SHALL NOT be required to re-pick a town already
-  stored on their row, so the retry is one tap
+- **AND** a rider returning after a failed stamp — the narrow window where the column UPDATE landed
+  and `complete_onboarding` did not — **SHALL re-pick**, and that is the accepted cost of the step
+  performing no read. An earlier draft of this scenario promised the opposite and was internally
+  unsatisfiable: a step with no read of its own cannot know what is already stored on the row, so
+  the three clauses above could not all hold. The window needs an RPC failure after a successful
+  UPDATE, it costs one lookup, and adding a read to a wizard step to save it would owe the
+  gate-on-data rule and a loading state on the app's most critical gate
 
 #### Scenario: The lookup is empty
 - **WHEN** the rider types a term the geocoder answers with no results
@@ -116,9 +121,54 @@ states, distinct from the submit's.
 - **WHEN** the lookup errors, times out, or the rider is rate-limited by `069`'s per-rider ceiling
 - **THEN** the failure SHALL be shown on the field with a retry, SHALL NOT be shown as a failure of
   the step, and SHALL NOT clear a pick the rider has already made
-- **AND** the rider SHALL NOT be stranded with no route forward that this change can offer; the
-  remaining dead end — a town the geocoder cannot find at all — is `design.md` Q3 and is named rather
-  than silently handled
+- **AND** where the failure is the LOOKUP being unavailable rather than a term not matching, the
+  country select SHALL appear on its own as the route forward — see the requirement below
+- **AND** the remaining dead end — a town the geocoder finds nothing for, while the lookup itself is
+  working — is `design.md` Q3 and is named rather than silently handled
+
+### Requirement: Onboarding SHALL NOT be completable ONLY through a third party
+
+**This is the change's largest risk and it was missed by the first draft.** The country step's
+control read a local constant and was therefore always answerable. A town is answered by
+`search-places`, which carries an **application-wide** ceiling — `APP_DAILY_SEARCH`, 2000 per 24h
+across every rider rather than per rider — behind a vendor with its own global rate limit. Decision
+#5 forbids a skip and `114` refuses the completion stamp while `home_country` is NULL. So a naive
+build has a state in which **no new rider anywhere can finish onboarding at all**, for as long as
+the outage or the ceiling lasts, with no route forward.
+
+The escape SHALL be the control the step is replacing: `CountrySelect`, standing alone.
+
+#### Scenario: The lookup is unavailable, so the country select stands alone
+- **WHEN** a lookup fails with the app-wide ceiling or an outage — `PlaceSearchUnavailableError`, or
+  a rider's own `PlaceSearchCeilingError`
+- **THEN** the step SHALL render `CountrySelect` beneath the town field, and the submit SHALL be
+  enabled once a country is chosen, with or without a town
+- **AND** the action SHALL accept that submit and complete onboarding with `home_country` set and
+  `profiles.location` left NULL
+
+#### Scenario: The trigger is a failure signal and never a rider's silence
+- **WHEN** the rider has simply not picked a town, or has typed a term with no matches, or the
+  lookup has not been attempted
+- **THEN** the country select SHALL NOT appear and the submit SHALL stay disabled
+- **AND** the escape SHALL NOT be reachable by any control the rider can operate at will, because a
+  control that lets a working rider skip the town is the `Skip` decision #5 forbids and the page
+  header explicitly refuses to build
+
+#### Scenario: What a rider who took the escape ends up with
+- **WHEN** onboarding completes with a country and no town
+- **THEN** that rider SHALL be exactly the rider every completion produced before this change, and
+  SHALL NOT be a new population
+- **AND** the town rung that already exists outside the wizard — `TownQuestionSheet`, reached from
+  Explore — SHALL remain their route to a town, since completion is a one-way stamp and they never
+  return to the wizard
+- **AND** this SHALL be recorded as a **degraded** path under a named failure rather than as a
+  second way to finish, so the change's promise reads *every rider who can reach the geocoder gets a
+  town*, not *every rider gets a town*
+
+#### Scenario: The escape is distinguishable afterwards
+- **WHEN** the escape is taken
+- **THEN** `onboarding_step` SHALL carry a `reason` naming it, so the funnel can say how often
+  onboarding completed without a town and whether the geocoder is the cause
 
 #### Scenario: A town typed and never picked
 - **WHEN** the rider types a town name and submits without choosing a suggestion

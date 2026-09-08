@@ -162,6 +162,7 @@ export function PlaceSearchField({
   recents,
   initialQuery,
   fieldRef,
+  onLookupFailure,
 }: {
   /** The field's own label, e.g. `Location`. */
   label: string
@@ -258,6 +259,22 @@ export function PlaceSearchField({
    */
   initialQuery?: string | null
   /**
+   * Told when a lookup fails, so a caller that cannot simply carry on without
+   * one can offer something else — PD-445, where the onboarding step reveals a
+   * country select because a rider who cannot reach the geocoder would
+   * otherwise be unable to finish onboarding at all.
+   *
+   * **A failure signal, never "the rider has not picked".** It fires for
+   * `PlaceSearchUnavailableError` (the vendor, the ledger, or `069`'s
+   * application-wide ceiling) and `PlaceSearchCeilingError` (the rider's own),
+   * and not for a term with no matches — which is an ordinary answer and
+   * already has its own empty state.
+   *
+   * The field goes on showing the failure and its retry exactly as before; this
+   * is additive and changes nothing for a caller that omits it.
+   */
+  onLookupFailure?: (error: Error) => void
+  /**
    * The visible input, for a caller that has to move focus to this field —
    * PD-446, where a refused submit focuses the field the schema rejected.
    *
@@ -303,6 +320,21 @@ export function PlaceSearchField({
   const setText = freeText ? freeText.onTextChange : setDraft
 
   const { results, searching, failure, retry } = usePlaceLookup(searchTerm)
+
+  // Hand a lookup failure to a caller that asked for one — see
+  // `onLookupFailure`. In an effect rather than inside the hook, so this stays
+  // a render-time-pure read of the hook's state and a caller's `setState` does
+  // not run during another component's render.
+  const notifiedFailure = useRef<Error | null>(null)
+  useEffect(() => {
+    if (!failure || !onLookupFailure) return
+    // Once per distinct failure. `usePlaceLookup` holds the error until the
+    // next successful lookup, so this effect re-runs on every unrelated
+    // re-render while it stands.
+    if (notifiedFailure.current === failure) return
+    notifiedFailure.current = failure
+    onLookupFailure(failure)
+  }, [failure, onLookupFailure])
   // Read through the key `recents` names, and only once the rider has actually
   // touched the field: a form carrying this must not read a rider's history
   // because it rendered. `useQuery` rather than a hand-rolled fetch, so the

@@ -106,9 +106,9 @@ describe('every stamp writer invalidates the guard cache', () => {
  * **The file-granular check above cannot see a writer that loses its
  * invalidation while a sibling in the same module keeps one**, and PD-428 is
  * what made that matter: `onboarding.ts` now holds three writers of fields the
- * guard reads (`acceptTerms`, `setUsername`, `setHomeCountry`), so deleting any
+ * guard reads (`acceptTerms`, `setUsername`, `setHomeTown`), so deleting any
  * one call still leaves the file matching and every assertion above green.
- * Measured before this block existed: removing `setHomeCountry`'s invalidation
+ * Measured before this block existed: removing `setHomeTown`'s invalidation
  * left 30/30 passing.
  *
  * `setUsername` is the case that shows why the pattern list is wider than the
@@ -156,7 +156,7 @@ describe('every writer of a field the guard reads invalidates it — per functio
         'src/lib/actions/auth.ts:signUp',
         'src/lib/actions/onboarding.ts:acceptTerms',
         'src/lib/actions/onboarding.ts:setUsername',
-        'src/lib/actions/onboarding.ts:setHomeCountry',
+        'src/lib/actions/onboarding.ts:setHomeTown',
       ])
     )
   })
@@ -167,8 +167,8 @@ describe('every writer of a field the guard reads invalidates it — per functio
     // file-granular check already did.
     const fns = exportedFunctions(sources.get('src/lib/actions/onboarding.ts')!)
     expect(fns.size).toBeGreaterThan(2)
-    expect(fns.has('setHomeCountry')).toBe(true)
-    expect(fns.get('setHomeCountry')).not.toMatch(/export\s+(?:async\s+)?function\s+setUsername/)
+    expect(fns.has('setHomeTown')).toBe(true)
+    expect(fns.get('setHomeTown')).not.toMatch(/export\s+(?:async\s+)?function\s+setUsername/)
   })
 })
 
