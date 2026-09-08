@@ -566,11 +566,22 @@ fixed ports, one working tree. `docs/reference/constraints.md` §Two builds at o
 
 Settled. Don't reopen these without an explicit decision to change them.
 
-**1. No anonymous access, anywhere.** No policy grants to `anon`. `is_public = true` means "visible
-to any signed-in rider", never "visible to the internet".
+**1. No anonymous access, with one named exception.** No table grant and no policy grant to
+`anon`, ever. `is_public = true` means "visible to any signed-in rider", never "visible to the
+internet". **The one exception is EXECUTE on `public.ride_invite_link_public_preview(t)`**
+(`115`, PD-430): a single `security definer` function, reachable only by a 128-bit bearer token,
+returning the title, start time, zone, meeting point and organiser username of exactly one ride —
+a strict subset of what `091`'s authenticated preview already returns to any holder of the same
+token. A second such function, a column added to it, or any grant to `anon` on a table or policy
+is a **new** decision and not an extension of this one.
 
 **2. Blocking is enforced in RLS, not in the UI.** One `security definer` helper applied across
-policies. Blocks are symmetric even though the row is directional.
+policies. Blocks are symmetric even though the row is directional. **It cannot reach the one
+anonymous surface** — `public.ride_invite_link_public_preview(t)` (`115`, PD-430) has no
+`auth.uid()` to test, so a blocked rider who signs out reads the same five fields as any other
+holder of that link. That is a property of a bearer token rather than a hole in the block: the
+claim, every list and every other read stay gated on `private.is_blocked`. **Any further
+anonymous surface reopens this and needs its own argument.**
 
 **3. Maps are a static thumbnail plus a Google Maps deeplink.** No mapping SDK.
 
