@@ -2,6 +2,7 @@ import { capture } from '@/lib/analytics/client'
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { invalidateOnboardingState } from '@/lib/auth/guard-cache'
 import { isUsernameTaken } from '@/lib/data/profile'
+import { recordAnswered } from '@/lib/location/dismissal'
 import {
   USERNAME_TAKEN_MESSAGE,
   checkUsername,
@@ -301,6 +302,14 @@ export async function setHomeTown(
   // Once, after both writes rather than between them — the stamp the guard
   // cached is what sent the rider here, and it is now stale in two fields.
   invalidateOnboardingState()
+
+  // **The second writer of `profiles.location`, and so the second caller of
+  // this — PD-447.** `setRiderTown` is the other; there is deliberately no
+  // "only writer" to hang the reset on, because this one predates it and does
+  // not go through it. A rider who names their town in the wizard has answered
+  // the Explore question before they ever reach Explore, so the row must not
+  // greet them with it. Skipped on the no-town escape, which stores nothing.
+  if (townValue !== null) recordAnswered()
 
   // `no_town` on a COMPLETION rather than a rejection: the rider finished
   // through the escape the step opens when the lookup is unavailable, so they

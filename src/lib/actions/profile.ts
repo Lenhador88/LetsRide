@@ -1,5 +1,6 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { applyAnalyticsPreference } from '@/lib/analytics/client'
+import { recordAnswered } from '@/lib/location/dismissal'
 import { clearRiderLocation } from '@/lib/location/rider-location'
 import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
@@ -175,6 +176,22 @@ export async function setRiderTown(
   clearRiderLocation()
   invalidate(queryKeys.profile.all())
   invalidate(queryKeys.riderLocation())
+
+  // **The rider answered the Explore question — PD-447.** The dismissal ladder
+  // goes back to its first rung and stays quiet for the base interval.
+  //
+  // **Only when a town was STORED, never on the clear path.** `null` is
+  // `LocationSetting.clear()`, and a rider who removes their town lands in
+  // exactly the state the question exists to fix — no town, no position — so
+  // silencing it for a month there is the one direction that fails unsafely.
+  // Removing a town is not answering the question; it is unanswering it.
+  //
+  // **Here rather than in the sheet that called this**, so the row's sheet and
+  // `/profile`'s setting both reset without either of them knowing the ladder
+  // exists. `setHomeTown` writes this column too — the wizard's own step — and
+  // carries the same call for the same reason; there is no single writer to
+  // hang the guarantee on, so both are named here and in that function.
+  if (parsed?.success && parsed.data !== null) recordAnswered()
 
   // **No `invalidateOnboardingState()`, even though this now writes
   // `home_country`.** The guard's decision reads three fields —
