@@ -462,10 +462,10 @@ timeout:**
 
 ## Component tests — which ones need jsdom, and why
 
-Under `environment: 'node'`, all but **eleven** render through `renderToStaticMarkup`, and jsdom is
+Under `environment: 'node'`, all but **twelve** render through `renderToStaticMarkup`, and jsdom is
 the answer only when something needs a **mounted effect, a layout, an event or a portal**. Check a
 new one's reason against that list rather than against the count,
-because each of the eleven below is there for a different one. Count them with
+because each of the twelve below is there for a different one. Count them with
 `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'`.
 
 - `ClubTimeline.test.tsx` — a fetch failure and an anchor-hunt latch that only exist inside a
@@ -496,5 +496,10 @@ because each of the eleven below is there for a different one. Count them with
   is the entry above's twin.
 - `CountrySelect.test.tsx` (PD-428) — a real click and keyboard traversal through a mounted
   listbox: arrow keys, Enter, Escape and a blur-revert, none of which a static render can
-  dispatch. It gates a required onboarding step, so a rider who cannot reach it by keyboard
-  cannot finish signing up.
+  dispatch. Since PD-445 it is the town step's FALLBACK control rather than the step itself, and
+  the reason it needs jsdom is unchanged: a rider whose lookup failed reaches it by keyboard or
+  not at all.
+- `onboarding/town/__tests__/page.dom.test.tsx` (PD-445) — the step's two fallback branches are
+  reached only through a callback the place field raises: a pick whose `countryCode` is absent,
+  and a lookup failure. Neither exists on first paint, so `page.test.tsx` beside it covers the
+  branch every rider sees and this one covers the two it cannot reach.
