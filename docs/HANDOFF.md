@@ -40,7 +40,7 @@ history.
 - **The walk is green on DEV** as both fixture accounts (2026-09-06 baselines in
   `docs/reference/running-locally.md` §The walk). In CI it is still **skipped** — the Actions
   secrets name PROD and `WALK_CI` is unset (see §Blocked on the owner).
-- **OpenSpec has 33 open changes and 21 archived**
+- **OpenSpec has 33 open changes and 22 archived**
   (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`).
   **Archiving one is not two commands**: a stale `## MODIFIED Requirements` block drops scenarios
   wholesale, so diff scenario names per requirement first, and re-point any pointer **into** the
@@ -49,24 +49,25 @@ history.
 
 ## In flight
 
-- **`Queued (AI)` holds PD-447 only** (the Explore *"Still in Hoorn?"* row), left because it is an
-  `L` and a group holding one caps at two — and safer built ON TOP of PD-445 than beside it, since
-  both touch `src/lib/location/` and `setRiderTown`. **`Needs help` is empty.**
-- **`Development (AI)`:** PD-421 alone, carrying no slot label — so it occupies no slot, which is
-  deliberate rather than a gap. Both slots are free.
+- **`Queued (AI)` is empty and `Needs help` is empty.** **`Development (AI)`:** PD-448 on
+  `slot-2`, and PD-421 carrying no slot label — occupying no slot, which is deliberate rather
+  than a gap.
+- **Nothing in this app opens a sheet by itself** (PD-447, reversing PD-419). The Explore question
+  is `LocationQuestionRow`, on the two Explore screens only. **`profiles.location` has TWO
+  writers** — `setRiderTown` and `setHomeTown` — so anything keyed to "the rider stored a town"
+  goes in both.
 - **Onboarding's terminal step is `/onboarding/town`** (PD-445), behind `setHomeTown`; the
   guard's `isOnboarding` catch-all is what makes `/onboarding/country` safe. **A town is answered
   by a THIRD PARTY at the app's most critical gate** — `search-places` has an application-wide
   ceiling (2000/24h across all riders) — so a lookup failure reveals a country select on its own
-  and the rider finishes with no town. The promise is *every rider who can reach the geocoder gets
-  a town*. Every walk run spends two credits against that ceiling: the mint and the fixture club.
+  and the rider finishes with no town. **The 2026-09-08 walk hit exactly that**: no suggestions for
+  `Amsterdam`, and the minted rider took the escape. Every walk run spends two credits.
 - **Push, `openspec/changes/deliver-push-notifications`:** child B is complete in the repository
   (#438, #446) and **unverified on a device** — tasks 2.15–2.19a wait on a provisioning profile
   carrying the Push capability, an owner action. **Child C (PD-303) is the sender**, blocked on the
   APNs `.p8` and the FCM service account. PD-291 stays open until C lands.
 - **PD-385 is open on purpose**: 9 DEV rides carry a coordinate and no tile, repairable only by
-  each ride's own organizer. **PD-428's open half is closed** by PD-445 — changing your town now
-  changes your country.
+  each ride's own organizer.
 
 Re-derive rather than trust the list: `list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`
 filtered by status, and `list_pull_requests state=open`.
