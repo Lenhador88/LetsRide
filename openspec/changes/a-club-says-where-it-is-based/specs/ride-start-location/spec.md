@@ -18,9 +18,19 @@ block replaces a requirement's scenarios wholesale, so if this change is written
 rename and a whole scenario, with nothing failing anywhere.
 
 **So this block is composed against `inline-place-search-with-recent-starts`'s version, not against
-`openspec/specs/`**, and it carries all three of that change's scenarios forward. It is therefore
-correct in either archive order: archived after, it preserves them; archived before, the other change
-restates them itself.
+`openspec/specs/`**, and it carries all three of that change's scenarios forward.
+
+**ONE ORDER IS SAFE, and an earlier draft of this paragraph claimed both were.** Measured: the
+baseline in `openspec/specs/` holds 2 scenarios, `inline-place-search-with-recent-starts` holds 3,
+this change holds 5.
+
+- **`inline-place-search-with-recent-starts` FIRST, then this change** — safe. Its 3 land, then
+  this block replaces them with the same 3 plus 2 more.
+- **This change first** — **loses two scenarios.** The sibling's block would then replace wholesale
+  with its 3, dropping *A third caller extends the picker* and *The seed is optional and its absence
+  changes nothing*. It cannot "restate them itself": it was written before they existed.
+
+Archive the sibling first, or fold this block's two added scenarios into it before archiving either.
 
 **Scenario diff** (`docs/HANDOFF.md` — a stale MODIFIED block drops scenarios wholesale): 3 in from
 `inline-place-search-with-recent-starts`, 5 out. All three kept under their **current** names —

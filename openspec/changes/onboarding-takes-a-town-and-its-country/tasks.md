@@ -96,7 +96,9 @@ lives in Linear); §7 names what it owes.
       redirects to `/onboarding/town` for a rider with a username and no stamp. The file holds 57
       cases; add to them rather than rewriting them.
 - [ ] 4.3 `src/lib/analytics/events.ts` — `step: 'terms' | 'username' | 'town'`, and `reason` gains
-      `'no_country'`. **Record beside the union why the rename was free**: `'country'` shipped hours
+      `'no_town'` — NOT `'no_country'`, which names an unreachable state, since `114`
+      makes completing without a country impossible. **Record beside the union why the rename was
+      free**: `'country'` shipped hours
       earlier with no funnel history behind it, and once a step key has real history it is a position
       rather than a description and renaming it is not free. `docs/reference/analytics.md` gets the
       same note.

@@ -140,6 +140,32 @@ export type PlaceValue = {
   timezone?: string | null
 }
 
+/**
+ * Which lookup failures reach `onLookupFailure` — an ALLOWLIST of two, and a
+ * correctness gate rather than a filter.
+ *
+ * `searchPlaces` also throws `PlaceSearchOfflineError`, raised from
+ * `navigator.onLine === false` alone, which is a state the RIDER controls.
+ * Forwarding it hands the onboarding town step's country-only escape to anybody
+ * who turns airplane mode on, types three characters and turns it off again —
+ * and that step's flag is deliberately sticky, so the blip outlives the outage.
+ * That is the `Skip` decision #5 forbids, reached by a control a rider operates
+ * at will.
+ *
+ * Matched on `name` rather than `instanceof`: `usePlaceLookup` wraps a
+ * non-`Error` rejection, and a wrapped value is not an instance of anything.
+ *
+ * An allowlist rather than a denylist, so a future error class is refused by
+ * default rather than silently opening a caller's fallback. Exported so the
+ * rule can be asserted in both directions without mounting the field and
+ * mocking a vendor call.
+ */
+export function isForwardableLookupFailure(failure: Error): boolean {
+  return (
+    failure.name === 'PlaceSearchUnavailableError' || failure.name === 'PlaceSearchCeilingError'
+  )
+}
+
 /** How long the field waits after the last keystroke before it searches. */
 const DEBOUNCE_MS = 400
 
@@ -264,11 +290,14 @@ export function PlaceSearchField({
    * country select because a rider who cannot reach the geocoder would
    * otherwise be unable to finish onboarding at all.
    *
-   * **A failure signal, never "the rider has not picked".** It fires for
+   * **A failure signal, never "the rider has not picked".** The allowlist is
+   * `isForwardableLookupFailure` above — exactly two classes,
    * `PlaceSearchUnavailableError` (the vendor, the ledger, or `069`'s
-   * application-wide ceiling) and `PlaceSearchCeilingError` (the rider's own),
-   * and not for a term with no matches — which is an ordinary answer and
-   * already has its own empty state.
+   * application-wide ceiling) and `PlaceSearchCeilingError` (the rider's own).
+   *
+   * **Not `PlaceSearchOfflineError`**, which a rider can raise at will, and not
+   * a term with no matches, which is an ordinary answer with its own empty
+   * state.
    *
    * The field goes on showing the failure and its retry exactly as before; this
    * is additive and changes nothing for a caller that omits it.
@@ -331,6 +360,10 @@ export function PlaceSearchField({
     // Once per distinct failure. `usePlaceLookup` holds the error until the
     // next successful lookup, so this effect re-runs on every unrelated
     // re-render while it stands.
+    // The allowlist — see `isForwardableLookupFailure`. An unrecognised failure
+    // is not forwarded, and the field still shows it with its retry exactly as
+    // it does for a caller that passes no callback at all.
+    if (!isForwardableLookupFailure(failure)) return
     if (notifiedFailure.current === failure) return
     notifiedFailure.current = failure
     onLookupFailure(failure)

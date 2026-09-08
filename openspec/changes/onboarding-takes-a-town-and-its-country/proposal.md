@@ -203,7 +203,10 @@ Eleven. The full scenarios are in `specs/`; this is the index.
     principled one. Renaming a funnel key normally splits every insight built on it at the deploy —
     but `step: 'country'` shipped hours before this proposal, to 5 PROD riders none of whom carry a
     country, so there is no history to split. `'terms'` and `'username'` are untouched. A new
-    `reason` value, `'no_country'`, names the fallback-unanswered refusal, which is the one rejection
+    `reason` value, `'no_town'`, rides on `status: 'completed'` rather than on a rejection — it marks
+    the escape the step opens when the lookup is unavailable, so the rider finished carrying a
+    country and no town. It is NOT a refusal, and it is not `'no_country'`: `114` makes completing
+    without a country impossible, so that name would record an unreachable state. The one rejection
     this change adds. **The general rule stands and SHALL be recorded where the union is declared:
     once a step key has real history behind it, it is a position rather than a description and
     renaming it is not free.**

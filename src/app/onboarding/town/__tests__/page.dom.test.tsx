@@ -129,6 +129,23 @@ describe('the lookup is unavailable — the escape', () => {
     expect(submit().disabled).toBe(true)
   })
 
+  it('opens for anything it is TOLD about — the filter is the field’s job', () => {
+    // Stated so the division is not mistaken for a gap. This page opens the
+    // escape for any failure handed to it; deciding WHICH failures are handed
+    // over lives in `PlaceSearchField`, and `place-search-field.test.tsx` is
+    // where that allowlist is pinned.
+    //
+    // **The gap the pre-merge review found was there, not here.** The field
+    // originally forwarded every error, including `PlaceSearchOfflineError` —
+    // raised from `navigator.onLine === false` alone, so a rider could open the
+    // escape by toggling airplane mode, and this page's flag is deliberately
+    // sticky so the blip would outlive it. Putting the filter here instead
+    // would have made every future caller of the callback re-derive it.
+    const anything = new Error('whatever the field decided to forward')
+    act(() => handers.onLookupFailure!(anything))
+    expect(container.textContent).toContain('Country')
+  })
+
   it('stays open after a later lookup succeeds', () => {
     // Taking the escape away because a retry happened to answer would move the
     // control the rider is reaching for, mid-tap.

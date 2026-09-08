@@ -93,9 +93,11 @@ description of a screen — renaming it silently ends one series and starts
 another, and the two read as a cliff in conversion that nothing in the product
 explains. Rename the screen, keep the key, put the description in a comment.
 
-**`reason: 'no_country'` rides on `status: 'completed'`, not on a rejection.**
+**`reason: 'no_town'` rides on `status: 'completed'`, not on a rejection.**
 It marks the escape the town step opens when the geocoder is unavailable: the
-rider finished, carrying a country and no town. It is the only way to ask *how
+rider finished, carrying a country and no town. **`no_town`, not `no_country`** —
+completing without a *country* is impossible, since `114` refuses the stamp, so
+that name would record the opposite of what happened. It is the only way to ask *how
 often is onboarding completing without a town, and is the lookup the cause* —
 which matters because `search-places`'s ceiling is application-wide rather than
 per rider, so the failure is correlated across riders instead of personal to one.

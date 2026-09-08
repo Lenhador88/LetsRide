@@ -94,15 +94,20 @@ export type AnalyticsEvent =
          * refused — because they turn a rider away for different reasons and
          * the funnel question is *which*.
          *
-         * **`no_country` is not a rejection and rides on `completed`**
-         * (PD-445): the rider finished, through the escape the town step opens
-         * when the geocoder is unavailable, so they carry a country and no
-         * town. It is the only way to ask *how often is onboarding completing
-         * without a town, and is the lookup the reason* — which matters because
+         * **`no_town` is not a rejection and rides on `completed`** (PD-445):
+         * the rider finished, through the escape the town step opens when the
+         * geocoder is unavailable, so they carry a country and **no town**. It
+         * is the only way to ask *how often is onboarding completing without a
+         * town, and is the lookup the reason* — which matters because
          * `search-places` has an application-wide ceiling, so the failure is
          * correlated across riders rather than personal to one.
+         *
+         * **`no_town`, not `no_country`.** Completing without a country is
+         * impossible — `114` refuses the stamp — so that name would describe an
+         * unreachable state, and every consumer reads the identifier rather
+         * than this comment.
          */
-        reason?: 'taken' | 'invalid' | 'failed' | 'incomplete' | 'no_country'
+        reason?: 'taken' | 'invalid' | 'failed' | 'incomplete' | 'no_town'
       }
     }
 

@@ -221,13 +221,13 @@ export async function setHomeTown(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: null, redirectTo: '/auth/login' }
 
-  // **ONE statement for both columns, and `home_country` is written FIRST.**
-  // Not style: `writers-invalidate.test.ts`'s per-function detector matches
-  // `.update({ home_country:` with the key at the head of the literal, and it
-  // is what proves this function still owes `invalidateOnboardingState()`.
-  // Putting `location` first makes the detector stop matching — the test then
-  // fails loudly on its own both-ways assertion rather than going quiet, which
-  // is the point, but the ordering is the thing to keep.
+  // **ONE statement for both columns.** `home_country` is written first as a
+  // convention rather than a constraint: `writers-invalidate.test.ts`'s
+  // per-function detector does match `.update({ home_country:` with the key at
+  // the head, but this function ALSO matches its `\.rpc\('complete_onboarding'`
+  // arm, so swapping the keys leaves it caught either way. Measured rather than
+  // assumed — an earlier version of this comment claimed the ordering was
+  // load-bearing and it is not.
   //
   // **The town is spread in rather than always written**, so a country-only
   // submit does not send `location: null`. It would be writing NULL over
@@ -302,17 +302,21 @@ export async function setHomeTown(
   // cached is what sent the rider here, and it is now stale in two fields.
   invalidateOnboardingState()
 
-  // `no_country` on a COMPLETION rather than a rejection: the rider finished
+  // `no_town` on a COMPLETION rather than a rejection: the rider finished
   // through the escape the step opens when the lookup is unavailable, so they
   // carry a country and no town. It is the only way to ask how often onboarding
   // is completing without a town — which matters because `search-places`'s
   // ceiling is application-wide, so the cause is correlated across riders.
+  //
+  // **`no_town`, never `no_country`** — completing without a country is
+  // impossible (`114` refuses the stamp), so that name would record the
+  // opposite of what happened.
   capture({
     name: 'onboarding_step',
     properties: {
       step: 'town',
       status: 'completed',
-      ...(townValue === null ? { reason: 'no_country' as const } : {}),
+      ...(townValue === null ? { reason: 'no_town' as const } : {}),
     },
   })
 

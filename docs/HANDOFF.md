@@ -94,8 +94,9 @@ body carries its own steps.
 Not a preference: two requirements `onboarding-takes-a-town-and-its-country` MODIFIES live only in
 that change's delta, so the wrong order leaves them with no base. `a-club-says-where-it-is-based`
 shares its `ride-start-location` requirement with the unarchived
-`inline-place-search-with-recent-starts`; it is composed against that version and carries all
-three of its scenarios, so it is safe either way — check that before trusting it.
+`inline-place-search-with-recent-starts`, and **only one order is safe**: the sibling FIRST. The
+other way round drops two scenarios, because a MODIFIED block replaces them wholesale and the
+sibling was written before those two existed.
 
 **Then the rest — the 31 others need the expensive half.** Each one left is refused for a reason
 its message names; the three shapes, their cost and the current ordering chain are in
