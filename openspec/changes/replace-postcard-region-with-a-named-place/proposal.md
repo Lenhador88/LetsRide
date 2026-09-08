@@ -136,16 +136,14 @@ None. Every requirement here belongs to a capability that already exists.
 - `place-search`: a third proxy mode, its metering under the same ledger, and the rule that a
   lookup the rider did not ask for fails silently.
 
-> **All three of these live only as deltas in unarchived changes, not in `openspec/specs/`.**
-> `openspec/specs/` holds eight standing capabilities and `database-enforced-integrity` is the
-> only one of the three among them. `photo-capture-metadata` exists at
-> `openspec/changes/archive/2026-09-08-capture-photo-time-and-place/specs/`, whose `tasks.md` reads 3 of 81 boxes
-> ticked while `064` is applied to **both** projects and the code has shipped; `place-search` is
-> split across `replace-places-index-with-geocoder/` and `inline-place-search-with-recent-starts/`,
-> both likewise shipped and unarchived. So the deltas below are written against text that is not
-> yet standing. Each `MODIFIED` requirement names the file it modifies. **Archiving that backlog
-> is a separate job and belongs to the main thread**, not to this change — but it is why an
-> `openspec validate` on this change can look stranger than it is.
+> **Two of the three are STANDING as of 2026-09-08 — this banner said otherwise until then.**
+> `openspec/specs/` now holds 24 capabilities, `database-enforced-integrity` and
+> `photo-capture-metadata` among them: `capture-photo-time-and-place` archived that day, so its
+> text is standing rather than a delta. **`place-search` is the one that is still not standing** —
+> it is split across the open `replace-places-index-with-geocoder/` and
+> `inline-place-search-with-recent-starts/`, both shipped and unarchived. So diff the two standing
+> deltas below against `openspec/specs/`, and only the `place-search` one against the open change
+> that holds its base text. Each `MODIFIED` requirement names what it modifies.
 
 ## Impact
 

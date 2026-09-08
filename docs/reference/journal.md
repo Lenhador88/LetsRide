@@ -2326,6 +2326,54 @@ comm -23 /tmp/a /tmp/b        # must be empty — anything here was dropped by t
 block against the standing text and cannot see a scenario whose *header* survived while its body
 was replaced by an older one.
 
+**14 archived on 2026-09-08, and what is left is refused for one of three reasons — in rising
+cost.** Read the refusal message; it names which.
+
+1. **A requirement whose BODY carries no `SHALL`/`MUST`, only its header.** One inserted sentence
+   directly after the header, restating that header and nothing more — it becomes normative text in
+   a standing spec, so a sentence that over- or under-states the header is a real defect. Four of
+   the 14 were unblocked this way.
+2. **A stale `MODIFIED` block** — the expensive one, above.
+3. **A delta targeting a spec that does not exist yet**, which is an ordering constraint rather
+   than a defect: the change that `ADDED` that capability has to archive first.
+
+**Re-probe the order rather than trusting a written list — archiving one change moves every other
+change's refusal.** Measured 2026-09-08, after the 14: `club-timeline-engagement` and
+`introduce-yourself-on-joining-a-club` both stopped being blocked on a missing `club-timeline` and
+became blocked on a stale block against it, now that it stands; `deferred-club-join-introduction`
+and `an-introduction-appears-only-as-its-announcement` have no target at all until
+`introduce-yourself-on-joining-a-club` creates `club-introductions`; and
+`show-private-clubs-and-request-to-join` must precede `invite-riders-to-a-club` on
+`club-join-requests`.
+
+**The tool accepting a change is NOT evidence the change shipped, and this is the trap that would
+write a spec for a feature no rider can reach.** `openspec archive` reasons about spec text and
+knows nothing about `src/`. Three changes it accepts are verified NOT BUILT:
+`place-backdated-postcards-on-the-timeline` (decision-only by design),
+`postcard-audience-follows-its-entry-point` (`CreatePostcardForm.tsx` still draws both the club and
+ride selects the change removes) and `page-the-club-timeline-on-scroll` (no paging in
+`src/lib/data/club-timeline.ts` or `ClubTimeline.tsx`). **`tasks.md` cannot answer this either**,
+in either direction — `add-club-timeline` reads 0/38 and is live, `capture-photo-time-and-place`
+reads 3/81 and is live. Read `src/` and `supabase/migrations/`, matching a migration by SUBJECT:
+proposals routinely name a file that was later renamed (`081_club_threads.sql` for what shipped as
+`081_club_discussions.sql`).
+
+**Archiving strands every pointer INTO the change, and one form of it nothing catches.**
+`crossrefs.mjs` resolves a backticked filename followed by a section citation, in `.md` files
+only, so a bare
+`openspec/changes/<name>/` path in a code comment, in `.github/workflows/*.yml`, or in a
+`console.error` string goes stale silently — the 2026-09-08 round found them in `src/`,
+`next.config.ts`, `scripts/`, `ci.yml` and five left behind by the round before it. Re-point them
+in the same commit, and re-read the PROSE around each one: a sentence saying a change is
+"unarchived" or that a capability "is not in `openspec/specs/`" becomes false the moment it
+archives. `supabase/migrations/*.sql` is the deliberate exception — an applied migration is never
+edited, so its pointers stay stale.
+
+**The tree must be STAGED before the crossrefs test can see the move.** It reads `git ls-files`,
+so an unstaged `openspec archive` leaves it opening paths that no longer exist and the run dies
+with `ENOENT` before any assertion. That failure also drops the unit-test total — 3705 to 3679 on
+2026-09-08 — which reads exactly like deleted tests and is not.
+
 **`enforce-creator-membership` and `add-account-deletion` collide, and OpenSpec will not warn
 you.** Both carry a delta modifying
 `database-enforced-integrity`'s *Club membership role SHALL NOT be self-assignable*, and

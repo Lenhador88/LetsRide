@@ -91,25 +91,20 @@ body carries its own steps.
 
 ## Next action
 
-**Finish the OpenSpec archive backlog — the 31 that are left need the expensive half.** The 14 that
-archived on 2026-09-08 were the ones the tool accepted unedited; every remaining shipped change is
-refused for a reason that costs real work, and the refusal message names it. Three shapes, in
-rising cost: a requirement whose **body** carries no `SHALL`/`MUST` (one inserted sentence
-restating the header — that is how four of the 14 were unblocked); a **stale `MODIFIED` block**
-that would drop named scenarios (refresh it, then diff scenario names per requirement); and a
-change whose delta targets a spec **that does not exist yet**, which is an ordering constraint —
-`introduce-yourself-on-joining-a-club` must archive before `deferred-club-join-introduction` and
-`an-introduction-appears-only-as-its-announcement`, and `show-private-clubs-and-request-to-join`
-before `invite-riders-to-a-club`.
+**Finish the OpenSpec archive backlog — the 31 left need the expensive half.** The 14 archived on
+2026-09-08 were the ones the tool took unedited; each one left is refused for a reason its message
+names, and the three shapes, their cost and the current ordering chain are in
+`docs/reference/journal.md` §The open OpenSpec changes. **Re-probe the order rather than reading a
+list — archiving one change moves the others.**
 
-**Verify shipped before archiving, and do not trust `tasks.md`.** Tick counts are wrong in both
-directions here — `add-club-timeline` reads 0/38 and is live, `capture-photo-time-and-place` reads
-3/81 and is live. Check `src/` and `supabase/migrations/` instead, matching a migration by SUBJECT
-rather than the filename the proposal guessed. Two verified **NOT BUILT** and must not be archived:
-`place-backdated-postcards-on-the-timeline` (decision-only) and
-`postcard-audience-follows-its-entry-point` (the form still draws both selects it removes).
-`add-account-deletion` carries an open decision, collides with `enforce-creator-membership`, and
-**PD-436 blocks `enforce-ride-capacity`** — all three stay open.
+**Two things no gate enforces.** *Verify shipped first, and never from `tasks.md`* — tick counts
+are wrong both ways (`add-club-timeline` 0/38 is live; `capture-photo-time-and-place` 3/81 is
+live), so read `src/` and `supabase/migrations/`, matching a migration by SUBJECT rather than the
+filename its proposal guessed. **The tool accepting a change is not evidence it shipped**: three
+it accepts are verified NOT BUILT and must not be archived —
+`place-backdated-postcards-on-the-timeline`, `postcard-audience-follows-its-entry-point` and
+`page-the-club-timeline-on-scroll`. `add-account-deletion` (open decision, collides with
+`enforce-creator-membership`) and `enforce-ride-capacity` (PD-436) also stay open.
 
 ## Test accounts
 
