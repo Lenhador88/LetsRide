@@ -784,6 +784,15 @@ export function ClubTimeline({
                 // rather than the entry. That is the thread row's departure
                 // from the event row, where the sentence IS the name and the
                 // entry is dropped instead.
+                // **A bumped thread whose newest reply is outside the reply
+                // window falls back to the byline**, so it reads "Started by
+                // ana" while sitting at the top with no count beside it. That
+                // is degraded rather than wrong — the position is still true,
+                // and `partial` already refuses to print a number the client
+                // cannot know — and it needs a club with more active threads
+                // than `CLUB_TIMELINE_REPLIES` covers. **The fix is a deeper
+                // reply window, never a lead invented from the position**: a
+                // row cannot name a replier it has not read.
                 lead={
                   event.latestReply
                     ? event.latestReply.author

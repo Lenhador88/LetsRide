@@ -319,14 +319,19 @@ export function mergeRideTimeline(
    *
    * **`mergeClubTimeline` asked the weaker question until PD-400, and now asks
    * this one** — the two expressions are byte-identical, which is the state to
-   * keep them in. The club's bug was reachable through exactly one of its five
-   * sources, `getClubThreadReplies`, because that source collapses its window
-   * to one row per thread and so can return two rows out of a two-hundred-
-   * message window with a live horizon. **`getRideThreadReplies` below is the
-   * same shape**, so this ride timeline would have been reachable-wrong too had
-   * it inherited the weaker test — which is the reason `108` adds a collapsing
-   * source here without touching this line, rather than the reason to
-   * "align" it with anything.
+   * keep them in.
+   *
+   * **The path that made the club's version reachable is CLOSED since `116`
+   * (PD-439), and that is not a reason to weaken either back.** The bug needed a
+   * source returning FEWER rows than its window, so the display cap would not
+   * cut before the horizon could lie, and the collapsing reply source was the
+   * only one on either timeline. `116` took that source's horizon out of both
+   * horizon lists, because a source that draws no row cannot claim where the
+   * stream's picture stops. What remains is *no known reachable case today* — a
+   * fact about this moment's sources, not a property of the expression, and one
+   * a fifth source or a lowered bound reopens in silence. The stronger form asks
+   * "does any source's picture stop" rather than "did the filter drop
+   * anything", costs one comparison, and cannot be wrong in that direction.
    */
   const complete = horizon === null && shown.length === ordered.length
 

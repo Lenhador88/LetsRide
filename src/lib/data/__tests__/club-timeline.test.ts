@@ -618,6 +618,34 @@ describe('mergeClubTimeline', () => {
     expect(exactEvent?.kind === 'thread' && exactEvent.activity?.messages).toBe(12)
   })
 
+  it('never emits two entries sharing one key', () => {
+    // The invariant every merged entry rests on, asserted directly rather than
+    // inferred from the cases above — a duplicate key is a React warning, an
+    // unstable row identity, and the very defect PD-439 fixes, and `116` is what
+    // made it reachable by giving one row type a position that moves. A stream
+    // holding every kind at once, with the thread source carrying a stale copy
+    // of a bumped thread.
+    const merged = mergeClubTimeline(
+      sources({
+        rides: { rows: [ride('r1', '2026-08-21T10:00:00Z')], horizon: null },
+        postcards: { rows: [postcard('p1', '2026-08-20T10:00:00Z')], horizon: null },
+        joins: { rows: [join('u1', '2026-08-19T10:00:00Z')], horizon: null },
+        threads: {
+          rows: [
+            thread('t1', '2026-08-01T10:00:00Z'),
+            thread('t1', '2026-08-22T10:00:00Z', '2026-08-01T10:00:00Z'),
+            thread('t2', '2026-08-18T10:00:00Z'),
+          ],
+          horizon: null,
+        },
+        replies: { rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')], horizon: null },
+      })
+    )
+
+    const keys = merged.events.map((event) => event.key)
+    expect(new Set(keys).size).toBe(keys.length)
+  })
+
   it('is empty for a club with nothing in it', () => {
     expect(eventsOf(sources())).toEqual([])
   })

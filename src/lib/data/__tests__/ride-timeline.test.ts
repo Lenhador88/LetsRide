@@ -551,6 +551,35 @@ describe('mergeRideTimeline — threads and replies', () => {
     expect(timeline.events.map((event) => event.kind)).toContain('postcard')
   })
 
+  it('never emits two entries sharing one key', () => {
+    // The club's assertion one domain over, and worth having on both: a
+    // duplicate key is a React warning and an unstable row identity, and it is
+    // the shape PD-439 fixes. A ride cannot reach it through paging — it reads
+    // every source whole from one read — so this pins the merge's own keying
+    // across all four kinds plus the floor entry.
+    const timeline = mergeRideTimeline(
+      sources({
+        postcards: { rows: [postcard('p1', '2026-03-01T00:00:00.000Z')], horizon: null },
+        joins: { rows: [join('r1', '2026-03-02T00:00:00.000Z')], horizon: null },
+        threads: {
+          rows: [
+            thread('t1', '2026-03-04T00:00:00.000Z'),
+            thread('t2', '2026-03-03T00:00:00.000Z'),
+          ],
+          horizon: null,
+        },
+        replies: {
+          rows: [reply('t1', '2026-03-04T00:00:00.000Z')],
+          horizon: null,
+          activity: { t1: { messages: 1, partial: false } },
+        },
+      })
+    )
+
+    const keys = timeline.events.map((event) => event.key)
+    expect(new Set(keys).size).toBe(keys.length)
+  })
+
   it('still withholds the founding entry when a DRAWING source declared a horizon', () => {
     // The stronger `complete` derivation (PD-400) is untouched: a source that
     // draws rows still cuts the stream, and the floor entry still goes.

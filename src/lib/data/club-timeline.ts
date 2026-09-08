@@ -643,14 +643,22 @@ export function mergeClubTimeline(
   // it. `mergeRideTimeline` has always used this stronger test and
   // `ride-timeline.ts` carries the argument at its own site.
   //
-  // **Reachable through exactly one of the five sources**, which is what kept it
-  // invisible: a full read of the other four returns at least
-  // `CLUB_TIMELINE_LIMIT` rows, so `shown.length === ordered.length` fails first
-  // and the display cap cuts before the horizon can lie. `getClubThreadReplies`
-  // is the exception — it collapses its window to one row per thread, so a club
-  // with two busy threads returns two rows from a two-hundred-message window
-  // with a live horizon: few enough that the cap does not cut, and a horizon
-  // that does.
+  // **The path that made it reachable is CLOSED, and the stronger test still
+  // earns its place — do not weaken it back on the strength of that.** Until
+  // `116` (PD-439) the bug needed a source whose rows are FEWER than its window,
+  // so the display cap would not cut before the horizon could lie, and
+  // `getClubThreadReplies` was the only one: it collapses two hundred messages
+  // to one row per thread. `116` took that source's horizon out of the list
+  // above, so no source in it collapses any more and every one of them returns
+  // at least `CLUB_TIMELINE_LIMIT` rows when full.
+  //
+  // What that buys is *no known reachable case today*, which is a fact about
+  // this moment's four sources and not a property of the expression. The weaker
+  // form asks a question the horizon cannot answer — "did the filter drop
+  // anything" instead of "does any source's picture stop" — so a fifth source,
+  // or a bound lowered by someone editing another screen, reopens it silently.
+  // The stronger form costs one comparison and cannot be wrong in that
+  // direction at all.
   const complete = horizon === null && shown.length === ordered.length
 
   if (complete) {

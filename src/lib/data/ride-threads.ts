@@ -80,10 +80,22 @@ const THREAD_SELECT = `
  * message from a rider you blocked bumps its thread on your timeline. What
  * leaks is ORDERING only: `private.is_blocked` still removes the message
  * itself, so the reply source returns nothing for it, the lead line and the
- * count never mention it, and the row moves with no visible cause. Computing
- * the position live per viewer is the only version without that side channel,
- * and it is a per-viewer aggregate over every row of the list — which is why
- * it was refused rather than built. Recorded on PD-439.
+ * count never mention it, and the row moves with no visible cause.
+ *
+ * **In a small club or crew that is ATTRIBUTABLE, which is the part worth
+ * stating plainly.** A row that moves with no new visible message and no change
+ * to its count tells you that the person you blocked posted, and when, to the
+ * second — and blocks are symmetric, so it runs both ways. Before `116` a
+ * blocked rider's reply produced no row at all, so this is a NEW channel rather
+ * than a widening of an existing one. Content, identity and counts stay gated.
+ *
+ * **There is no cheap mitigation, and the obvious one is worse.** Positioning
+ * the row on the newest VISIBLE reply puts it below the `last_activity_at`
+ * horizon the read bounded on, so the thread drops out of the stream entirely
+ * rather than merely sitting too high. Computing the position live per viewer
+ * is the only version without the channel, and it is an aggregate over every
+ * row of the list — which is why it was refused rather than built. Recorded on
+ * PD-439.
  *
  * A rider who can see the ride but is not on its crew reads `[]` here, which is
  * indistinguishable from a ride nobody has posted in — the screen tells those
