@@ -11,7 +11,7 @@
 --     -v ON_ERROR_STOP=1 -v seed_password="$(openssl rand -base64 18)" \
 --     -f supabase/seeds/screenshot-account.sql
 --
---   node scripts/dev/seed-screenshot-media.mjs      # then this — see section 6
+--   node scripts/dev/seed-screenshot-media.mjs      # then this — see §What this file cannot do
 --
 -- ---------------------------------------------------------------------------
 -- Why this is a SECOND seed rather than an option on the first
@@ -27,10 +27,10 @@
 -- row it did not create. Every id below is a literal for exactly that reason —
 -- a re-run is a delete of a known set, never a `where email like`.
 --
--- The one exception is section 5, which writes `postcard_hides` rows FOR THE
+-- The one exception is section 7, which writes `postcard_hides` rows FOR THE
 -- SEEDED RIDER over other people's postcards. That is a per-viewer flag, not a
 -- deletion: it changes what one seeded account sees and is invisible to every
--- other rider, including the author. See section 5 for why the deck needs it.
+-- other rider, including the author. See section 7 for why the deck needs it.
 --
 -- ---------------------------------------------------------------------------
 -- The guard, and why it is shaped like this
@@ -55,7 +55,7 @@
 -- `@letsride.dev` accounts itself.
 --
 -- ---------------------------------------------------------------------------
--- What this file cannot do, and what section 6 does about it
+-- What this file cannot do, and what the media script does about it
 -- ---------------------------------------------------------------------------
 -- **Images.** `image_path`, `avatar_path`, `cover_image_path` and the two ride
 -- map columns are Storage object paths, and SQL cannot upload a JPEG. A row
@@ -116,6 +116,18 @@ $$;
 -- `owner_id` is already NULL and which has no members, postcards, rides or
 -- threads left. The seeded clubs are gone by then for the same reason their
 -- owner is.
+--
+-- **That reaches only seeded rows while nothing else writes as these accounts**,
+-- which is a property of how they are used rather than of the cascade. Signing
+-- in as `sofiarides` and joining a residue club would put a foreign `club_id`
+-- in the next re-run's cascade — where `reap_ownerless_club` still cannot fire,
+-- since that club keeps its owner. Measured 0 on DEV 2026-09-08, after three
+-- walk runs as the seeded rider; the walk's write phases clean up after
+-- themselves. Re-measure rather than trust it:
+--
+--   select count(*) from public.club_members m
+--    where m.user_id::text like '5c0f1a00-000%'
+--      and m.club_id::text not like '5c0f1a00-0100%';   -- 0
 --
 -- Storage objects are NOT removed — `delete from storage.objects` is refused by
 -- Supabase's own guard, and the paths below are fixed, so a re-run reuses the
@@ -179,7 +191,7 @@ from (values
 -- placeholder — `030` says that function is the only place the value lives.
 --
 -- The avatar and cover paths are pinned to the rider's own uuid by `014`'s
--- CHECKs; section 6 uploads to exactly these.
+-- CHECKs; `scripts/dev/seed-screenshot-media.mjs` uploads to exactly these.
 update public.profiles p set
   username                = v.username,
   location                = v.location,
@@ -439,48 +451,64 @@ insert into public.ride_thread_messages (id, thread_id, author_id, body, created
 -- precision of 'place', with both coordinates NULL. That is the shape the app
 -- writes when a rider picks a town rather than handing over a GPS fix, and it
 -- is the one worth photographing.
+-- `taken_at_offset_minutes` is DERIVED from the zone rather than written as a
+-- literal. A hard-coded 120 is right in CEST and an hour wrong from late
+-- October to late March, and this file is built to be re-run before every
+-- screenshot session — so the literal would be correct on the day it was
+-- written and quietly wrong for four months of the year. `072`'s coupling only
+-- checks that the pair moves together, so nothing would have caught it.
+-- Measured on DEV: the expression answers 60 for 2026-01-15 and 2026-11-01 and
+-- 120 for 2026-07-15, in both zones below.
 insert into public.postcards (
   id, author_id, club_id, ride_id, caption, image_path,
   taken_at, taken_at_offset_minutes, taken_place_name, taken_location_precision, taken_country_code,
   created_at, updated_at
-) values
-  ('5c0f1a00-0400-4000-8000-0000000000d1', '5c0f1a00-0001-4000-8000-000000000001', null, null,
+)
+select
+  v.id, v.author_id, v.club_id, v.ride_id, v.caption, v.image_path,
+  now() - v.taken_ago,
+  ((extract(epoch from ((now() - v.taken_ago) at time zone v.zone))
+    - extract(epoch from (now() - v.taken_ago))) / 60)::smallint,
+  v.place, 'place', v.country,
+  now() - v.posted_ago, now() - v.posted_ago
+from (values
+  ('5c0f1a00-0400-4000-8000-0000000000d1'::uuid, '5c0f1a00-0001-4000-8000-000000000001'::uuid,
+   null::uuid, null::uuid,
    'Low sun the whole way out. Worth the six o''clock alarm.',
    'postcards/5c0f1a00-0001-4000-8000-000000000001/5c0f1a00-3001-4000-8000-000000000001.jpg',
-   now() - interval '2 hours', 120, 'Afsluitdijk', 'place', 'NL',
-   now() - interval '2 hours', now() - interval '2 hours'),
-  ('5c0f1a00-0400-4000-8000-0000000000d2', '5c0f1a00-0002-4000-8000-000000000002', null, null,
+   interval '2 hours', interval '2 hours', 'Afsluitdijk', 'NL', 'Europe/Amsterdam'),
+  ('5c0f1a00-0400-4000-8000-0000000000d2'::uuid, '5c0f1a00-0002-4000-8000-000000000002'::uuid,
+   null, null,
    'Espresso, then two hundred kilometres of nothing at all.',
    'postcards/5c0f1a00-0002-4000-8000-000000000002/5c0f1a00-3002-4000-8000-000000000002.jpg',
-   now() - interval '1 day', 120, 'Haarlem', 'place', 'NL',
-   now() - interval '1 day', now() - interval '1 day'),
-  ('5c0f1a00-0400-4000-8000-0000000000d3', '5c0f1a00-0001-4000-8000-000000000001',
+   interval '1 day', interval '1 day', 'Haarlem', 'NL', 'Europe/Amsterdam'),
+  ('5c0f1a00-0400-4000-8000-0000000000d3'::uuid, '5c0f1a00-0001-4000-8000-000000000001'::uuid,
    '5c0f1a00-0100-4000-8000-0000000000a1', null,
    'Club run. Back row, as always.',
    'postcards/5c0f1a00-0001-4000-8000-000000000001/5c0f1a00-3003-4000-8000-000000000003.jpg',
-   now() - interval '2 days', 120, 'Zaandam', 'place', 'NL',
-   now() - interval '2 days', now() - interval '2 days'),
-  ('5c0f1a00-0400-4000-8000-0000000000d4', '5c0f1a00-0003-4000-8000-000000000003', null, null,
+   interval '2 days', interval '2 days', 'Zaandam', 'NL', 'Europe/Amsterdam'),
+  ('5c0f1a00-0400-4000-8000-0000000000d4'::uuid, '5c0f1a00-0003-4000-8000-000000000003'::uuid,
+   null, null,
    'Rain stopped the minute we set off. It does that here.',
    'postcards/5c0f1a00-0003-4000-8000-000000000003/5c0f1a00-3004-4000-8000-000000000004.jpg',
-   now() - interval '3 days', 120, 'Utrecht', 'place', 'NL',
-   now() - interval '3 days', now() - interval '3 days'),
-  ('5c0f1a00-0400-4000-8000-0000000000d5', '5c0f1a00-0001-4000-8000-000000000001',
+   interval '3 days', interval '3 days', 'Utrecht', 'NL', 'Europe/Amsterdam'),
+  ('5c0f1a00-0400-4000-8000-0000000000d5'::uuid, '5c0f1a00-0001-4000-8000-000000000001'::uuid,
    null, '5c0f1a00-0300-4000-8000-0000000000c4',
    'Veluwe, in the trees. Sand everywhere for a week afterwards.',
    'postcards/5c0f1a00-0001-4000-8000-000000000001/5c0f1a00-3005-4000-8000-000000000005.jpg',
-   now() - interval '6 days', 120, 'Apeldoorn', 'place', 'NL',
-   now() - interval '5 days', now() - interval '5 days'),
-  ('5c0f1a00-0400-4000-8000-0000000000d6', '5c0f1a00-0004-4000-8000-000000000004', null, null,
+   interval '6 days', interval '5 days', 'Apeldoorn', 'NL', 'Europe/Amsterdam'),
+  ('5c0f1a00-0400-4000-8000-0000000000d6'::uuid, '5c0f1a00-0004-4000-8000-000000000004'::uuid,
+   null, null,
    'Took the detour. Have never once regretted taking the detour.',
    'postcards/5c0f1a00-0004-4000-8000-000000000004/5c0f1a00-3006-4000-8000-000000000006.jpg',
-   now() - interval '7 days', 120, 'Durbuy', 'place', 'BE',
-   now() - interval '7 days', now() - interval '7 days'),
-  ('5c0f1a00-0400-4000-8000-0000000000d7', '5c0f1a00-0005-4000-8000-000000000005', null, null,
+   interval '7 days', interval '7 days', 'Durbuy', 'BE', 'Europe/Brussels'),
+  ('5c0f1a00-0400-4000-8000-0000000000d7'::uuid, '5c0f1a00-0005-4000-8000-000000000005'::uuid,
+   null, null,
    'First proper trip on the CB. It liked it more than I did.',
    'postcards/5c0f1a00-0005-4000-8000-000000000005/5c0f1a00-3007-4000-8000-000000000007.jpg',
-   now() - interval '9 days', 120, 'Rotterdam', 'place', 'NL',
-   now() - interval '9 days', now() - interval '9 days');
+   interval '9 days', interval '9 days', 'Rotterdam', 'NL', 'Europe/Amsterdam')
+) as v(id, author_id, club_id, ride_id, caption, image_path,
+       taken_ago, posted_ago, place, country, zone);
 
 insert into public.postcard_likes (postcard_id, user_id, created_at) values
   ('5c0f1a00-0400-4000-8000-0000000000d1', '5c0f1a00-0002-4000-8000-000000000002', now() - interval '1 hour'),
@@ -524,10 +552,17 @@ insert into public.postcard_comments (id, postcard_id, author_id, body, created_
 -- It hides what exists AT SEED TIME. A postcard posted by a later walk run is
 -- not hidden, which is the honest behaviour: re-run this file before a
 -- screenshot session and the deck is clean again.
+--
+-- **Scoped to the app-wide deck** (`club_id is null`), which is the list that
+-- carries the residue. Without that predicate it also mutes club postcards the
+-- screenshot rider cannot currently see — measured on DEV, 11 rows written
+-- where 6 were app-wide — and those five would come back to bite the day
+-- somebody joins one of those clubs to photograph a club feed.
 insert into public.postcard_hides (postcard_id, user_id, created_at)
 select p.id, '5c0f1a00-0001-4000-8000-000000000001', now()
   from public.postcards p
- where p.author_id not in (
+ where p.club_id is null
+   and p.author_id not in (
          '5c0f1a00-0001-4000-8000-000000000001',
          '5c0f1a00-0002-4000-8000-000000000002',
          '5c0f1a00-0003-4000-8000-000000000003',

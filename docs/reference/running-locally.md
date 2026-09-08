@@ -66,6 +66,18 @@ seed. (It is blocked today regardless: `pedro88email@gmail.com` is a real DEV ac
 committed and the recipe above makes a stored one unnecessary. Make a fresh account rather than
 hunting for this one's password.
 
+### Replacing a fixture
+
+Moved out of `docs/HANDOFF.md` — it is a procedure rather than a position, and that file is loaded
+by every session under a byte budget.
+
+Sign up through `/auth/v1/signup` (DEV autoconfirms), `accept_terms()`, then
+`PATCH /profiles?id=eq.<uid>&select=id` with a username, then
+`complete_onboarding({p_location: null})`. Setting a password for an owner-held account is one
+`update auth.users set encrypted_password = extensions.crypt('<generated>', extensions.gen_salt('bf'))`
+— derivable in ten seconds, never stored. If you walk the wizard with the un-onboarded fixture,
+put it back afterwards.
+
 ### The screenshot seed — a photographable DEV, additively
 
 `supabase/seeds/screenshot-account.sql` plus `scripts/dev/seed-screenshot-media.mjs` build one

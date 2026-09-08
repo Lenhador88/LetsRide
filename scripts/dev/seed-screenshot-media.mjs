@@ -341,6 +341,13 @@ const signIn = async (email) => {
 const results = { uploaded: 0, present: 0, failed: 0, tiles: 0, tilesSkipped: 0 }
 
 const upload = async (client, objectPath, index) => {
+  // **The bytes are in hand BEFORE the old object is removed**, and the order
+  // is the whole point: `bytesFor` reads a file under `--photos` or renders in
+  // a browser, and either can throw. Removing first would leave the object
+  // deleted, the row pointing at nothing and the run dead — the grey "could not
+  // be loaded" panel this script exists to prevent, produced by the script.
+  const body = await bytesFor(objectPath, index)
+
   // `--replace` is what makes `--photos` usable on a second run: the bucket has
   // no UPDATE policy, so an existing object is otherwise skipped for ever and
   // the new photographs go nowhere. Every prefix carries an own-folder DELETE
@@ -350,7 +357,6 @@ const upload = async (client, objectPath, index) => {
     const { error } = await client.storage.from(BUCKET).remove([objectPath])
     if (error) console.error(`  (could not remove ${objectPath}: ${error.message})`)
   }
-  const body = await bytesFor(objectPath, index)
   const { error } = await client.storage
     .from(BUCKET)
     .upload(objectPath, new Blob([body], { type: 'image/jpeg' }), {
