@@ -57,16 +57,17 @@ history.
 
 ## In flight
 
-- **`Queued (AI)` is empty**, so the next firing has nothing to take and ends `idle`.
-- **`Development (AI)`:** PD-421 (the log digest's HTTP call has never succeeded), carrying no slot
-  label — so it occupies no slot, which is deliberate rather than a gap.
-- **PD-431 is parked in `Needs help` and needs TWO answers**, neither of which any session can
-  give. Its **registration half is built** (child B of
-  `openspec/changes/deliver-push-notifications`, merged as #438); the sender is child C, blocked on
-  the APNs `.p8` and the FCM service account (task 0.4). Separately, **PD-431 duplicates PD-302,
-  PD-303 and PD-124**, `Todo AI` sub-issues of the PD-291 epic that already owns the written
-  proposal — the three-option table on PD-431 is the owner's call, and until it is made a firing
-  reading `Queued (AI)` cannot tell which row it would be building.
+- **`Queued (AI)` and `Needs help` are both empty**, so the next firing has nothing to take and
+  ends `idle`.
+- **`Development (AI)`:** PD-302 in `slot-2`, and PD-421 (the log digest's HTTP call has never
+  succeeded) carrying no slot label — so it occupies no slot, which is deliberate rather than a
+  gap. `slot-1` is free.
+- **PD-431 is `Duplicate`; its three-option table was answered by queueing PD-302.** Child B of
+  `openspec/changes/deliver-push-notifications` is now complete **in the repository** — #438 built
+  the TypeScript half, #446 the iOS project half — and **unverified on a device**: tasks 2.15–2.19a
+  wait on a provisioning profile carrying the Push capability, which is an owner action. **Child C
+  (PD-303) is the sender**, blocked on the APNs `.p8` and the FCM service account (task 0.4).
+  PD-291 stays open until C lands.
 - **Two stories are open on purpose.** **PD-385**: 9 DEV rides carry a coordinate and no tile,
   repairable only by each ride's own organizer. **PD-428**: `114` is written and applied to DEV, so
   what it still owes is a way to change the country after onboarding — a decision rather than a
@@ -93,10 +94,6 @@ Everything else in those columns is store readiness, email, or a product decisio
 body carries its own steps.
 
 ## Next action
-
-**Decide who owns the rest of push (the table on PD-431), then archive the OpenSpec changes whose
-code is in production.** The first is one screen and it blocks the queue from picking the work up
-cleanly; the second is the standing backlog below.
 
 **Archive the OpenSpec changes whose code is in production.** 45 are open against 7 archived, so
 `openspec/specs/` no longer describes the app and the next proposal is written against specs that

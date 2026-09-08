@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The Push Notifications capability, task 2.14 of `deliver-push-notifications`.
+  Without this entitlement iOS refuses `registerForRemoteNotifications()`
+  outright, so every function in `src/lib/push/registration.ts` resolves and no
+  token ever arrives.
+
+  `$(APS_ENVIRONMENT)` is a build setting, defined per configuration in
+  `project.pbxproj` — `development` for Debug, `production` for Release. Xcode
+  expands build variables in an entitlements file at the `ProcessProductPackaging`
+  step, the same mechanism `$(AppIdentifierPrefix)` uses. A hardcoded value would
+  match automatic signing in one configuration and fail to sign in the other;
+  hardcoding `development` in particular ships a TestFlight build that registers
+  against the sandbox and receives nothing from production APNs.
+
+  `docs/reference/native-shell.md` §Push registration is provisioned in the
+  project has the rest, including why no `remote-notification` background mode
+  is declared here.
+-->
+<plist version="1.0">
+<dict>
+	<key>aps-environment</key>
+	<string>$(APS_ENVIRONMENT)</string>
+</dict>
+</plist>

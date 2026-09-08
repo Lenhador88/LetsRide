@@ -182,9 +182,37 @@ rest is not, and every box that is not carries `[device]`.**
   (`078` §2). A key in `keys.ts` that nothing passes to `useQuery` is a contract entry
   describing a read that does not exist, so it was removed again. Add it back when child C
   gives the screen something server-side to read.
-- [ ] 2.14 Permission strings and native project config — **[device]**, on a Mac.
+- [ ] 2.14 Permission strings and native project config. **This box said `[device]`, on a Mac, and
+  that was wrong for the whole iOS half** — the entitlement, the build settings and the delegate
+  forwarding are text in this repository, and `cap add ios` had already committed `ios/`.
   `NSUserNotificationsUsageDescription` is not a thing; what Apple reads is the in-app rationale
-  in 2.7 plus the App Store privacy answers. Android needs the `POST_NOTIFICATIONS` declaration.
+  in 2.8 plus the App Store privacy answers.
+  - [x] `ios/App/App/App.entitlements` — `aps-environment`, as `$(APS_ENVIRONMENT)`. Without it
+    iOS refuses `registerForRemoteNotifications()` outright, so 2.6's whole doorway is inert.
+    **A literal value is the defect**: automatic signing picks a development profile for Debug and
+    a distribution one for Release, so `development` refuses the archive and `production` refuses
+    the device build. `APS_ENVIRONMENT` is set per configuration in `project.pbxproj`.
+  - [x] `CODE_SIGN_ENTITLEMENTS = App/App.entitlements` on **both** target configurations, plus
+    `SystemCapabilities` → `com.apple.Push` so Xcode's Signing & Capabilities tab agrees with the
+    file rather than offering to add the capability again.
+  - [x] `AppDelegate.swift` posts `.capacitorDidRegisterForRemoteNotifications` and
+    `.capacitorDidFailToRegisterForRemoteNotifications`. **iOS hands the token to the app delegate
+    and the plugin listens on `NotificationCenter`** (`PushNotificationsPlugin.load()`, 8.1.2), so
+    with no post here `register()` resolves and 2.6's `registration` listener waits for ever —
+    2.3's `stalled` state, shipped as the only reachable outcome.
+  - [x] **No `UIBackgroundModes` / `remote-notification`, deliberately.** It buys nothing for the
+    alert notifications group 3 sends, and it is a store-review question about background
+    behaviour the app does not have. Recorded because an absent declaration is otherwise
+    indistinguishable from a forgotten one. Group 3 adds it *only* if it introduces a silent push.
+  - [x] `src/lib/push/__tests__/native-project.test.ts` — the tripwire under all three. **The one
+    part of child B a gate can see**, and it exists because each of the three reverts silently
+    (an `npx cap sync`, an Xcode capability toggle, a template regeneration) and all three fail
+    identically on a device, where the diagnosis costs a provisioning profile and a trip to a Mac.
+    Verified both ways, and the comment strip is load-bearing rather than ceremonial: the delegate's
+    own doc comment names both constants, so an unstripped check passes on a file whose methods
+    have been deleted.
+  - [ ] Android's `POST_NOTIFICATIONS` declaration — **nothing to declare it in.** `android/` does
+    not exist and is paused (PD-442). It lands with `cap add android`, not before.
 - [ ] 2.15 **[device]** Grant on a real iOS device, confirm a token arrives, confirm the row lands.
 - [ ] 2.16 **[device]** Decline on a real iOS device, confirm `blocked` mode and that the row keeps
   drawing.
@@ -200,7 +228,14 @@ rest is not, and every box that is not carries `[device]`.**
 - [ ] 2.20 `npm run walk` — **the walk cannot reach any of this**, and the tasks list says so
   rather than adding a phase. Adding a phase means adding a reason, and there is no browser path
   to a push registration.
-- [ ] 2.21 PR, `reviewer`, merge, `Deployed to DEV`. **Does not close PD-291**; says so.
+- [ ] 2.21 PR, `reviewer`, merge, `Deployed to DEV`. **Does not close PD-291**; says so. Two PRs
+  rather than one: [#438](https://github.com/Lenhador88/LetsRide/pull/438) for 2.1–2.12, merged,
+  and [#446](https://github.com/Lenhador88/LetsRide/pull/446) for 2.14, **open at the moment this
+  line was written**. It stays unticked for that reason and not because anything is owed: a box
+  ticked inside the commit that opens its own PR asserts a merge that has not happened, which is
+  the direction of error this repository cares about. **Child B is complete in the repository once
+  #446 lands, and unverified on a device either way** — 2.15–2.19a are the only thing between here
+  and a proven token.
 
 ---
 
