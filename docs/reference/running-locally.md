@@ -134,7 +134,7 @@ Neither number in the old argument was right, which is why the argument could no
 
 | Account | Screens | Checks | Command |
 |---|---|---|---|
-| **Minted** (no `WALK_EMAIL`) — CI's path | **24** | **81** | `npm run walk` |
+| **Minted** (no `WALK_EMAIL`) — CI's path | **26** | **75** | `npm run walk` |
 | **Named** (`walk-fixture@letsride.dev`) | **26** | **78** | `WALK_EMAIL=… WALK_PASSWORD=… npm run walk` |
 
 Both green, exit 0, on `development` at `cdeefe5` plus PD-411's introduction cleanup in
@@ -149,7 +149,16 @@ that session created one, so that route had never been walked at all and its ski
 honest. With one present the run walks **25** screens.
 
 **The minted row WAS re-measured on 2026-09-08 (PD-447)** — `24/24` screens, `81/81` checks, exit
-0, 417s, against `development` at `dadceb2` plus that branch. The table above carries it. Two
+0, 417s, against `development` at `dadceb2` plus that branch. **It is recorded here rather than in
+the table, and that is the section's convention rather than a hedge**: the table is the 2026-09-06
+pair, every passage below is arithmetic anchored to it — the `+3` named-vs-minted difference, the
+`77 against a printed 75` ok-line trap, `both runs walk the same 26 screens` — and rewriting one
+cell in place leaves four derived claims quietly false. Supersessions go in prose, under their
+date.
+
+**So the two accounts now measure the same pair**, `24`/`81`, which the paragraph above predicted
+for the named one and this run confirms for the minted one — the `+3` difference closed because
+PD-411's check landed on both and PD-426 took two routes off both. Two
 things about that run are worth knowing before the next one is compared against it: the geocoder
 answered nothing for `Amsterdam`, so the minted rider took the town step's country-only escape and
 finished **with no town** — which is the state the Explore question's `ask` row draws for, and a
