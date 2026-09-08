@@ -156,9 +156,13 @@ pair, every passage below is arithmetic anchored to it — the `+3` named-vs-min
 cell in place leaves four derived claims quietly false. Supersessions go in prose, under their
 date.
 
-**So the two accounts now measure the same pair**, `24`/`81`, which the paragraph above predicted
-for the named one and this run confirms for the minted one — the `+3` difference closed because
-PD-411's check landed on both and PD-426 took two routes off both. Two
+**The two accounts now print the same pair**, `24`/`81` — and **why they converged is not
+measured, so do not explain it from this file.** The named 24/81 above is 2026-09-07 with
+`WALK_FIXTURES=1`; this is 2026-09-08 with nothing provisioned, and the `+3` phase the named run
+wins on (`checkEditRetention`) still printed *"no ride or club this rider owns"* here — so
+something else added three checks the minted run gets, on a tree a day newer. Which is exactly why
+the pair below is not a delta to be reconciled: run both on one tree before claiming they are
+equal. Two
 things about that run are worth knowing before the next one is compared against it: the geocoder
 answered nothing for `Amsterdam`, so the minted rider took the town step's country-only escape and
 finished **with no town** — which is the state the Explore question's `ask` row draws for, and a
