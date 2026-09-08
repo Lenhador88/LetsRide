@@ -55,8 +55,8 @@ import type { OnboardingState } from '@/types'
  * sign-out, token refresh and user change all arrive there, so no caller has to
  * remember to keep it in step. The **stamps** have three more, and they are
  * writes rather than events, so nothing could deliver them here: `signUp`,
- * `setUsername`, `setHomeCountry` and `acceptTerms` each change a field the
- * decision reads and each calls `invalidateOnboardingState`. **`setHomeCountry`
+ * `setUsername`, `setHomeTown` and `acceptTerms` each change a field the
+ * decision reads and each calls `invalidateOnboardingState`. **`setHomeTown`
  * is the terminal one since PD-428 added the home-country step** — it commits
  * the completion stamp, so its invalidation is the one that fires last in the
  * wizard. `setUsername` keeps its own and still needs it: it writes
@@ -709,8 +709,8 @@ export function attachGuardAuthListener(): void {
 
 /**
  * Drop the stamps, keeping the session. For the three onboarding writes —
- * `acceptTerms`, `setUsername` and `setHomeCountry` — each of which changes a
- * field the decision reads. **`setHomeCountry` carries the terminal call since
+ * `acceptTerms`, `setUsername` and `setHomeTown` — each of which changes a
+ * field the decision reads. **`setHomeTown` carries the terminal call since
  * PD-428 re-added a second wizard step**: it writes the country and then
  * commits the completion stamp, so this fires once after both of its writes
  * rather than between them. `setUsername` calls it too, for `has_username`,

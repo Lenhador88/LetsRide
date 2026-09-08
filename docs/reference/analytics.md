@@ -83,6 +83,25 @@ is visible here and the cause is not. `onboarding_step` answers it, and it is
 why the insert-only attempt ledger this file proposes above is **not** being
 built.
 
+**`onboarding_step`'s `step` is `terms | username | town`, and the terminal one
+is `town`** — PD-428 made it `country`, PD-445 replaced that control with a town
+picker. **That rename was free exactly once and will not be again**: `'country'`
+shipped hours before `'town'` replaced it, to a population with no funnel history
+behind it (measured 2026-09-08: 5 PROD riders, none carrying a country). Once a
+step key has real history, the key is a *position in a funnel* rather than a
+description of a screen — renaming it silently ends one series and starts
+another, and the two read as a cliff in conversion that nothing in the product
+explains. Rename the screen, keep the key, put the description in a comment.
+
+**`reason: 'no_town'` rides on `status: 'completed'`, not on a rejection.**
+It marks the escape the town step opens when the geocoder is unavailable: the
+rider finished, carrying a country and no town. **`no_town`, not `no_country`** —
+completing without a *country* is impossible, since `114` refuses the stamp, so
+that name would record the opposite of what happened. It is the only way to ask *how
+often is onboarding completing without a town, and is the lookup the cause* —
+which matters because `search-places`'s ceiling is application-wide rather than
+per rider, so the failure is correlated across riders instead of personal to one.
+
 Five events exist and no more: `ride_created`, `ride_joined`, `club_joined`,
 `postcard_posted` and `onboarding_step`. They live in
 `src/lib/analytics/events.ts` as a closed union, so a sixth is a deliberate act

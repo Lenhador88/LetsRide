@@ -114,7 +114,15 @@ export function readClubLocation(formData: FormData): ClubLocationInput {
   return { location_name: name, location_place_id: placeId, latitude, longitude }
 }
 
-export const clubSchema = z.object({
+/**
+ * The five fields both club schemas share, written once — PD-446.
+ *
+ * `clubSchema` and `clubCreateSchema` below differ in exactly one member, so
+ * this is an object literal rather than a copied field list: two schemas that
+ * drift by a `.max()` would refuse different values on the create and edit
+ * paths for the same column, and nothing would fail.
+ */
+const CLUB_FIELDS = {
   name: z
     .string()
     .trim()
@@ -154,16 +162,55 @@ export const clubSchema = z.object({
     .string()
     .regex(CLUB_COVER_PATH_RE, 'That image could not be attached.')
     .nullable(),
-  /**
-   * Optional, and that is a product decision rather than a gap — Create club is
-   * the app's shortest creation flow and a required field is a new wall in
-   * front of it. Every club that predates `066` carries null and keeps
-   * appearing on Explore: a club with no location is not a hidden club.
-   */
+} as const
+
+/**
+ * A club as the EDIT form posts it — the location stays optional here, and
+ * that is a decision rather than a gap.
+ *
+ * The reasoning this member used to carry was *"Create club is the app's
+ * shortest creation flow and a required field is a new wall in front of it"*,
+ * and PD-446 **answered** it rather than overruling it: the wall is what the
+ * create form's pre-filled search term removes, and the column itself is
+ * untouched. What stays true is everything about the rows already stored —
+ * every club that predates `066` carries null, keeps appearing on Explore, and
+ * must stay editable by its owner without being made to supply a location
+ * first. `clubCreateSchema` below is the only place the location is required.
+ *
+ * **Nothing in Postgres enforces this.** `066`'s `clubs_location_coupling`
+ * requires the four columns to move together or all stay null and says nothing
+ * about whether they may be null — so a reader must not narrow a type or drop a
+ * null branch on the strength of the create gate.
+ */
+export const clubSchema = z.object({
+  ...CLUB_FIELDS,
   location: clubLocationSchema,
 })
 
+/**
+ * A club as the CREATE form posts it — PD-446. One member differs.
+ *
+ * **The message is spelled here rather than left to Zod.** `clubLocationSchema`
+ * is `z.object({…}).nullable()`, so unwrapping it and parsing `null` answers
+ * *"Invalid input: expected object, received null"* — a sentence about
+ * JavaScript, shown to a rider who simply has not picked a place yet. The
+ * refinement keeps the inner object's own four messages for a malformed pick
+ * and adds one sentence for the absent one.
+ *
+ * The predicate narrows the inferred type, so `createClub` destructures a
+ * location it knows is there rather than re-checking a null the parse already
+ * refused.
+ */
+export const clubCreateSchema = z.object({
+  ...CLUB_FIELDS,
+  location: clubLocationSchema.refine(
+    (value): value is NonNullable<ClubLocationInput> => value !== null,
+    { message: 'Pick where your club is based.' }
+  ),
+})
+
 export type ClubInput = z.infer<typeof clubSchema>
+export type ClubCreateInput = z.infer<typeof clubCreateSchema>
 
 /**
  * A club id out of the URL, which is untrusted like any other query parameter.

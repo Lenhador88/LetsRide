@@ -160,10 +160,16 @@ let EMAIL = process.env.WALK_EMAIL ?? `walk-${MINT_SUFFIX}@letsride.dev`
 // minting rather than asking for a password to remember.
 let PASSWORD = process.env.WALK_PASSWORD ?? `Walk-mint-${MINT_SUFFIX}-Aa1`
 const MINT_USERNAME = `walk_${MINT_SUFFIX}`.slice(0, 25)
-// The country the minted rider picks at onboarding (PD-428). Its EXACT name,
-// because the picker is filtered by substring and matched exactly — see
-// `finishOnboarding`, where clicking the first filtered row silently chose
-// `Caribbean Netherlands` instead.
+// The town the minted rider picks at onboarding (PD-445). A search TERM handed
+// to a live geocoder rather than a name this repo can assert against — the walk
+// takes whatever the vendor's first row is, because pinning the option text
+// would pin the walk to one vendor's phrasing.
+const MINT_TOWN = 'Amsterdam'
+// The country, used only on the step's fallback control — a pick that carried
+// no country, or a lookup that could not answer (PD-445; the whole of the step
+// under PD-428). Its EXACT name, because the picker is filtered by substring
+// and matched exactly — see `pickCountry`, where clicking the first filtered
+// row silently chose `Caribbean Netherlands` instead.
 const MINT_COUNTRY = 'Netherlands'
 
 /**
@@ -591,22 +597,20 @@ async function runRefusedSignup() {
  */
 
 /**
- * Walk the minted rider through the whole wizard: username, then home country.
+ * Walk the minted rider through the whole wizard: username, then their town.
  *
- * **Two screens since PD-428**, and both callers need both of them. The
- * country step is the one that stamps `onboarding_completed_at` now, so a run
- * that stops after the username has a rider the route guard refuses every app
- * route to — which would fail every later phase AND strand the account, since
+ * **Two screens since PD-428**, and both callers need both of them. The second
+ * step is the one that stamps `onboarding_completed_at`, so a run that stops
+ * after the username has a rider the route guard refuses every app route to —
+ * which would fail every later phase AND strand the account, since
  * `attemptDeleteAccount` has to reach `/profile`.
  *
- * The country control is a combobox over a listbox rather than a native
- * `<select>` (`src/components/ui/CountrySelect.tsx`), so it cannot be driven
- * with `selectOption`: type to filter, then click the row whose name matches
- * EXACTLY. `Netherlands` is picked because DEV's fixtures are Dutch.
- *
- * **The full name is not unambiguous under the filter** — see the block at the
- * pick site for why, and for why this cannot go back to clicking the first
- * `[role="option"]`.
+ * **Since PD-445 that step asks for a TOWN, through a live geocoder**, which
+ * makes this the highest-risk function in this file: it is the only place where
+ * minting a rider depends on a third party answering. It fails loudly rather
+ * than subtly — no rider is minted and every later phase says so — and it has
+ * the step's own country-only escape behind it, so a geocoder outage does not
+ * turn the whole walk red.
  */
 async function finishOnboarding(page) {
   await page.fill('input[name="username"]', MINT_USERNAME)
@@ -618,32 +622,81 @@ async function finishOnboarding(page) {
   ])
   await page.waitForTimeout(1000)
 
-  if (new URL(page.url()).pathname !== '/onboarding/country') {
+  if (new URL(page.url()).pathname !== '/onboarding/town') {
     // Not fatal here — the caller checks where it ended up and owns the
     // cleanup. Saying it is what turns "every later phase failed" into one
     // legible line naming the step that did not open.
-    console.error(
-      `  ! expected /onboarding/country after the username step, got ${page.url()}`
-    )
+    console.error(`  ! expected /onboarding/town after the username step, got ${page.url()}`)
     return
   }
 
-  await page.fill('input[role="combobox"]', MINT_COUNTRY)
+  // **The step is a live geocoder lookup now, not a local list — PD-445.** So
+  // this is the one place in the walk where minting a rider depends on a third
+  // party answering, and it spends a credit against `search-places`'s
+  // APPLICATION-WIDE ceiling (`APP_DAILY_SEARCH`, 2000 per 24h across every
+  // rider) rather than a per-rider one. One lookup per mint: `page.fill` is a
+  // single input event and so a single debounce cycle, where typing the term
+  // would be one search per keystroke.
+  const townPicked = await pickPlace('input[role="combobox"]', MINT_TOWN)
+
+  if (!townPicked) {
+    // **The escape the step itself opens, walked deliberately rather than as a
+    // fallback of convenience.** When the lookup is unavailable the step
+    // reveals `CountrySelect` on its own, so a rider can still finish — and
+    // exercising that here is what stops a geocoder outage from turning every
+    // walk run red for a reason that has nothing to do with the change under
+    // test. It also means the walk covers the escape at least as often as it
+    // is actually used.
+    console.error('  ! town lookup did not answer — taking the step’s own country-only escape')
+    const escaped = await pickCountry()
+    if (!escaped) return
+  }
+
+  await Promise.all([
+    page.waitForURL((u) => u.pathname !== '/onboarding/town', { timeout: 20_000 }).catch(() => {}),
+    page.click('button[type="submit"]'),
+  ])
+  await page.waitForTimeout(1000)
+}
+
+/**
+ * The country select — the town step's fallback control, and the whole of the
+ * wizard before PD-445.
+ *
+ * **The EXACT row, never the first one.** `filterCountryOptions` matches on
+ * name substring and the list is sorted by `localeCompare`, so filtering for
+ * `Netherlands` returns TWO rows and `Caribbean Netherlands` (`BQ`) sorts ahead
+ * of `Netherlands` (`NL`). Clicking `[role="option"]` took `BQ`, and **the walk
+ * went green doing it** — `BQ` is an assigned code, so the CHECK passes and
+ * `complete_onboarding` stamps. Nothing here would ever have said so; it breaks
+ * later, wherever something expects the minted rider to be Dutch. Found in
+ * review rather than by running this.
+ *
+ * The flag span is `aria-hidden`, so the name is the second span's text. `$$`
+ * takes a snapshot and does NOT wait, where a bare `click` auto-waits for 10s.
+ * Without the explicit wait the failure prints "no country option named exactly
+ * …", which misdiagnoses a timing problem as a naming one.
+ */
+async function pickCountry() {
+  // The select is not on screen until the step decides it is needed, so this
+  // waits for it rather than assuming the previous step revealed it.
+  try {
+    await page.waitForSelector('[role="combobox"][aria-controls]', { timeout: 10_000 })
+  } catch {
+    console.error('  ! the country select never appeared — onboarding cannot finish')
+    return false
+  }
+  const boxes = await page.$$('input[role="combobox"]')
+  // The country select is the LAST combobox on the step: the town field is
+  // rendered above it and stays mounted.
+  const box = boxes[boxes.length - 1]
+  if (!box) {
+    console.error('  ! no country combobox on the town step — onboarding cannot finish')
+    return false
+  }
+  await box.fill(MINT_COUNTRY)
   await page.waitForTimeout(300)
 
-  // **The EXACT row, never the first one.** `filterCountryOptions` matches on
-  // name substring and the list is sorted by `localeCompare`, so filtering for
-  // `Netherlands` returns TWO rows and `Caribbean Netherlands` (`BQ`) sorts
-  // ahead of `Netherlands` (`NL`). Clicking `[role="option"]` took `BQ`, and
-  // **the walk went green doing it** — `BQ` is an assigned code, so the CHECK
-  // passes and `complete_onboarding` stamps. Nothing here would ever have said
-  // so; it breaks later, wherever something expects the minted rider to be
-  // Dutch. Found in review rather than by running this.
-  //
-  // The flag span is `aria-hidden`, so the name is the second span's text.
-  // `$$` takes a snapshot and does NOT wait, where the `click` this replaced
-  // auto-waited for 10s. Without this the failure prints "no country option
-  // named exactly …", which misdiagnoses a timing problem as a naming one.
   await page.waitForSelector('[role="option"]', { timeout: 10_000 })
   const rows = await page.$$('[role="option"]')
   let picked = null
@@ -658,16 +711,10 @@ async function finishOnboarding(page) {
   }
   if (!picked) {
     console.error(`  ! no country option named exactly "${MINT_COUNTRY}" — onboarding cannot finish`)
-    return
+    return false
   }
   await picked.click()
-  await Promise.all([
-    page
-      .waitForURL((u) => u.pathname !== '/onboarding/country', { timeout: 20_000 })
-      .catch(() => {}),
-    page.click('button[type="submit"]'),
-  ])
-  await page.waitForTimeout(1000)
+  return true
 }
 async function attemptDeleteAccount(password) {
   try {
@@ -851,7 +898,7 @@ async function mintWalkAccount() {
   await finishOnboarding(page)
 
   if (new URL(page.url()).pathname !== '/postcards') {
-    // `setHomeCountry` commits `home_country` and `onboarding_completed_at` in
+    // `setHomeTown` commits `home_country` and `onboarding_completed_at` in
     // the same submit (see its own header), so a run that reached this point is
     // fully onboarded regardless of where the browser actually landed —
     // `/profile` is reachable and `attemptDeleteAccount` is exactly what
@@ -1383,18 +1430,65 @@ function fixturesPermitted(ref) {
  * attached to the club they have. Passing it in is what keeps the fixture
  * ride clubbed on a second run.
  */
+/**
+ * Type a term into a `PlaceSearchField` and pick the first suggestion.
+ *
+ * **A pick, not a fill, and that is forced rather than tidy.** In place mode the
+ * visible input is nameless and carries a *search term*: the four hidden inputs
+ * the form actually submits are written from the PICK alone, and `onBlur` drops
+ * an unpicked draft. So filling the box and submitting posts an empty location —
+ * which since PD-446 `clubCreateSchema` refuses, leaving `provision` with a null
+ * club and every later phase failing far from the cause.
+ *
+ * **This spends a vendor credit against an app-wide ceiling** —
+ * `search-places` allows `APP_DAILY_SEARCH` per 24h across every rider, not per
+ * rider — so it is one lookup per fixture and never one per keystroke.
+ * `page.fill` sets the value in one input event, which is exactly one debounce
+ * cycle; typing the term character by character would be N searches for the
+ * same answer.
+ *
+ * Returns false rather than throwing, so a caller can say which fixture could
+ * not be built instead of failing the run with a Playwright stack.
+ */
+async function pickPlace(selector, term) {
+  await page.fill(selector, term)
+  try {
+    // The debounce is 400ms and the round trip is a live geocoder, so this
+    // waits on the RESULTS rather than on a timeout — a fixed sleep is the
+    // version that goes red on a slow morning and green on a fast one.
+    await page.waitForSelector('[role="option"]', { timeout: 15_000 })
+  } catch {
+    console.error(`  ! no place suggestions for "${term}" — the geocoder did not answer`)
+    return false
+  }
+  // The first row, unlike the country picker's exact-name match: the options
+  // here are vendor-returned, so there is no name this script can assert
+  // against without pinning the walk to one geocoder's phrasing.
+  await page.click('[role="option"]')
+  return true
+}
+
 async function provision(wanted, existing = {}) {
   const created = { ride: null, club: null }
 
   if (wanted.club) {
     await page.goto(`${BASE}/clubs/new`, { waitUntil: 'networkidle' })
     await page.fill('input[name="name"]', 'Walk fixture club')
+    // Required since PD-446. `/clubs/new` has one combobox — the place field;
+    // the club form has no other. Without a pick the submit is refused and
+    // `created.club` is null, which surfaces as the ride losing its club and
+    // `checkJoinClub` finding nothing.
+    const placed = await pickPlace('input[role="combobox"]', 'Amsterdam')
+    if (!placed) console.error('  ! the fixture club cannot be created without a location')
     await Promise.all([
       page.waitForURL((u) => !u.pathname.endsWith('/new'), { timeout: 30_000 }).catch(() => {}),
       page.click('button[type="submit"]'),
     ])
     await page.waitForTimeout(1200)
     created.club = new URL(page.url()).searchParams.get('id')
+    if (!created.club) {
+      console.error('  ! fixture club was not created — later club phases will find nothing')
+    }
   }
 
   if (wanted.ride) {
@@ -1805,6 +1899,11 @@ const GUARD_CASES_SIGNED_IN = [
   // PD-428 has `home_country` NULL for ever and must never be sent back here.
   // That is the whole of the "existing riders are never re-prompted" decision,
   // measured against a live session rather than asserted.
+  ['/onboarding/town', '/postcards'],
+  // The route PD-445 renamed. Still worth a row: it was live hours before the
+  // rename and `setUsername` redirected to it, so a tab open across the deploy
+  // asks for it. The guard's `isOnboarding` catch-all is what answers, and this
+  // is the walk's half of `guard.test.ts`'s assertion.
   ['/onboarding/country', '/postcards'],
   // PD-286 (`075`) deleted this route. For a fully onboarded rider it is just
   // another path under `/onboarding`, so `resolveDestination`'s existing

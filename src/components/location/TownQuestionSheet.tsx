@@ -92,7 +92,11 @@ export function TownQuestionSheet({
     if (!place) return
     setError(null)
     startTransition(async () => {
-      const result = await setRiderTown(place.name)
+      // The country travels with the town since PD-445 — the pick already
+      // carries it, and changing your town changes your country. `countryCode`
+      // is optional on `PlaceValue`, and an absent one writes no country rather
+      // than clearing the stored one.
+      const result = await setRiderTown(place.name, place.countryCode)
       if (result.error) {
         setError(result.error)
         return
