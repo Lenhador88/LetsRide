@@ -321,17 +321,21 @@ export function mergeRideTimeline(
    * this one** — the two expressions are byte-identical, which is the state to
    * keep them in.
    *
-   * **The path that made the club's version reachable is CLOSED since `116`
-   * (PD-439), and that is not a reason to weaken either back.** The bug needed a
-   * source returning FEWER rows than its window, so the display cap would not
-   * cut before the horizon could lie, and the collapsing reply source was the
-   * only one on either timeline. `116` took that source's horizon out of both
-   * horizon lists, because a source that draws no row cannot claim where the
-   * stream's picture stops. What remains is *no known reachable case today* — a
-   * fact about this moment's sources, not a property of the expression, and one
-   * a fifth source or a lowered bound reopens in silence. The stronger form asks
-   * "does any source's picture stop" rather than "did the filter drop
-   * anything", costs one comparison, and cannot be wrong in that direction.
+   * **`116` (PD-439) MOVED the source that makes it reachable on the club; it
+   * did not remove it.** The bug needs a source contributing FEWER entries than
+   * its read returned, so the display cap does not cut before the horizon can
+   * lie. The collapsing reply source was that source on both timelines, and
+   * `116` took its horizon out of both horizon lists — a source that draws no
+   * row cannot claim where the stream's picture stops. On the club the property
+   * passed straight to the threads source, which `newestPerThreadRow` now
+   * collapses while its horizon stays in the list.
+   *
+   * **On a RIDE there is no such source, and that is a fact about paging rather
+   * than about this expression.** A ride reads every source whole from one read
+   * and never accumulates windows, so nothing here collapses and no horizon can
+   * outlive the cap. That is exactly the kind of thing a later change alters
+   * without noticing, which is why this stays the stronger form: it costs one
+   * comparison and cannot be wrong in that direction.
    */
   const complete = horizon === null && shown.length === ordered.length
 
@@ -563,6 +567,15 @@ const TIMELINE_THREAD_SELECT = `
  * that dimension — the horizon it declares means *"we looked back to threads
  * last active at X"*. `last_activity_at` defaults to the thread's own creation,
  * so an unanswered thread comes back exactly where it did before.
+ *
+ * **One accepted cost travels with this ordering, and this is a read that pays
+ * it** (PD-439). `last_activity_at` is a stored, global stamp and blocking is
+ * per-viewer, so a message from a rider you blocked bumps its thread here.
+ * ORDERING only — `private.is_blocked` still removes the message, so the reply
+ * source returns nothing for it and neither the lead nor the count mentions it —
+ * but in a small club or crew that is attributable, and blocks are symmetric.
+ * `src/lib/data/ride-threads.ts`'s `getRideThreads` header carries the full
+ * argument and why the obvious mitigation is worse.
  */
 export async function getRideThreadCreations(
   rideId: string,

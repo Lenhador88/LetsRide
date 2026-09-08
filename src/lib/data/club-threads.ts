@@ -132,6 +132,15 @@ const THREAD_SELECT = `
  * not a total order, so a bound slicing through two threads sharing one instant
  * would skip or repeat rows at that boundary.
  *
+ * **One accepted cost travels with this ordering, and this is a read that pays
+ * it** (PD-439). `last_activity_at` is a stored, global stamp and blocking is
+ * per-viewer, so a message from a rider you blocked bumps its thread here.
+ * ORDERING only — `private.is_blocked` still removes the message, so the reply
+ * source returns nothing for it and neither the lead nor the count mentions
+ * it — but in a small club that is attributable, and blocks are symmetric.
+ * `src/lib/data/ride-threads.ts`'s `getRideThreads` header carries the full
+ * argument and why the obvious mitigation is worse.
+ *
  * ## Announcements are not listed here — PD-372
  *
  * `.is(ANNOUNCEMENT_MARKER, null)` keeps a club introduction off this list and

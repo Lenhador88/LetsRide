@@ -136,4 +136,13 @@ deploy-first, and no destructive step exists.
 ## 8. Archive
 
 - [x] 8.1 `/opsx:archive` this change at the wrap-up of the session that ships it, or say in the PR
-      body why it stays open.
+      body why it stays open. **The second branch: it stays open, and PR #444's body carries the
+      reason under §Why the OpenSpec change stays open.** Two measured reasons — the OpenSpec CLI
+      is not installed in this container (`npm run openspec -- list --json` answers
+      `sh: 1: openspec: not found`), and there is no `club-timeline` or `ride-threads` spec under
+      `openspec/specs/` at all, so syncing only this change's deltas would create two spec
+      directories holding its rules and none of the base rules they modify. This change's
+      `ride-threads` delta MODIFIES `retire-ride-chat-for-ride-threads`' §*A thread SHALL appear on
+      the ride's timeline*, which currently mandates the two-row shape this PR removes — so the two
+      archive in order or not at all. It belongs in the standing backlog `docs/HANDOFF.md`
+      §Next action already names.

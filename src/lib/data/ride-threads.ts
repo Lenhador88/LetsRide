@@ -91,11 +91,18 @@ const THREAD_SELECT = `
  *
  * **There is no cheap mitigation, and the obvious one is worse.** Positioning
  * the row on the newest VISIBLE reply puts it below the `last_activity_at`
- * horizon the read bounded on, so the thread drops out of the stream entirely
- * rather than merely sitting too high. Computing the position live per viewer
- * is the only version without the channel, and it is an aggregate over every
- * row of the list — which is why it was refused rather than built. Recorded on
- * PD-439.
+ * horizon that `getRideThreadCreations` — the read that actually feeds the
+ * timeline — bounded on, so the thread drops out of the stream entirely rather
+ * than merely sitting too high. Computing the position live per viewer is the
+ * only version without the channel, and it is an aggregate over every row of
+ * the list, which is why it was refused rather than built. Recorded on PD-439.
+ *
+ * **This file is not where that cost is PAID, and the note is repeated at the
+ * two reads that pay it** — `getRideThreadCreations` and `getClubThreads`.
+ * It is written here as well because this header is where the objection was
+ * first made and refused; a reader arriving at the refusal has to find out that
+ * it was overruled, and a reader arriving at the live read has to find out what
+ * it costs.
  *
  * A rider who can see the ride but is not on its crew reads `[]` here, which is
  * indistinguishable from a ride nobody has posted in — the screen tells those

@@ -556,7 +556,8 @@ describe('mergeRideTimeline — threads and replies', () => {
     // duplicate key is a React warning and an unstable row identity, and it is
     // the shape PD-439 fixes. A ride cannot reach it through paging — it reads
     // every source whole from one read — so this pins the merge's own keying
-    // across all four kinds plus the floor entry.
+    // across every kind it can emit: the three drawing ones and the floor,
+    // which IS the fourth (`ride-planned`) rather than an extra beside them.
     const timeline = mergeRideTimeline(
       sources({
         postcards: { rows: [postcard('p1', '2026-03-01T00:00:00.000Z')], horizon: null },
