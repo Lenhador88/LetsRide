@@ -277,15 +277,15 @@ function describe(event: ClubTimelineEvent): {
       }
 
     // Three kinds draw their own shape and never reach this row: a postcard is
-    // a `PostcardCard`, a ride is a `RideCard` under a label, and a thread —
-    // created or replied to — is a `ClubTimelineThreadRow`. `groupClubTimeline`
-    // routes all three away, so these arms are unreachable; they are typed
-    // rather than thrown so the exhaustiveness above stays a compile-time check
-    // and a sixth event kind is still an error here.
+    // a `PostcardCard`, a ride is a `RideCard` under a label, and a thread is a
+    // `ClubTimelineThreadRow`. `groupClubTimeline` routes all three away, so
+    // these arms are unreachable; they are typed rather than thrown so the
+    // exhaustiveness above stays a compile-time check and a fifth event kind is
+    // still an error here. (`reply` was a fifth until `116`, PD-439, merged it
+    // into `thread`.)
     case 'postcard':
     case 'ride':
     case 'thread':
-    case 'reply':
       return { sentence: '', href: null, avatar: null }
   }
 }

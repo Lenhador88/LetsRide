@@ -329,13 +329,14 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**115 files. DEV is at `115` and PROD at `112` — measured 2026-09-08, after `115` applied.** `113`
+**116 files. DEV is at `116` and PROD at `112` — measured 2026-09-08, after `116` applied.** `113`
 was applied to DEV migration-first, ahead of #428; the merge is what landed its file, so the
 row that read as file-less until then is an ordinary applied migration. DEV's row count reads
 **three** high — the three long-standing hand-applied rows — and **PROD's is exact**, which is the
 direction that matters: nothing is applied there without a file behind it. Neither is a gap.
 
-**The open promotion gap is `113`, `114` and `115` — in that order, and `113`/`114` NOT collapsed.**
+**The open promotion gap is `113`, `114`, `115` and `116` — in that order, and `113`/`114` NOT
+collapsed.**
 `114` is the narrowing half and must not reach PROD until the same bundle is serving there — see its
 entry below before promoting either. **`115` carries no such gate against the other two**: it
 creates one object nothing existing calls, so it neither depends on `113`/`114` nor is depended on
@@ -391,6 +392,45 @@ Function*), one finding, naming this function. It is **not** a 39th
 `rls_enabled_no_policy` is unchanged at 3. So the advisor set *can* see the app's only anonymous
 surface, which is what the change asked to find out. Gate triggers 22 → 22; the `service_role`
 census unchanged at 30 kept / 3 revoked; `anon` table grants and `anon` policies both still 0.
+
+**`116_a_thread_carries_its_newest_activity` (PD-439), applied to DEV 2026-09-08T12:53:06Z as
+`20260908125306`.** Adds
+`last_activity_at timestamptz not null default now()` to `club_threads` and `ride_threads`,
+backfills every row to `greatest(created_at, max(message.created_at))`, hangs an AFTER INSERT
+trigger on `club_messages` and `ride_thread_messages` stamping the parent with
+`greatest(last_activity_at, new.created_at)`, and adds the two
+`(parent_id, last_activity_at desc, id desc)` indexes both timelines now order and page on. The
+recorded statement's md5 EQUALS the file's — `2d9a9b4c037d954f5536417846a6c0a4` — so there is
+nothing to reconcile here.
+
+**The column is server-owned, and that is the security half rather than tidiness.** `authenticated`
+gets neither INSERT nor UPDATE on it, following `048`'s shape: a grantable `last_activity_at` is a
+"pin my own thread to the top of every timeline, for ever" primitive. **Both tables' INSERT lists
+are restated absolutely** rather than patched, so the file is self-contained.
+
+**Why the trigger function must be `security definer`, measured rather than assumed.** Both tables
+carry a table-level SELECT grant, a COLUMN-level INSERT grant, **no UPDATE grant and no UPDATE
+policy at all**. As invoker the stamp raises `42501` and takes the enclosing message INSERT down
+with it — every reply in the app, not a skipped bump. With a grant but no policy RLS would filter
+the UPDATE to zero rows *silently*, which is the worse of the two. Both functions live in
+`private`, so PostgREST does not publish them.
+
+**Advisors: zero delta, and that is the prediction the `private` schema buys.** 3 INFO
+`rls_enabled_no_policy`, 1 WARN `anon_security_definer_function_executable`, 38 WARN
+`authenticated_security_definer_function_executable`, 1 WARN `auth_leaked_password_protection` —
+identical before and after, and the 38 is the number that could have moved.
+
+**MIGRATION-FIRST.** The column is additive and the client READS it — both timelines order, bound
+and position on it — so a bundle serving ahead of the migration answers `42703` on every club and
+ride detail. Applied ahead of the bundle it is a column nothing reads. The PROD promotion carries
+the same order and needs no coordination with `113`/`114`.
+
+**A deleted message does not un-bump its thread**, decided rather than overlooked: recomputing on
+DELETE costs a scan per moderation action, and the activity did happen. **The announcement
+exclusion stays in the READ**, where PD-372 put it — the trigger stamps every thread uniformly, so
+an introduction's bumped column is simply never selected, and a trigger that special-cased
+`introduces_user_id` would put a presentation rule in the database and be wrong the day `097` NULLs
+the marker on a leave.
 
 **The guard is NOT beside the consent and username arms, and the plan that said it should be was
 wrong.** `openspec/…/require-a-home-country-at-onboarding/tasks.md` §5.3 justified that placement
@@ -1513,7 +1553,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 115 — DEV at 115, PROD at 112 (113, 114, 115 await promotion; 113 then 114 in that order)
+ls supabase/migrations/*.sql | wc -l     # 116 — DEV at 116, PROD at 112 (113, 114, 115, 116 await promotion; 113 then 114 in that order)
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```

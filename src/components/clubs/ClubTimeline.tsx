@@ -58,7 +58,13 @@ const rideAt = (ride: RideListItem) => ride.created_at
 const rideKey = (ride: RideListItem) => ride.id
 const postcardAt = (postcard: Postcard) => postcard.created_at
 const postcardKey = (postcard: Postcard) => postcard.id
-const threadAt = (thread: ClubThreadListItem) => thread.created_at
+// **`last_activity_at`, not `created_at` — `116`, PD-439.** This accessor is
+// the thread source's position in three places at once: the window's horizon,
+// the fold's interval test (`absorbClubTimelineWindow`) and the removal guard.
+// `getClubThreads` orders and bounds on that column, so an accessor reading the
+// other one would give the fold an interval the read never applied and quietly
+// drop or duplicate rows at every window boundary.
+const threadAt = (thread: ClubThreadListItem) => thread.last_activity_at
 const threadKey = (thread: ClubThreadListItem) => thread.id
 const joinAt = (member: ClubJoin) => member.joined_at
 const joinKey = (member: ClubJoin) => member.user_id
@@ -213,9 +219,12 @@ export function ClubTimeline({
     getClubRideAnnouncements(clubId)
   )
   const joins = useQuery(isMember ? queryKeys.clubs.joins(clubId) : null, () => getClubJoins(clubId))
-  // The club's live conversation — one entry per recently-active thread, at the
-  // instant of its newest message. See `getClubThreadReplies` for why this
-  // needs no migration and why the thread's own entry is not simply moved.
+  // The club's live conversation. **A decoration since `116` (PD-439)**: it
+  // drew an entry of its own until the product owner pointed out that the
+  // thread's row above it already said the same thing, and it now supplies each
+  // thread row's lead line, its reply count and its `partial` flag. Still a
+  // paged source — a deeper window turns floors into exact counts — and still
+  // gated below, because a thread row without its count is a different row.
   const replies = useQuery(isMember ? queryKeys.clubs.threadReplies(clubId) : null, () =>
     getClubThreadReplies(clubId)
   )
@@ -438,7 +447,7 @@ export function ClubTimeline({
           ? getClubFeedWindow(clubId, { before: accumulatedPostcards.horizon, limit: FEED_PAGE_SIZE })
           : Promise.resolve(null),
         pending.includes('threads') && accumulatedThreads.horizon
-          ? getClubThreads(clubId, undefined, CLUB_THREADS_PAGE_SIZE, accumulatedThreads.horizon).then(
+          ? getClubThreads(clubId, CLUB_THREADS_PAGE_SIZE, accumulatedThreads.horizon).then(
               (rows): ClubTimelineWindow<ClubThreadListItem> => ({
                 rows: rows ?? [],
                 horizon: boundedHorizon(rows ?? [], CLUB_THREADS_PAGE_SIZE, threadAt),
@@ -756,7 +765,12 @@ export function ClubTimeline({
 
           if (group.kind === 'thread') {
             const event = group.event
-            return event.kind === 'thread' ? (
+            // **One row per thread since `116` (PD-439)**, where there were two
+            // branches here drawing the same component from two event kinds.
+            // The lead is what carries the distinction they used to: a thread
+            // with a reply names who last spoke in it, one without names who
+            // started it.
+            return (
               <ClubTimelineThreadRow
                 key={group.key}
                 threadId={event.thread.id}
@@ -771,29 +785,21 @@ export function ClubTimeline({
                 // from the event row, where the sentence IS the name and the
                 // entry is dropped instead.
                 lead={
-                  event.thread.author?.username
-                    ? `Started by ${event.thread.author.username}`
-                    : 'New thread'
+                  event.latestReply
+                    ? event.latestReply.author
+                      ? `${event.latestReply.author} replied`
+                      : 'New message'
+                    : event.thread.author?.username
+                      ? `Started by ${event.thread.author.username}`
+                      : 'New thread'
                 }
                 at={event.at}
                 unread={event.unread}
                 activity={event.activity}
-                // **No wave on either thread branch since PD-372.** The
-                // creation entry carried one under `092`; the product owner
-                // made the announcement row the club timeline's only waveable
-                // row, so `ClubTimelineThreadRow` no longer takes the prop at
-                // all and neither branch can pass one.
-              />
-            ) : (
-              <ClubTimelineThreadRow
-                key={group.key}
-                threadId={event.reply.thread_id}
-                anchorKey={event.key}
-                title={event.reply.thread_title}
-                lead={event.reply.author ? `${event.reply.author} replied` : 'New message'}
-                at={event.at}
-                unread={event.unread}
-                activity={event.activity}
+                // **No wave since PD-372.** The creation entry carried one
+                // under `092`; the product owner made the announcement row the
+                // club timeline's only waveable row, so `ClubTimelineThreadRow`
+                // no longer takes the prop at all.
               />
             )
           }

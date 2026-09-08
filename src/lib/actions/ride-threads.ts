@@ -148,13 +148,23 @@ export async function sendRideThreadMessage(
 
 /**
  * What a message appearing or disappearing moves: the thread's own list, and —
- * when the caller knows which ride — the ride timeline's reply entry, whose key
- * is hung under the ride rather than the thread and so is reached by neither
- * `threadMessages` nor `thread`.
+ * when the caller knows which ride — **both** of the ride timeline's thread
+ * reads, whose keys are hung under the ride rather than the thread and so are
+ * reached by neither `threadMessages` nor `thread`.
+ *
+ * **`rides.threads` joined this list in `116` (PD-439)**, for the reason
+ * `invalidateThreadMessage` in `lib/actions/club-threads.ts` spells out: `116`
+ * moved a thread row's POSITION onto `ride_threads.last_activity_at`, stamped
+ * by a trigger in the message's own transaction, so a claim naming only the
+ * reply source would leave the rider who just replied looking at a row that had
+ * not moved — the whole of what the story asked for, missing, with nothing red.
  */
 function invalidateThreadMessage(threadId: string, rideId?: string) {
   invalidate(queryKeys.rides.threadMessages(threadId))
-  if (rideId) invalidate(queryKeys.rides.threadReplies(rideId))
+  if (rideId) {
+    invalidate(queryKeys.rides.threadReplies(rideId))
+    invalidate(queryKeys.rides.threads(rideId))
+  }
 }
 
 /**

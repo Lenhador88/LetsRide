@@ -926,6 +926,12 @@ export type RideThread = {
  */
 export type RideThreadListItem = RideThread & {
   author: Pick<PublicProfile, 'id' | 'username'> | null
+  /** When this thread was last active — `116` (PD-439), `ClubThreadListItem`'s
+   *  column one domain over and under the same rules: server-owned, defaulting
+   *  to the thread's own creation, stamped forward by a trigger on
+   *  `ride_thread_messages`. The ride's timeline positions its one row per
+   *  thread on it. */
+  last_activity_at: string
 }
 
 /**
@@ -1960,6 +1966,22 @@ export type ClubThread = {
  */
 export type ClubThreadListItem = ClubThread & {
   author: Pick<PublicProfile, 'id' | 'username'> | null
+  /**
+   * When this thread was last active — `116` (PD-439), and the column the club
+   * timeline orders, bounds and POSITIONS its one row per thread on.
+   *
+   * Server-owned: `116` grants `authenticated` neither INSERT nor UPDATE on it,
+   * so a rider cannot pin their own thread to the top of a timeline. It
+   * defaults to the thread's own creation and is stamped forward by a trigger
+   * on `club_messages`, so a thread nobody has replied to carries exactly its
+   * `created_at`.
+   *
+   * **On the list item rather than on `ClubThread`**, so `ClubThreadDetail` and
+   * every other reader of the base type are not forced to select a column they
+   * do not draw. The two stamps are not interchangeable — see
+   * `resolveThreadCountExactness`, which needs `created_at` specifically.
+   */
+  last_activity_at: string
 }
 
 /**
@@ -1987,8 +2009,17 @@ export type ClubThreadDetail = ClubThread & {
   author: Pick<PublicProfile, 'id' | 'username'> | null
 }
 
-/** The keyset cursor the Threads list pages on — `(created_at, id)`, for
- * `NotificationCursor`'s reason: `created_at` is not a total order. */
+/**
+ * The keyset cursor a club Threads list would page on — `(created_at, id)`, for
+ * `NotificationCursor`'s reason: `created_at` is not a total order.
+ *
+ * **Nothing references it.** `/clubs/detail/threads` was deleted by PD-426 and
+ * `getClubThreads`' inert `cursor` parameter went with `116` (PD-439), which
+ * re-ordered that read on `last_activity_at` and so made a `created_at` keyset
+ * name neither the order nor the bound. Kept as the written shape for whoever
+ * brings a thread list back — **rebuild it against the column the read actually
+ * sorts on**, rather than restoring this one because it was here.
+ */
 export type ClubThreadCursor = { createdAt: string; id: string }
 
 /** One message inside a club thread (`081`). `author` is narrower than

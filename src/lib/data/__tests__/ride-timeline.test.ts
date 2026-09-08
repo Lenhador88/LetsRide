@@ -66,18 +66,33 @@ const sources = (over: Partial<RideTimelineSources> = {}): RideTimelineSources =
   // silently contributed rows would move the display cap and the horizon under
   // tests written about two sources.
   threads: { rows: [], horizon: null },
-  replies: { rows: [], horizon: null },
+  replies: { rows: [], horizon: null, activity: {} },
   ...over,
 })
 
-/** A thread creation row, as `getRideThreadCreations` returns one. */
-const thread = (id: string, at: string, title = `thread ${id}`): RideThreadListItem =>
+/**
+ * A thread row, as `getRideThreadCreations` returns one.
+ *
+ * **`at` is the thread's newest activity, and `createdAt` defaults to it** —
+ * `116` (PD-439) defaults `last_activity_at` to the thread's own creation, so a
+ * one-argument call is a thread nobody has replied to and every case written
+ * before that migration keeps meaning what it meant. Pass `createdAt`
+ * separately for the case this change is about: an old thread bumped by a fresh
+ * reply, where the two stamps genuinely differ.
+ */
+const thread = (
+  id: string,
+  at: string,
+  title = `thread ${id}`,
+  createdAt = at
+): RideThreadListItem =>
   ({
     id,
     ride_id: 'ride-1',
     author_id: 'r1',
     title,
-    created_at: at,
+    created_at: createdAt,
+    last_activity_at: at,
     author: { id: 'r1', username: 'r1' },
   }) as RideThreadListItem
 
@@ -399,47 +414,150 @@ describe('getRideJoins — the horizon', () => {
  * of that a refactor reverses in silence.
  */
 describe('mergeRideTimeline — threads and replies', () => {
-  it('interleaves a thread, a reply, a photo and an arrival by time alone', () => {
+  it('draws ONE row for a thread that has been replied to, at the reply', () => {
+    // PD-439's whole report, as one assertion. The old merge emitted a `thread`
+    // entry at 03-03 AND a `reply` entry at 03-04 — one conversation, two rows,
+    // the reply row summarising the thread row above it.
     const timeline = mergeRideTimeline(
       sources({
         postcards: { rows: [postcard('p1', '2026-03-01T00:00:00.000Z')], horizon: null },
         joins: { rows: [join('r1', '2026-03-02T00:00:00.000Z')], horizon: null },
-        threads: { rows: [thread('t1', '2026-03-03T00:00:00.000Z')], horizon: null },
-        replies: { rows: [reply('t1', '2026-03-04T00:00:00.000Z')], horizon: null },
+        threads: {
+          rows: [thread('t1', '2026-03-04T00:00:00.000Z', 'thread t1', '2026-03-03T00:00:00.000Z')],
+          horizon: null,
+        },
+        replies: {
+          rows: [reply('t1', '2026-03-04T00:00:00.000Z')],
+          horizon: null,
+          activity: { t1: { messages: 1, partial: false } },
+        },
       })
     )
 
-    // Newest first, and the founding last because the stream is complete.
     expect(timeline.events.map((event) => event.kind)).toEqual([
-      'reply',
       'thread',
       'join',
       'postcard',
       'ride-planned',
     ])
+    // At the REPLY's instant, not the thread's creation — the owner chose the
+    // bumping merge, so a thread started before the photo and the arrival still
+    // sorts above both.
+    expect(timeline.events[0].at).toBe('2026-03-04T00:00:00.000Z')
   })
 
-  it('keys a reply on its THREAD, so a second reply in the same thread cannot collide', () => {
-    // The collapse guarantees one reply row per thread, and this is what makes
-    // that guarantee visible: two rows for one thread would be a duplicate
-    // React key rather than two entries. Keying on the message id would hide
-    // the bug by making both rows legal.
-    const timeline = mergeRideTimeline(
-      sources({ replies: { rows: [reply('t1', '2026-03-04T00:00:00.000Z')], horizon: null } })
-    )
-
-    expect(timeline.events[0].key).toBe('reply:t1')
-  })
-
-  it('withholds the founding entry when only the reply source declared a horizon', () => {
-    // The stronger `complete` derivation, which `mergeClubTimeline` did not
-    // have until PD-400. A collapsing source is exactly how the weaker test
-    // gets it wrong: two rows out of a two-hundred-message window, with a live
-    // horizon and nothing else cut.
+  it('leaves a thread nobody replied to exactly where it was', () => {
+    // The negative case that pays for the whole design: `last_activity_at`
+    // defaults to the thread's creation, so an unanswered thread must not move.
     const timeline = mergeRideTimeline(
       sources({
+        joins: { rows: [join('r1', '2026-03-05T00:00:00.000Z')], horizon: null },
+        threads: { rows: [thread('t1', '2026-03-03T00:00:00.000Z')], horizon: null },
+      })
+    )
+
+    expect(timeline.events.map((event) => event.kind)).toEqual([
+      'join',
+      'thread',
+      'ride-planned',
+    ])
+    expect(timeline.events[1].at).toBe('2026-03-03T00:00:00.000Z')
+  })
+
+  it('keys a thread row on its THREAD, so one conversation is one key', () => {
+    // Two rows for one thread would be a duplicate React key rather than two
+    // entries. The old merge keyed its reply arm `reply:<thread>` for the same
+    // reason; there is now one arm and one key per conversation.
+    const timeline = mergeRideTimeline(
+      sources({
+        threads: { rows: [thread('t1', '2026-03-04T00:00:00.000Z')], horizon: null },
         replies: {
           rows: [reply('t1', '2026-03-04T00:00:00.000Z')],
+          horizon: null,
+          activity: { t1: { messages: 1, partial: false } },
+        },
+      })
+    )
+
+    expect(timeline.events[0].key).toBe('thread:t1')
+  })
+
+  it('carries the newest reply as the row lead, and null when there is none', () => {
+    const replied = mergeRideTimeline(
+      sources({
+        threads: { rows: [thread('t1', '2026-03-04T00:00:00.000Z')], horizon: null },
+        replies: {
+          rows: [reply('t1', '2026-03-04T00:00:00.000Z')],
+          horizon: null,
+          activity: { t1: { messages: 2, partial: false } },
+        },
+      })
+    ).events[0]
+    const quiet = mergeRideTimeline(
+      sources({ threads: { rows: [thread('t2', '2026-03-04T00:00:00.000Z')], horizon: null } })
+    ).events[0]
+
+    expect(replied.kind === 'thread' && replied.latestReply?.author).toBe('r2')
+    expect(quiet.kind === 'thread' && quiet.latestReply).toBe(null)
+    // A thread with no replies has no activity entry, which is the same thing
+    // as zero — the row draws its lead alone rather than a count of nothing.
+    expect(quiet.kind === 'thread' && quiet.activity).toBe(null)
+  })
+
+  it('marks a count partial when the thread predates the reply window', () => {
+    // The trap `resolveThreadCountExactness` exists for, and the one this
+    // change created: an old thread bumped to the top by a fresh reply is
+    // EXACTLY the thread whose earlier messages fall outside the window, so
+    // passing its bumped stamp instead of its creation would call the floor a
+    // total. `12` and `12+` are different claims.
+    const [bumped] = mergeRideTimeline(
+      sources({
+        threads: {
+          rows: [thread('t1', '2026-03-09T00:00:00.000Z', 'thread t1', '2026-01-01T00:00:00.000Z')],
+          horizon: null,
+        },
+        replies: {
+          rows: [reply('t1', '2026-03-09T00:00:00.000Z')],
+          horizon: '2026-03-08T00:00:00.000Z',
+          activity: { t1: { messages: 12, partial: false } },
+        },
+      })
+    ).events
+
+    expect(bumped.kind === 'thread' && bumped.activity).toEqual({ messages: 12, partial: true })
+  })
+
+  it('does NOT cut the stream on the reply source horizon', () => {
+    // `116` took the reply horizon out of the merge's horizon list, because a
+    // source that draws no row cannot claim the stream's picture stops
+    // anywhere. Before it, a ride with one busy thread reported a
+    // two-hundred-message horizon and withheld its own founding entry.
+    const timeline = mergeRideTimeline(
+      sources({
+        postcards: { rows: [postcard('p1', '2026-01-02T00:00:00.000Z')], horizon: null },
+        threads: { rows: [thread('t1', '2026-03-09T00:00:00.000Z')], horizon: null },
+        replies: {
+          rows: [reply('t1', '2026-03-09T00:00:00.000Z')],
+          horizon: '2026-03-08T00:00:00.000Z',
+          activity: { t1: { messages: 200, partial: true } },
+        },
+      })
+    )
+
+    expect(timeline.complete).toBe(true)
+    expect(timeline.events.map((event) => event.kind)).toContain('ride-planned')
+    // And the postcard from January survives, where the reply horizon used to
+    // cut it — which is the damage this test is really about.
+    expect(timeline.events.map((event) => event.kind)).toContain('postcard')
+  })
+
+  it('still withholds the founding entry when a DRAWING source declared a horizon', () => {
+    // The stronger `complete` derivation (PD-400) is untouched: a source that
+    // draws rows still cuts the stream, and the floor entry still goes.
+    const timeline = mergeRideTimeline(
+      sources({
+        threads: {
+          rows: [thread('t1', '2026-03-04T00:00:00.000Z')],
           horizon: '2026-03-04T00:00:00.000Z',
         },
       })
@@ -540,7 +658,14 @@ describe('getRideThreadReplies — the collapse and the horizon', () => {
   })
 
   it('refuses a malformed ride id without calling the database at all', async () => {
-    expect(await getRideThreadReplies('not-a-uuid')).toEqual({ rows: [], horizon: null })
+    // `activity: {}` since `116` (PD-439) — the empty summary, not a missing
+    // one, so a caller reading a count off a refused id sees zero rather than
+    // `undefined`.
+    expect(await getRideThreadReplies('not-a-uuid')).toEqual({
+      rows: [],
+      horizon: null,
+      activity: {},
+    })
     expect(from).not.toHaveBeenCalled()
   })
 })

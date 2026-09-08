@@ -262,9 +262,19 @@ export async function sendClubMessage(
 
 /**
  * What a message appearing or disappearing moves: the thread's own list, and —
- * when the caller knows which club — the club timeline's reply entry, whose key
- * is hung under the club rather than the thread and so is reached by neither
- * `threadMessages` nor `thread`.
+ * when the caller knows which club — **both** of the club timeline's thread
+ * reads, whose keys are hung under the club rather than the thread and so are
+ * reached by neither `threadMessages` nor `thread`.
+ *
+ * **`clubs.threads` joined this list in `116` (PD-439), and leaving it out
+ * would have made the feature not work at all.** Until then a message only ever
+ * changed the reply source — the thread's own row sat at its `created_at` and
+ * could not move — so invalidating `threadReplies` alone was complete. `116`
+ * moved the ROW's position onto `club_threads.last_activity_at`, which the
+ * trigger stamps in the same transaction as the insert, so a rider who posts a
+ * reply and returns to the timeline would see the count tick up and the row
+ * stay exactly where it was: the one thing the story asked for, silently
+ * missing, with every gate green.
  *
  * **Deliberately does not invalidate `notifications.list()` or
  * `notifications.unread()`** (`098`, PD-367, `client-cache-invalidation`). The
@@ -278,7 +288,10 @@ export async function sendClubMessage(
  */
 function invalidateThreadMessage(threadId: string, clubId?: string) {
   invalidate(queryKeys.clubs.threadMessages(threadId))
-  if (clubId) invalidate(queryKeys.clubs.threadReplies(clubId))
+  if (clubId) {
+    invalidate(queryKeys.clubs.threadReplies(clubId))
+    invalidate(queryKeys.clubs.threads(clubId))
+  }
 }
 
 /**

@@ -55,7 +55,7 @@ export const RIDE_THREADS_PAGE_SIZE = 20
 export const RIDE_THREAD_MESSAGES_PAGE_SIZE = 200
 
 const THREAD_SELECT = `
-  id, ride_id, author_id, title, created_at,
+  id, ride_id, author_id, title, created_at, last_activity_at,
   author:profiles!author_id(id, username)
 `
 
@@ -66,11 +66,24 @@ const THREAD_SELECT = `
  * cursor over `created_at` alone would skip or repeat rows exactly at the
  * boundary where two threads share one `now()`.
  *
- * **Newest created, not most recently active** — the club's ruling, and it is a
- * visibility argument rather than a preference: a stored `last_message_at` would
- * be a copy of a visibility decision, bumping a thread for the very rider who
- * blocked its latest author, and computing it live is a per-viewer aggregate
- * over every row of the list.
+ * **Newest created, not most recently active — and this list is now the ONLY
+ * place that is still true.** `116` (PD-439) gave both thread tables a stored
+ * `last_activity_at` and moved both TIMELINES onto it, on the product owner's
+ * explicit choice between three options. This read is unchanged because nothing
+ * calls it (`git grep -n "getRideThreads(" -- src/ | grep -v __tests__` is 0)
+ * and its `(created_at, id)` cursor matches its own ordering; a screen that
+ * brings it back decides for itself, and must move the cursor with the order.
+ *
+ * **The visibility objection this paragraph used to make is real, was not
+ * refuted, and is now an accepted cost — do not read the change as having
+ * answered it.** A stored stamp is global and blocking is per-viewer, so a
+ * message from a rider you blocked bumps its thread on your timeline. What
+ * leaks is ORDERING only: `private.is_blocked` still removes the message
+ * itself, so the reply source returns nothing for it, the lead line and the
+ * count never mention it, and the row moves with no visible cause. Computing
+ * the position live per viewer is the only version without that side channel,
+ * and it is a per-viewer aggregate over every row of the list — which is why
+ * it was refused rather than built. Recorded on PD-439.
  *
  * A rider who can see the ride but is not on its crew reads `[]` here, which is
  * indistinguishable from a ride nobody has posted in — the screen tells those
