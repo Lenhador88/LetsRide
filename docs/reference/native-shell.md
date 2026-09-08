@@ -506,7 +506,8 @@ So, precisely:
 **The measurement that would settle the real claim needs no relaunch**: after sign-out and before
 `terminate`, read `SecureStorage.keys()` — or seed a `sb-probe-auth-token` that auth-js knows
 nothing about and read it back. Note the expected result is **not** an empty keychain: the
-installation id is meant to survive, and PD-443 is a live defect in exactly that.
+installation id is meant to survive, and does — PD-443 was a defect in exactly that, fixed and
+mutation-tested. A keychain that comes back empty is now itself a finding.
 
 ### The bundle is iPhone-only and portrait-only — decided 2026-09-08
 
