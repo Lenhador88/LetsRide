@@ -21,7 +21,9 @@ its header are quoted from that file, not from prose about it. `111` and `069` w
 way; `src/lib/data/ride-invite-links.ts`, `src/app/rides/join/page.tsx`,
 `src/components/rides/RideInviteJoin.tsx`, `src/lib/auth/guard.ts`, `src/lib/validation/rides.ts`
 and `supabase/tests/harness.sql` were read from the working tree. The `ride-invite-links` base spec
-was read from `openspec/changes/share-a-ride-invite-link/`. The design snapshot was read offline
+was read from `openspec/changes/share-a-ride-invite-link/`, which PD-359 has since archived to the
+standing `openspec/specs/ride-invite-links/spec.md` (#439) — same text, new home. The design
+snapshot was read offline
 with `npm run figma -- ls "Join ride"` and `text … --all`.
 
 **The owner's decision that this revision implements is second-hand to this file**: it was taken in
@@ -49,7 +51,9 @@ The `share-a-ride-invite-link` spec states that outcome as a requirement and ass
 > SHALL NOT render the ride's title, date, meeting point, organizer or crew count.
 
 **This change narrows that requirement rather than deleting it.** Everything it refuses stays
-refused except four named fields.
+refused except the five named fields — the title, the start time, the zone it is read in, the
+meeting point and the organiser's username. The crew count stays refused, and so does everything
+else on the list.
 
 ## The safety argument: anonymous ⊂ authenticated, and the subset is read off `091`
 
@@ -108,6 +112,27 @@ the main thread applies it verbatim rather than paraphrasing:
 > a strict subset of what `091`'s authenticated preview already returns to any holder of the same
 > token. A second such function, a column added to it, or any grant to `anon` on a table or policy
 > is a **new** decision and not an extension of this one.
+
+**Decision #2 is narrowed by the same function and owes the same edit.** Three artifacts here say
+so — `design.md` D7, this file's residual, and `anonymous-ride-preview`'s spec — and a narrowing
+recorded only in a change directory is exactly the "broken rule nobody wrote down" this section
+exists to prevent. `CLAUDE.md` §Architectural Decisions #2 reads today:
+
+> **2. Blocking is enforced in RLS, not in the UI.** One `security definer` helper applied across
+> policies. Blocks are symmetric even though the row is directional.
+
+The replacement text this change owes it, applied verbatim in the same commit as #1's:
+
+> **2. Blocking is enforced in RLS, not in the UI.** One `security definer` helper applied across
+> policies. Blocks are symmetric even though the row is directional. **It cannot reach the one
+> anonymous surface** — `public.ride_invite_link_public_preview(t)` (`115`, PD-430) has no
+> `auth.uid()` to test, so a blocked rider who signs out reads the same five fields as any other
+> holder of that link. That is a property of a bearer token rather than a hole in the block: the
+> claim, every list and every other read stay gated on `private.is_blocked`. **Any further
+> anonymous surface reopens this and needs its own argument.**
+
+**Both edits land with the migration, not before it** — `CLAUDE.md` describing a database that does
+not yet exist is the same defect in the other direction.
 
 **What stays forbidden, in as many words:**
 
@@ -202,12 +227,11 @@ here rather than left for a reader of the function body to notice.
   rider id, no second rider, and nothing that says who else is going.
 - The one rider-identifying field is **the organiser's username**, which is the fact the sharer
   disclosed by pasting *this organiser's* link into a group chat.
-- **The residual, named because it is real and because it grew:** a rider the organiser has blocked
-  can sign out, paste a token they hold, and read the ride's title, time, organiser and **meeting
-  point**. Under an earlier draft of this change they would have read four harmless fields; they now
-  read where the ride leaves from. Decision #2 — blocking enforced in RLS — is narrowed **for this
-  projection only**, and it cannot be otherwise: symmetric blocking is a statement about two
-  identities and one of them is absent.
+- **The residual, named because it is real:** a rider the organiser has blocked can sign out, paste
+  a token they hold, and read the ride's title, time, organiser and **meeting point** — where the
+  ride leaves from, not merely that it exists. Decision #2 — blocking enforced in RLS — is narrowed
+  **for this projection only**, and it cannot be otherwise: symmetric blocking is a statement about
+  two identities and one of them is absent.
 - **What the block still holds completely.** The blocked rider **cannot claim** — the claim is
   `authenticated`-only and goes through `reachable_by`'s `is_blocked` conjunct — so they cannot
   join, cannot reach the crew, the thread, the photos or any message, cannot see the organiser's
@@ -415,7 +439,7 @@ It is cheap, it is stated, and it is not a substitute for the token's entropy.
   wrong by omission.
 
 **`client-render-shell` is deliberately not modified.** Nothing about the render model changes: the
-read is still a client-side call through `useQuery` in an effect, and the new state is a seventh
+read is still a client-side call through `useQuery` in an effect, and the new state is an eighth
 row in a table that already exists.
 
 ## Open questions

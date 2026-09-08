@@ -334,7 +334,7 @@ NOT be improvised into this one.
 - **THEN** no call SHALL be refused for a reason relating to how many came before it, and no row
   SHALL be written recording that they happened
 
-### Requirement: The signed-out landing state SHALL render the preview and one call to action, and SHALL define every state
+### Requirement: The signed-out landing state SHALL render the preview and one call to action, and SHALL define every state on the anonymous path
 
 `/rides/join` SHALL remain in `PUBLIC_PATHS` and in `needsOnboardingState()`'s set, and
 `resolveDestination` SHALL continue to answer `null` for an anonymous visitor there. **No routing
@@ -350,7 +350,10 @@ stranger's row into a signed-in session; a shared or widened **type** would let 
 `crew_count` or `organizer_avatar_path` and find `undefined` where a reviewer would expect a compile
 error.
 
-The route SHALL define every state:
+**This table is the seven states reachable on the ANONYMOUS path**, where every signed-in case
+collapses into one row. The route's full eight-state set, which splits that row and adds
+`Already claimed`, is the `ride-invite-links` delta's — the two SHALL agree wherever they overlap,
+and neither is a subset of the other by accident:
 
 | State | What it renders |
 |---|---|

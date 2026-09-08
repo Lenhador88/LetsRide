@@ -135,10 +135,9 @@ function does not call it.
 computes, it is stated in the spec in those words, and it is why the projection must stay closed —
 every field added is a field disclosed to a blocked rider and to an un-onboarded account.
 
-**The residual is real, it grew with D5, and it is accepted.** A rider the organiser has blocked can
-sign out, paste a token they already hold, and read the ride's title, time, organiser **and meeting
-point**. An earlier draft of this change would have shown them four harmless fields; this one shows
-them where the ride leaves from.
+**The residual is real and it is accepted.** A rider the organiser has blocked can sign out, paste a
+token they already hold, and read the ride's title, time, organiser **and meeting point** — where
+the ride leaves from, which is the part worth stating plainly rather than folding into a field list.
 
 **Why that is a statement rather than a mitigation:**
 

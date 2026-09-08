@@ -13,9 +13,9 @@ comment at `queue-pickup.md` STEP 3 rather than trusting this line; the paths ar
 ## 0. Before a line is written
 
 - [ ] 0.1 Read `CLAUDE.md`, `openspec/config.yaml`, and the base capability at
-      `openspec/changes/share-a-ride-invite-link/specs/ride-invite-links/spec.md`. **Archive
-      `share-a-ride-invite-link` before this change**, or the `ride-invite-links` delta has nothing
-      to attach to.
+      `openspec/specs/ride-invite-links/spec.md`. PD-359 archived `share-a-ride-invite-link` on
+      2026-09-08 (#439), so that base is standing and the ordering this change once waited on is
+      already satisfied.
 - [ ] 0.2 **Settle the migration number.** Re-derive from `ls supabase/migrations/*.sql | tail -3`
       against `list_migrations` on DEV (`fpmrimzxadewsaiwpsel`) **and** PROD
       (`zwprydcyryvudhurbnye`). Expected: **`115`** — 114 files, last is
@@ -226,6 +226,15 @@ forgets `set role anon` proves nothing. The suite already does this at eight sit
 - [ ] 7.1 **`CLAUDE.md` decision #1**, replaced with the exact wording in `proposal.md` §*This breaks
       architectural decision #1*. **This is the most important line in the change**: an exception that
       is not written down is just a broken rule, and the next session will read the absolute.
+- [ ] 7.1b **`CLAUDE.md` decision #2**, replaced with the wording in the same proposal section.
+      Three artifacts here narrow it and none of them is `CLAUDE.md`; a narrowing recorded only in a
+      change directory is the same defect 7.1 exists to prevent, one decision along.
+- [ ] 7.1c **`openspec/config.yaml` `rules.proposal`** — the third rule reads *"A signed-out visitor
+      is never **granted** anything — decision #1 is no anonymous access anywhere and `anon` holds
+      zero grants, so a spec that writes a visibility rule admitting one has invented a role the
+      system does not have."* This change makes that false, and it is the rule every future
+      proposal is validated against, so a proposal correctly granting `anon` would be marked wrong.
+      Narrow it to name this one exception; keep the sentence that asserting the negative is welcome.
 - [ ] 7.2 `CLAUDE.md` advisor accounting — the delta measured in 3.1.
 - [ ] 7.3 `docs/reference/schema.md` — a `ride_invite_link_public_preview` entry beside the other
       three RPCs, naming the `anon` grant **and its column list as a subset of

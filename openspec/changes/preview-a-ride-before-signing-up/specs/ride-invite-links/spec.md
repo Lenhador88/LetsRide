@@ -1,10 +1,8 @@
 # ride-invite-links
 
-> **Read this delta against the active changes, not against `openspec/specs/`.** The
-> `ride-invite-links` capability is added by `share-a-ride-invite-link` (PD-330) and **is not
-> archived**, so the base text these requirements modify lives in
-> `openspec/changes/share-a-ride-invite-link/specs/ride-invite-links/spec.md`. Archive that change
-> before this one, or the delta has nothing to attach to.
+> **The base text is the standing capability at `openspec/specs/ride-invite-links/spec.md`.**
+> PD-359 archived `share-a-ride-invite-link` on 2026-09-08 (#439), which is what promoted it there;
+> the ordering that story existed to protect is satisfied and this delta attaches cleanly.
 
 ## MODIFIED Requirements
 
@@ -16,7 +14,7 @@ Holding a token SHALL permit calling **three** functions and no others:
 |---|---|---|
 | `public.ride_invite_link_preview(t)` | `authenticated` only | The eight-column preview, gated on liveness **and** the caller. |
 | `public.claim_ride_invite_link(t)` | `authenticated` only | Joins the caller to the link's ride. |
-| `public.ride_invite_link_public_preview(t)` | **`anon` only** | Five columns, gated on liveness alone — there is no caller. |
+| `public.ride_invite_link_public_preview(t)` | **`anon` only** | Six columns — five data fields plus the ride id — gated on liveness alone, because there is no caller. |
 
 It SHALL NOT grant, widen or bypass any row-level policy. **This change SHALL add no audience arm to
 `public.rides`, and SHALL NOT modify `private.can_read_ride`** — the same pin `091` set for itself,
