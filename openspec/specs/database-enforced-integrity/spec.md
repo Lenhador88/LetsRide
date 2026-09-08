@@ -18,6 +18,7 @@ split between Zod schemas a Server Action parses and CHECK constraints in Postgr
 client owns the mutation path the constraint coverage is the entire story, and anything not
 expressed as a CHECK, trigger or policy is advisory.
 ## Requirements
+
 ### Requirement: Text bounds on rider-authored columns SHALL be enforced by the database
 
 **This is a live defect, not a risk the migration introduces.** The publishable key ships in
@@ -335,6 +336,26 @@ Every role that can reach a ride SHALL have its access stated, so each line maps
 assertion. The policy exists and has never been written down role by role, which is what
 allowed the private-club case above to go unnoticed.
 
+**This change adds no arm.** `public.rides` SELECT and `private.can_read_ride` are untouched, and
+an assertion pins both — a failing pin here means the change is wrong, not that the pin is stale.
+
+**What it adds is a reader who is not in the policy at all.** `public.ride_invite_link_preview` is
+`security definer`, so it bypasses row security by construction and hands eight named columns of a
+ride to a rider holding a URL and nothing else. A read path *outside* the policy is precisely the
+thing this requirement exists to stop going unwritten, so it is enumerated here as a role rather
+than left to the new capability's own spec.
+
+**Three properties make that reader safe, and all three are asserted:** the column list is fixed
+in SQL and never `rides.*`, so a column added later is not disclosed by default; the block check is
+**restated in the function's body**, because there is no policy underneath it to carry decision #2;
+and the function returns zero rows for every non-live token, so it discloses nothing about which
+tokens exist.
+
+**The rule is stated in two places and both are normative.** `private.can_read_ride` (`060`) is a
+candidate-relative restatement of this policy, maintained so a fan-out can ask the question for
+somebody other than the caller. Any change to the policy SHALL be made to that function in the
+same migration and in the same position.
+
 #### Scenario: Organizer
 - **WHEN** the organizer reads their own ride
 - **THEN** it SHALL be returned regardless of `is_public`, `club_id` or club visibility
@@ -349,17 +370,45 @@ allowed the private-club case above to go unnoticed.
 
 #### Scenario: Non-member, private club's ride
 - **WHEN** a signed-in rider who is not a member of the ride's private club reads it
-- **THEN** zero rows SHALL be returned, and its crew SHALL be unreachable through
-  `ride_members`
+- **THEN** zero rows SHALL be returned, and its crew SHALL be unreachable through `ride_members`
+
+#### Scenario: Invited rider, not yet crew
+- **WHEN** a rider holding a `pending` or `accepted` invite reads a ride that is neither public
+  nor in a club they belong to
+- **THEN** it SHALL be returned, by the arm `083` added inside the block-dominated group
+
+#### Scenario: Token holder, before claiming
+- **WHEN** a signed-in rider holding a live token, and no other route to the ride, reads
+  `public.rides` directly
+- **THEN** zero rows SHALL be returned — **the token buys no policy reach**
+- **AND** the only thing they may read is the eight-column preview, through the definer RPC
+
+#### Scenario: Token holder, after claiming
+- **WHEN** the same rider has claimed
+- **THEN** they SHALL read the ride by the invite arm above and by no new mechanism, being
+  indistinguishable in the policy from an accepted in-app invitee
 
 #### Scenario: Blocked rider
 - **WHEN** a rider blocked by the organizer reads the ride, by any route including a club they
-  both belong to
+  both belong to, an invite, **or a live token**
 - **THEN** zero rows SHALL be returned
+- **AND** the token route SHALL be refused by a check in the RPC's own body, since no policy runs
+  beneath a `security definer` function
 
 #### Scenario: Signed-out visitor
 - **WHEN** a request arrives with no session
-- **THEN** zero rows SHALL be returned, because `anon` holds no grant on `rides`
+- **THEN** zero rows SHALL be returned, because `anon` holds no grant on `rides`, and no EXECUTE
+  on either new RPC
+
+#### Scenario: Invited rider who accepted and later left the crew
+- **WHEN** an accepted invitee deletes their `ride_members` row and reads the ride
+- **THEN** it SHALL still be returned, because `accepted` is a live invite
+- **AND** they SHALL be able to rejoin, which depends on this — `ride_members` INSERT carries its
+  own `EXISTS (rides …)` evaluated under their row security
+
+#### Scenario: Invited rider who declined
+- **WHEN** a rider who declined an invite reads the ride
+- **THEN** zero rows SHALL be returned, unless another arm admits them
 
 ### Requirement: Blocking SHALL remain enforced in RLS and SHALL survive the client owning the queries
 
@@ -493,6 +542,28 @@ nobody has an incentive to forge a position in it. It matters the moment a colum
 order of a conversation: a message stamped with a far-future time pins itself to the top of every
 participant's thread permanently, and the only remedy is a delete.
 
+**A secret narrows the choice to one of the two, and `091` is the sharpest instance in the
+schema.** `public.ride_invite_links.token` is the credential itself, so a client able to name it
+could mint a link with a token it chose — a predictable or reused string, or one already pasted
+somewhere — and the entropy guarantee would be worth nothing. For a secret the enforcement SHALL
+therefore be the withheld **grant** specifically, on `044`'s reason rather than a new one: a
+withheld grant refuses the write at the door with `42501`, where a trigger silently rewrites what
+the client sent — and a client that believes it chose the token is the one state this column cannot
+afford. `expires_at` is the same argument one step down: a client able to name it sets its own
+ceiling. **This narrows the rule for secrets and does not replace it**: a
+write-once stamp a grant cannot express — `012`'s `profiles.terms_accepted_at`, and `044` lines
+48–65 on why — is still correctly a trigger.
+
+#### Scenario: The token is withheld by the grant
+- **WHEN** `information_schema.column_privileges` is read for `authenticated` on
+  `public.ride_invite_links`
+- **THEN** INSERT SHALL be held on `(id, ride_id, created_by)` only
+- **AND** `token`, `expires_at`, `created_at` and `revoked_at` SHALL NOT appear
+
+#### Scenario: Naming the column is refused, not ignored
+- **WHEN** an insert names `token`
+- **THEN** it SHALL fail with `42501` rather than silently taking the default
+
 #### Scenario: A client-supplied value is overwritten rather than ignored
 - **WHEN** a rider inserts a row naming a server-owned column with any value
 - **THEN** the stored value SHALL be the server's
@@ -533,6 +604,19 @@ than repeated a sixth time in a migration comment.
 **Editing is a design problem, not a permission one.** It means deciding whether "edited" is
 disclosed, from when, and what the record of a conversation means once it can be rewritten. None
 of that exists for any table in this schema.
+
+**One designed mutation is the same answer, not an exception — `091`.** Where a table has exactly
+one, that mutation SHALL be a `security definer` RPC and the table SHALL still carry no UPDATE
+grant and no UPDATE policy for any client role. `public.ride_invite_links` has exactly one: revoke.
+A column grant on `(revoked_at)` would let a client write NULL and **un-revoke** a link the
+organizer killed, and would let them write a future timestamp.
+`public.revoke_ride_invite_link` is therefore the only path, with one raise site so a caller learns
+nothing about a link that is not theirs.
+
+#### Scenario: Revoke is not reversible by a client
+- **WHEN** any rider attempts to UPDATE `ride_invite_links` by any route
+- **THEN** it SHALL be refused, asserted per grantee with `has_table_privilege` rather than by a
+  grant-row count, since `postgres` and `service_role` hold everything by Supabase default
 
 #### Scenario: Nobody can update a ride message
 - **WHEN** any rider — including its author and the ride's organizer — attempts to UPDATE
@@ -838,4 +922,58 @@ with nothing to detect it.
 - **THEN** its migration SHALL state which of the two shapes it uses and why
 - **AND** the absence of a guard SHALL be as explicitly recorded as its presence, because an absent
   guard is indistinguishable from a forgotten one
+
+### Requirement: A policy restated for a candidate SHALL be changed in lockstep with the policy, and the two SHALL share one body where they can
+
+Where a `security definer` function restates a row-security policy so that it can be evaluated for a
+rider other than the caller, the restatement SHALL be treated as part of the policy. A change to
+either SHALL change both, in the same migration.
+
+Where the restated predicate is a **helper**, the caller-relative and candidate-relative forms SHALL
+be **one body with two entry points**: the caller-relative wrapper's `prosrc` SHALL be exactly a
+delegation passing `auth.uid()` as the candidate, and the candidate-relative body SHALL mention
+`auth.uid()` nowhere. Two independently-written bodies SHALL NOT be accepted, however similar.
+
+Both SHALL be pinned by **equality** in the RLS suite, never by `like`. A substring match is
+satisfied by the mention alone, so an arm added to the wrapper and not to the body passes it while
+leaving the restatement silently narrower than the policy — with the policy's own pinned qual
+unchanged, so that assertion does not fire either.
+
+#### Scenario: A wrapper that grows an arm is caught
+- **WHEN** an arm is added to a caller-relative wrapper and not to the shared body
+- **THEN** the equality pin on the wrapper's `prosrc` SHALL fail
+- **AND** a `like` assertion naming the shared body SHALL be recorded as insufficient, because it
+  passes in exactly this case
+
+#### Scenario: The restatement is verified by agreement, not only by text
+- **WHEN** the suite verifies a candidate-relative restatement
+- **THEN** it SHALL assert that the policy and the restatement return the same answer for each named
+  role the policy enumerates
+- **AND** the text pin and the agreement assertion SHALL both exist, because the first catches a
+  rewrite and the second catches a rewrite that is textually different and semantically wrong
+
+#### Scenario: The candidate-relative form is reachable by no client role
+- **WHEN** grants on a candidate-relative visibility helper are examined
+- **THEN** `authenticated` and `anon` SHALL hold no `execute`, because such a function answers
+  questions about other riders and is therefore a block oracle
+- **AND** only the caller-relative wrapper SHALL be granted, because an RLS expression is evaluated
+  as the querying role
+
+### Requirement: A status column SHALL NOT be a copy of a fact another table owns
+
+Where a column records an answer, a decision or a state, it SHALL NOT be maintained as a mirror of a
+row in another table. The other table SHALL be read live at the point the answer is rendered.
+
+A trigger SHALL NOT be hung on an existing, already-shipped write path in order to keep such a
+mirror in step. That is `036`'s hand-exercise hazard — new code inside every rider's own transaction
+on a live path, where a raise takes their write down — spent on maintaining a duplicate.
+
+#### Scenario: An invite's status answers the invitation, not the membership
+- **WHEN** a rider joins a ride by a route other than answering their invite
+- **THEN** the invite's `status` SHALL remain unchanged
+- **AND** the surface SHALL render their membership by reading the crew, not by reading the status
+
+#### Scenario: No trigger is added to the crew table
+- **WHEN** the triggers on `public.ride_members` are examined after the migration
+- **THEN** they SHALL be exactly those that existed before it
 

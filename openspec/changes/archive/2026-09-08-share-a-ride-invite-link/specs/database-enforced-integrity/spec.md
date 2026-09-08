@@ -70,6 +70,15 @@ same migration and in the same position.
 - **THEN** zero rows SHALL be returned, because `anon` holds no grant on `rides`, and no EXECUTE
   on either new RPC
 
+#### Scenario: Invited rider who accepted and later left the crew
+- **WHEN** an accepted invitee deletes their `ride_members` row and reads the ride
+- **THEN** it SHALL still be returned, because `accepted` is a live invite
+- **AND** they SHALL be able to rejoin, which depends on this — `ride_members` INSERT carries its
+  own `EXISTS (rides …)` evaluated under their row security
+#### Scenario: Invited rider who declined
+- **WHEN** a rider who declined an invite reads the ride
+- **THEN** zero rows SHALL be returned, unless another arm admits them
+
 ### Requirement: A column the server owns SHALL NOT be writable by a client that can insert the row
 
 A column whose value is a server decision SHALL be withheld by the **grant**, not by a default and
@@ -92,6 +101,29 @@ a client able to name it sets its own ceiling.
 - **WHEN** an insert names `token`
 - **THEN** it SHALL fail with `42501` rather than silently taking the default
 
+#### Scenario: A client-supplied value is overwritten rather than ignored
+- **WHEN** a rider inserts a row naming a server-owned column with any value
+- **THEN** the stored value SHALL be the server's
+- **AND** the enforcement SHALL be a trigger or a withheld column grant, never the client
+  omitting the column
+#### Scenario: The trigger takes no caller input and is not callable
+- **WHEN** the value is imposed by a trigger function
+- **THEN** that function SHALL take no argument, SHALL derive the value from the server alone,
+  and SHALL have EXECUTE revoked from `public`, `anon` and `authenticated`
+- **AND** it SHALL therefore add no `authenticated_security_definer_function_executable` advisor
+  finding
+#### Scenario: Trigger firing order is stated rather than relied on by luck
+- **WHEN** a table carries more than one `BEFORE INSERT` row trigger
+- **THEN** the migration SHALL state that Postgres fires them in name order and SHALL say whether
+  anything depends on it
+- **AND** where nothing depends on it, that SHALL be written down rather than left as an
+  unexamined coincidence
+#### Scenario: An ordering column alone is not a total order
+- **WHEN** rows are ordered by a timestamp
+- **THEN** a deterministic tiebreak SHALL be part of the ordering, the index and any pagination
+  cursor
+- **AND** the three SHALL agree, so that a row cannot appear twice or vanish between pages
+
 ### Requirement: A table with no designed edit SHALL carry no UPDATE grant
 
 Where a table has exactly one designed mutation, that mutation SHALL be a `security definer` RPC
@@ -106,3 +138,21 @@ so a caller learns nothing about a link that is not theirs.
 - **WHEN** any rider attempts to UPDATE `ride_invite_links` by any route
 - **THEN** it SHALL be refused, asserted per grantee with `has_table_privilege` rather than by a
   grant-row count, since `postgres` and `service_role` hold everything by Supabase default
+
+#### Scenario: Nobody can update a ride message
+- **WHEN** any rider — including its author and the ride's organizer — attempts to UPDATE
+  `ride_messages`
+- **THEN** the write SHALL be refused
+- **AND** both the absent policy and the absent grant SHALL be asserted, because either alone
+  would be undone by a single future line
+#### Scenario: An upsert against such a table uses do-nothing, not do-update
+- **WHEN** a caller writes an upsert against a table with no UPDATE grant
+- **THEN** it SHALL use `on conflict do nothing`
+- **AND** `on conflict do update` SHALL be refused with `42501` rather than silently affecting
+  nothing
+#### Scenario: The absence is a recorded gap, not an accident
+- **WHEN** a table is created with no UPDATE path
+- **THEN** the migration SHALL say so explicitly
+- **AND** the day editing is designed, adding the grant SHALL be understood as a deliberate
+  widening rather than a one-line fix
+

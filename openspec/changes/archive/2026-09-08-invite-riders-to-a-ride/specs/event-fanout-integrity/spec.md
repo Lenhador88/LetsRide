@@ -72,6 +72,49 @@ candidate-relative form in the same migration, and the fan-out SHALL use the can
   sets SHALL coincide, and this narrowing SHALL become invisible rather than needing reversal
 - **AND** this change SHALL NOT depend on that change landing first, in either order
 
+#### Scenario: Club recipients are exactly that club's members
+- **WHEN** a ride is created in a club, or a rider joins a club
+- **THEN** no rider outside that club SHALL receive a row, including riders in other clubs and
+  riders who have left
+- **AND** membership SHALL be read at the moment of fan-out, so a rider who left a moment earlier
+  receives nothing
+
+#### Scenario: The `club_joined` recipient set is owner plus admins and nobody else
+- **WHEN** a rider joins a club
+- **THEN** only the club's owner and its `admin`-role members SHALL be notified
+- **AND** ordinary members SHALL NOT be, because a club with any real membership would otherwise
+  notify everyone on every join
+
+#### Scenario: The admin arm is asserted even though no client can reach it
+- **WHEN** the admin arm is tested
+- **THEN** the `admin` row SHALL be inserted as the table owner, and the assertion SHALL record why
+- **AND** the reason SHALL be that `club_members` INSERT admits only `member`, or `owner` for the
+  club's own `owner_id`, and there is **no UPDATE policy on the table at all** — so `admin` is
+  insertable by nobody and promotable by nobody, and zero admin rows exist (measured 2026-08-07)
+- **AND** omitting the assertion as untestable SHALL NOT be acceptable, because the arm ships the
+  day invitations do
+
+#### Scenario: The `ride_joined` recipient is the organizer and nobody else
+- **WHEN** a rider RSVPs to a ride
+- **THEN** only `rides.organizer_id` SHALL be notified
+- **AND** other crew members SHALL NOT be, notwithstanding that the design fans this row out to all
+  attendees — widening it is a product decision recorded as an open question, not a default
+
+#### Scenario: A ride with no club notifies nobody about its creation
+- **WHEN** a ride is created with `club_id` NULL
+- **THEN** zero rows SHALL be written, because a ride with no club has no audience to address
+- **AND** a public ride SHALL NOT be fanned out to every signed-in rider
+
+#### Scenario: A rider who cannot see the ride cannot be its joiner
+- **WHEN** the organizer of a ride in a private club is notified of a joiner
+- **THEN** that joiner SHALL necessarily be a member of the club, because `ride_members` INSERT
+  requires an `EXISTS` against `rides` under the caller's own row security and a private club's
+  ride is visible to its members only
+- **AND** the case of an organizer notified about a rider who cannot see the club SHALL therefore
+  be unreachable through the client, which SHALL be recorded rather than defended against
+- **AND** the row SHALL survive that rider later leaving the club, because the organizer's own arm
+  of the `rides` policy keeps the subject resolvable for them
+
 ## ADDED Requirements
 
 ### Requirement: A fan-out on a status transition SHALL fire on the transition and not on the row

@@ -57,6 +57,22 @@ rider on that device inherits a spendable grant.
 - **WHEN** a rider signs out with `letsride.pendingInviteToken` set
 - **THEN** the key SHALL be absent afterwards, alongside the session and the query cache
 
+#### Scenario: The next rider sees nothing of the last one
+- **WHEN** rider A signs out and rider B signs in on the same device
+- **THEN** no cached row, list, image or signed URL belonging to A SHALL be readable or
+  renderable by B
+- **AND** this SHALL hold even with the device offline at the moment B signs in
+#### Scenario: Cached private-club imagery does not outlive membership
+- **WHEN** a rider leaves a club, or is signed out
+- **THEN** cached image bytes for that club's postcards SHALL be discarded
+- **AND** the one-hour signed-URL TTL SHALL NOT be lengthened to make caching easier, since the
+  signature is the only protection on an image once it leaves RLS's reach
+#### Scenario: A failed sign-out does not leave a half-signed-in device
+- **WHEN** the token revocation call fails because the device is offline
+- **THEN** local state SHALL still be destroyed and the rider SHALL still land signed out
+- **AND** the still-valid refresh token SHALL be discarded rather than retried later
+
+
 ## ADDED Requirements
 
 ### Requirement: A capability token held on the device SHALL be tab-scoped and spendable only by an explicit action

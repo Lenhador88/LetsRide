@@ -53,6 +53,19 @@ would conclude that an `accepted` row for a rider nobody named is impossible, an
 - **WHEN** a request for `public.ride_invites` arrives with no session
 - **THEN** zero rows SHALL be returned and every write SHALL be refused
 
+#### Scenario: The organizer invites a rider
+- **WHEN** a ride's organizer inserts a `ride_invites` row naming themselves as `inviter_id` and
+  another rider as `invitee_id`
+- **THEN** the insert SHALL succeed with `status` taking its default of `pending`
+- **AND** `created_at` SHALL be the server's `now()` and SHALL NOT be nameable by the caller
+- **AND** `responded_at` SHALL be NULL
+#### Scenario: A club member of the ride's club cannot invite
+- **WHEN** a member of the ride's club, who is neither organizer nor crew, attempts the insert
+- **THEN** it SHALL be refused
+#### Scenario: A rider cannot invite on someone else's behalf
+- **WHEN** any rider inserts a row whose `inviter_id` is not `auth.uid()`
+- **THEN** it SHALL be refused, even where that `inviter_id` names the ride's actual organizer
+
 ### Requirement: An invite SHALL be unique per ride and invitee, and SHALL NOT name its own inviter
 
 `public.ride_invites` SHALL carry `unique (ride_id, invitee_id)` and
@@ -85,6 +98,13 @@ Where two paths could admit the same rider, **the first row SHALL win and SHALL 
 #### Scenario: The organizer cannot claim their own link
 - **WHEN** a ride's organizer calls `claim_ride_invite_link` with a token from their own ride
 - **THEN** the insert SHALL be refused by `check (invitee_id <> inviter_id)` with `23514`
+
+#### Scenario: A rider cannot invite themselves
+- **WHEN** any rider inserts a row where `invitee_id = inviter_id`
+- **THEN** it SHALL be refused by a table CHECK, before any policy or trigger is reached
+- **AND** the fan-out SHALL therefore be unable to notify a rider of their own action, which the
+  fan-out also guards independently
+
 
 ## ADDED Requirements
 
