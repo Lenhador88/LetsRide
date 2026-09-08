@@ -386,6 +386,47 @@ insert into public.ride_members (ride_id, user_id, status, joined_at) values
   ('5c0f1a00-0300-4000-8000-0000000000c4', '5c0f1a00-0002-4000-8000-000000000002', 'going', now() - interval '29 days'),
   ('5c0f1a00-0300-4000-8000-0000000000c4', '5c0f1a00-0005-4000-8000-000000000005', 'going', now() - interval '28 days');
 
+-- One live invite link on the club ride, because `/rides/detail/invite` and
+-- `115`'s anonymous preview both need a token that exists, and without one the
+-- walk reports "no live invite link on this ride and none could be created"
+-- unless it is run with `WALK_FIXTURES=1` — which is not what you want pointed
+-- at a curated account.
+--
+-- **The token is GENERATED, never a literal.** `115` (PD-430) makes it an
+-- anonymous read key for six columns of this ride, so a fixed one committed to
+-- a repository is a bearer token in git history. The column's default is
+-- `encode(gen_random_bytes(16), 'hex')`; leave it alone. `expires_at` follows
+-- the app's own rule — the ride's departure, or two weeks, whichever is first.
+insert into public.ride_invite_links (id, ride_id, created_by, expires_at, created_at)
+select '5c0f1a00-0600-4000-8000-000000000091',
+       r.id, r.organizer_id,
+       least(r.departure_at, now() + interval '14 days'),
+       now() - interval '2 days'
+  from public.rides r where r.id = '5c0f1a00-0300-4000-8000-0000000000c1';
+
+-- The ride's own chat. Without it `/rides/detail/thread` has nothing to open —
+-- measured: the walk reported "no threads on that ride" and skipped the screen,
+-- which is one fewer screen to photograph and, on any other run, a skip that
+-- reads exactly like a pass.
+insert into public.ride_threads (id, ride_id, author_id, title, created_at, last_activity_at) values
+  ('5c0f1a00-0500-4000-8000-0000000000f1', '5c0f1a00-0300-4000-8000-0000000000c1',
+   '5c0f1a00-0001-4000-8000-000000000001', 'Fuel stop and the weather',
+   now() - interval '5 days', now() - interval '1 day' - interval '3 hours');
+
+insert into public.ride_thread_messages (id, thread_id, author_id, body, created_at) values
+  ('5c0f1a00-0501-4000-8000-0000000000f1', '5c0f1a00-0500-4000-8000-0000000000f1',
+   '5c0f1a00-0001-4000-8000-000000000001',
+   'Tanks full before we leave, please. The next station after the dyke is a long way on.',
+   now() - interval '5 days'),
+  ('5c0f1a00-0502-4000-8000-0000000000f1', '5c0f1a00-0500-4000-8000-0000000000f1',
+   '5c0f1a00-0003-4000-8000-000000000003',
+   'Forecast says dry until four. I am bringing the oversuit anyway.',
+   now() - interval '3 days'),
+  ('5c0f1a00-0503-4000-8000-0000000000f1', '5c0f1a00-0500-4000-8000-0000000000f1',
+   '5c0f1a00-0002-4000-8000-000000000002',
+   'Same. See everyone at nine.',
+   now() - interval '1 day' - interval '3 hours');
+
 -- ---------------------------------------------------------------------------
 -- 6. Postcards
 -- ---------------------------------------------------------------------------
