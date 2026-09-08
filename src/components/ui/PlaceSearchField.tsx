@@ -160,6 +160,8 @@ export function PlaceSearchField({
   disabled,
   freeText,
   recents,
+  initialQuery,
+  fieldRef,
 }: {
   /** The field's own label, e.g. `Location`. */
   label: string
@@ -234,6 +236,37 @@ export function PlaceSearchField({
      *  be mistaken for one. */
     heading: string
   }
+  /**
+   * A search term to put in the field the FIRST time it is focused — PD-446,
+   * where the create-club form offers the rider's own town so the suggestion
+   * they want is one tap away rather than eight keystrokes.
+   *
+   * **A term, never a value.** It lands in the draft, which place mode never
+   * submits, so a rider who focuses the field and walks away stores nothing —
+   * `onBlur`'s `if (!freeText) setDraft(null)` erases it, and that is the
+   * behaviour rather than a leak to work around.
+   *
+   * **On first FOCUS, never on mount, and the three reasons are independent.**
+   * Seeding at mount would be erased by the first blur anyway; until then it
+   * would show text a submit would not store; and it would spend a metered
+   * vendor credit for every rider who opens the screen and never touches the
+   * field. First focus is the same moment `resolveRiderLocation` is asked for
+   * the search bias, and for the same reason.
+   *
+   * Ignored once the field has a pick or a draft — a seed is an opening
+   * offer, not a value that competes with the rider's own typing.
+   */
+  initialQuery?: string | null
+  /**
+   * The visible input, for a caller that has to move focus to this field —
+   * PD-446, where a refused submit focuses the field the schema rejected.
+   *
+   * It exists because place mode's input is deliberately nameless, so
+   * `form.elements.namedItem(...)` cannot reach it and the four hidden inputs
+   * it would reach instead are not focusable. Omitted by every caller that
+   * never moves focus here.
+   */
+  fieldRef?: React.RefObject<HTMLInputElement | null>
 }) {
   const fieldId = useId()
   const listId = `${fieldId}-list`
@@ -298,7 +331,17 @@ export function PlaceSearchField({
           recent: false,
         }))
 
-  const inputRef = useRef<HTMLInputElement>(null)
+  const ownInputRef = useRef<HTMLInputElement>(null)
+  // The caller's ref when one is passed, so a form moving focus here and this
+  // component's own `clear()` act on the same element rather than on two refs
+  // that happen to point at it.
+  const inputRef = fieldRef ?? ownInputRef
+
+  // Whether `initialQuery` has already been offered. A ref rather than state:
+  // spending it must not re-render, and it must survive the re-render the seed
+  // itself causes — a `useState` flag read in the same handler that sets it
+  // would still hold its old value.
+  const seeded = useRef(false)
 
   function pick(next: PlaceValue) {
     onChange(next)
@@ -407,6 +450,20 @@ export function PlaceSearchField({
             onFocus={(event) => {
               setTouched(true)
               setOpen(true)
+              // The seed — see `initialQuery`. Both `setDraft` and
+              // `setSearchTerm`, or the field shows a term that searches for
+              // nothing and the one tap it exists to save is not saved.
+              // Guarded on `value` and `draft` so it can never overwrite a
+              // pick or something the rider has typed, and spent once whether
+              // or not it applied.
+              if (!freeText && !seeded.current) {
+                seeded.current = true
+                const seed = initialQuery?.trim()
+                if (seed && !value && draft === null) {
+                  setDraft(seed)
+                  setSearchTerm(seed)
+                }
+              }
               // So the input and the first rows clear a raised keyboard. The
               // list renders in flow beneath the field, so the page's own
               // scroll container is what has to move.
