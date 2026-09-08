@@ -557,9 +557,19 @@ listener never fires, `pushPrimingState` reports `stalled` — which is why
 neatness.** Automatic signing picks a development profile for Debug and a distribution one for
 Release; an entitlement that does not match the profile fails to sign. Pinned to `development` the
 archive is refused, and pinned to `production` the device build is. Xcode expands build variables in
-an entitlements file at `ProcessProductPackaging`, the same mechanism behind `$(AppIdentifierPrefix)`
-— so a value that does not expand fails **loudly**, at signing, rather than shipping a TestFlight
-build that registers against the sandbox and receives nothing.
+an entitlements file at `ProcessProductPackaging`, the same mechanism behind `$(AppIdentifierPrefix)`.
+
+**`APS_ENVIRONMENT` is ours, not Xcode's, so it is defined only where we define it** — the target's
+Debug and Release. A **fifth** configuration, or `xcodebuild -configuration <a new one>`, expands it
+to the empty string and writes `<key>aps-environment</key><string></string>`. **Whether `codesign`
+refuses that is inferred rather than measured**, and nothing in a Linux container can settle it;
+what is measured is that no such configuration exists today. Adding one means giving it a value.
+
+**What automatic signing can do to this file is a caught case rather than an open one.** With
+`ProvisioningStyle = Automatic` and the `SystemCapabilities` entry, opening Signing & Capabilities
+in Xcode can rewrite `App.entitlements` with a literal `development` — which is why
+`native-project.test.ts` asserts the variable form specifically rather than merely that the key is
+present.
 
 **No `UIBackgroundModes` / `remote-notification` is declared, and the absence is a decision.** The
 ride reminders group 3 sends are alert notifications; a background mode buys them nothing and adds a

@@ -228,10 +228,14 @@ rest is not, and every box that is not carries `[device]`.**
 - [ ] 2.20 `npm run walk` — **the walk cannot reach any of this**, and the tasks list says so
   rather than adding a phase. Adding a phase means adding a reason, and there is no browser path
   to a push registration.
-- [x] 2.21 PR, `reviewer`, merge, `Deployed to DEV`. **Does not close PD-291**; says so. Two PRs
-  rather than one: [#438](https://github.com/Lenhador88/LetsRide/pull/438) for 2.1–2.12 and the
-  PD-302 PR for 2.14. **Child B is complete in the repository and unverified on a device** —
-  2.15–2.19a stay open and are the only thing between here and a proven token.
+- [ ] 2.21 PR, `reviewer`, merge, `Deployed to DEV`. **Does not close PD-291**; says so. Two PRs
+  rather than one: [#438](https://github.com/Lenhador88/LetsRide/pull/438) for 2.1–2.12, merged,
+  and [#446](https://github.com/Lenhador88/LetsRide/pull/446) for 2.14, **open at the moment this
+  line was written**. It stays unticked for that reason and not because anything is owed: a box
+  ticked inside the commit that opens its own PR asserts a merge that has not happened, which is
+  the direction of error this repository cares about. **Child B is complete in the repository once
+  #446 lands, and unverified on a device either way** — 2.15–2.19a are the only thing between here
+  and a proven token.
 
 ---
 
