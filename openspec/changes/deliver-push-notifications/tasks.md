@@ -127,57 +127,92 @@ migration in this epic behind a native change nothing here can exercise.
 capability, and an FCM project with `google-services.json`. **The pure half is testable here; the
 rest is not, and every box that is not carries `[device]`.**
 
-- [ ] 2.1 `@capacitor/push-notifications`, **pinned exact** like every other Capacitor package —
+- [x] 2.1 `@capacitor/push-notifications`, **pinned exact** like every other Capacitor package —
   they must move together, so a caret on one is a version skew waiting for whichever `npm install`
-  runs first. Ten runtime dependencies after this; re-derive with
-  `node -p "Object.keys(require('./package.json').dependencies).length"` rather than trusting that.
-- [ ] 2.2 The one-sentence justification, in `package.json`'s vicinity and in the PR body, per
+  runs first. **Thirteen** runtime dependencies after this, not the ten this line said when it was written —
+  re-derive with `node -p "Object.keys(require('./package.json').dependencies).length"` rather than
+  trusting either number. Landed as `8.1.2`, the `latest` dist-tag for the Capacitor 8 line.
+- [x] 2.2 The one-sentence justification, in `package.json`'s vicinity and in the PR body, per
   `.claude/agents/native.md`: *Apple and Google hand a device token only to native code, so there
   is no route from the webview to APNs or FCM at all; this plugin is that route and nothing in the
   dependency tree substitutes for it.* Name what it pulls in: the iOS Push Notifications
   capability and `aps-environment` entitlement, and Android 13+'s `POST_NOTIFICATIONS` runtime
   permission.
-- [ ] 2.3 `src/lib/push/priming.ts` — the pure `pushPrimingState`, modelled on
+- [x] 2.3 `src/lib/push/priming.ts` — the pure `pushPrimingState`, modelled on
   `src/lib/location/priming.ts` and carrying the same kind of header: each rule with the trap it
   avoids. States: `hidden`, `ask`, `blocked`, and **`stalled`** — granted, registered, no token.
-- [ ] 2.4 `src/lib/push/__tests__/priming.test.ts` — every state, including the two the location
+- [x] 2.4 `src/lib/push/__tests__/priming.test.ts` — every state, including the two the location
   precedent has no analogue for: non-native platform (always `hidden`, before any permission
   read), and `stalled`.
-- [ ] 2.5 `src/lib/push/installation.ts` — `installationId()`: read the id from the existing
+- [x] 2.5 `src/lib/push/installation.ts` — `installationId()`: read the id from the existing
   secure store, generating one with `crypto.randomUUID()` on first call. **No new plugin** (D3);
   `@aparajita/capacitor-secure-storage` already holds the refresh token, so the value's lifetime is
   exactly *this install on this device*. A unit test that a second call returns the first value.
-- [ ] 2.6 `src/lib/push/registration.ts` — `checkPushPermission()`, `requestPushPermission()`
+- [x] 2.6 `src/lib/push/registration.ts` — `checkPushPermission()`, `requestPushPermission()`
   (the **only** function that may prompt), the `registration` / `registrationError` listeners,
   `registerCurrentDevice()` and `releaseCurrentDevice()`. Both RPC calls pass the installation id.
   Non-native platforms return early before touching the plugin, the way `secure-store.ts` does
   through `Capacitor.isNativePlatform()`.
-- [ ] 2.7 **Cold-start registration.** `registerCurrentDevice()` runs unconditionally on every cold
+- [x] 2.7 **Cold-start registration.** `registerCurrentDevice()` runs unconditionally on every cold
   start while a session exists and the permission is granted — not only on first grant. This is
   the other end of D8's window and the thing that re-homes a shared device. Because the row is
   keyed on the installation, the re-home is **total**; under a token-keyed table it would move one
   token and leave any other row for the same device behind.
-- [ ] 2.8 `src/components/push/PushPrimingSheet.tsx` — `ContextMenu`-based, `ask` / `blocked`
+- [x] 2.8 `src/components/push/PushPrimingSheet.tsx` — `ContextMenu`-based, `ask` / `blocked`
   modes, only `Continue` reaching the API. Copy claims listed in the header as
   `LocationPrimingSheet` lists its two, since Apple reads the in-app rationale.
-- [ ] 2.9 `src/components/push/PushPrimingRow.tsx` — geometry borrowed from `UseMyLocationRow` /
+- [x] 2.9 `src/components/push/PushPrimingRow.tsx` — geometry borrowed from `UseMyLocationRow` /
   `ExploreClubsStrip`, a `<button>` with `aria-haspopup="dialog"`. Draws at the top of
   `/notifications` and nowhere else (Q3's default).
-- [ ] 2.10 Wire the row into `src/app/(app)/notifications/page.tsx`. One call site.
-- [ ] 2.11 `signOut()` in `src/lib/actions/auth.ts` gains `releaseCurrentDevice()` **before**
+- [x] 2.10 Wire the row into `src/app/(app)/notifications/page.tsx`. One call site.
+- [x] 2.11 `signOut()` in `src/lib/actions/auth.ts` gains `releaseCurrentDevice()` **before**
   `supabase.auth.signOut()`, failing silently. Extend the function's header, which already
   explains the ordering of the other four clears, with why this one is first and why its failure
   does not block sign-out.
-- [ ] 2.12 Revoked-permission detection: on the next permission read after a rider disables
+- [x] 2.12 Revoked-permission detection: on the next permission read after a rider disables
   notifications in OS settings, call `releaseCurrentDevice()` — **this installation only**, not
   every row for the rider, which would unsubscribe their other phone. Providers keep accepting
   sends for a token whose app permission was revoked and silently drop them, so nothing else would
   notice.
 - [ ] 2.13 `src/lib/query/keys.ts` — a key for the push registration state, spelled there rather
-  than inline, with the same header note the file's other entries carry.
-- [ ] 2.14 Permission strings and native project config — **[device]**, on a Mac.
+  than inline, with the same header note the file's other entries carry. **Deferred with a
+  reason, not skipped: it lands with its first reader.** PD-431 added the key and review found
+  it dead — both push components hold this state in `useState`, because the source is the
+  device's own OS permission rather than a row, and `push_devices` is readable by nobody
+  (`078` §2). A key in `keys.ts` that nothing passes to `useQuery` is a contract entry
+  describing a read that does not exist, so it was removed again. Add it back when child C
+  gives the screen something server-side to read.
+- [ ] 2.14 Permission strings and native project config. **This box said `[device]`, on a Mac, and
+  that was wrong for the whole iOS half** — the entitlement, the build settings and the delegate
+  forwarding are text in this repository, and `cap add ios` had already committed `ios/`.
   `NSUserNotificationsUsageDescription` is not a thing; what Apple reads is the in-app rationale
-  in 2.7 plus the App Store privacy answers. Android needs the `POST_NOTIFICATIONS` declaration.
+  in 2.8 plus the App Store privacy answers.
+  - [x] `ios/App/App/App.entitlements` — `aps-environment`, as `$(APS_ENVIRONMENT)`. Without it
+    iOS refuses `registerForRemoteNotifications()` outright, so 2.6's whole doorway is inert.
+    **A literal value is the defect**: automatic signing picks a development profile for Debug and
+    a distribution one for Release, so `development` refuses the archive and `production` refuses
+    the device build. `APS_ENVIRONMENT` is set per configuration in `project.pbxproj`.
+  - [x] `CODE_SIGN_ENTITLEMENTS = App/App.entitlements` on **both** target configurations, plus
+    `SystemCapabilities` → `com.apple.Push` so Xcode's Signing & Capabilities tab agrees with the
+    file rather than offering to add the capability again.
+  - [x] `AppDelegate.swift` posts `.capacitorDidRegisterForRemoteNotifications` and
+    `.capacitorDidFailToRegisterForRemoteNotifications`. **iOS hands the token to the app delegate
+    and the plugin listens on `NotificationCenter`** (`PushNotificationsPlugin.load()`, 8.1.2), so
+    with no post here `register()` resolves and 2.6's `registration` listener waits for ever —
+    2.3's `stalled` state, shipped as the only reachable outcome.
+  - [x] **No `UIBackgroundModes` / `remote-notification`, deliberately.** It buys nothing for the
+    alert notifications group 3 sends, and it is a store-review question about background
+    behaviour the app does not have. Recorded because an absent declaration is otherwise
+    indistinguishable from a forgotten one. Group 3 adds it *only* if it introduces a silent push.
+  - [x] `src/lib/push/__tests__/native-project.test.ts` — the tripwire under all three. **The one
+    part of child B a gate can see**, and it exists because each of the three reverts silently
+    (an `npx cap sync`, an Xcode capability toggle, a template regeneration) and all three fail
+    identically on a device, where the diagnosis costs a provisioning profile and a trip to a Mac.
+    Verified both ways, and the comment strip is load-bearing rather than ceremonial: the delegate's
+    own doc comment names both constants, so an unstripped check passes on a file whose methods
+    have been deleted.
+  - [ ] Android's `POST_NOTIFICATIONS` declaration — **nothing to declare it in.** `android/` does
+    not exist and is paused (PD-442). It lands with `cap add android`, not before.
 - [ ] 2.15 **[device]** Grant on a real iOS device, confirm a token arrives, confirm the row lands.
 - [ ] 2.16 **[device]** Decline on a real iOS device, confirm `blocked` mode and that the row keeps
   drawing.
@@ -193,7 +228,14 @@ rest is not, and every box that is not carries `[device]`.**
 - [ ] 2.20 `npm run walk` — **the walk cannot reach any of this**, and the tasks list says so
   rather than adding a phase. Adding a phase means adding a reason, and there is no browser path
   to a push registration.
-- [ ] 2.21 PR, `reviewer`, merge, `Deployed to DEV`. **Does not close PD-291**; says so.
+- [ ] 2.21 PR, `reviewer`, merge, `Deployed to DEV`. **Does not close PD-291**; says so. Two PRs
+  rather than one: [#438](https://github.com/Lenhador88/LetsRide/pull/438) for 2.1–2.12, merged,
+  and [#446](https://github.com/Lenhador88/LetsRide/pull/446) for 2.14, **open at the moment this
+  line was written**. It stays unticked for that reason and not because anything is owed: a box
+  ticked inside the commit that opens its own PR asserts a merge that has not happened, which is
+  the direction of error this repository cares about. **Child B is complete in the repository once
+  #446 lands, and unverified on a device either way** — 2.15–2.19a are the only thing between here
+  and a proven token.
 
 ---
 

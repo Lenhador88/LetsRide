@@ -529,6 +529,28 @@ stopped matching passes for ever and looks exactly like a correct one.
 This is the real maintenance cost of two projects. Everything above is version-controlled;
 none of the below is.
 
+### The repo now decides Vercel's Node version, and it did not before — 2026-09-08
+
+`package.json` carries `engines: { "node": "22.x" }`, added so that a local `npm ci` on a newer
+Node says so rather than leaving the next session to re-derive five phantom test failures
+— the `Node version` row of `docs/reference/running-locally.md`'s command table carries the
+measurement and the one-line proof.
+
+**The side effect is the part to know: Vercel reads `engines.node` and it takes precedence over
+the project's Node.js Version setting.** `vercel.json` is `{"framework":"nextjs"}` with no
+`nodeVersion`, so before this the dashboard decided and now the repo does. Two consequences:
+
+- the build no longer rolls forward with Vercel's default;
+- when 22.x is retired, the build **fails** — *"Found invalid Node.js Version"* — rather than
+  degrading quietly. That is the better failure, but it is a failure, and nothing else in the repo
+  would explain it.
+
+**This is a dashboard setting whose current value nothing here records**, the same class as
+`mailer_autoconfirm` below: the override is now in git, the thing it overrides is not. If a build
+ever needs a different major, change `engines`, `.nvmrc` and `ci.yml` together — three
+hand-maintained copies today, which `setup-node`'s `node-version-file: .nvmrc` would reduce to
+two.
+
 ### Vercel's system environment variables
 
 `src/app/layout.tsx` resolves the `og:image` origin from **`VERCEL_PROJECT_PRODUCTION_URL`**,

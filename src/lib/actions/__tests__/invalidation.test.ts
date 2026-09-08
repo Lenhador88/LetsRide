@@ -102,12 +102,23 @@ vi.mock('@/lib/supabase/session-store', async (importOriginal) => ({
   clearSessionStore: vi.fn(async () => {}),
 }))
 
+// PD-431. Mocked rather than exercised because the real one reaches the
+// Capacitor bridge; what this file pins is that `signOut` CALLS it and where in
+// the order, which is the half that can regress silently.
+vi.mock('@/lib/push/registration', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/push/registration')>()),
+  releaseCurrentDevice: vi.fn(async () => {
+    timeline.push('releaseCurrentDevice')
+  }),
+}))
+
 // Imported after the mocks are declared — `vi.mock` is hoisted, but keeping
 // the order visible is what makes the file readable.
 import { setRideAttendance } from '@/lib/actions/rides'
 import { leaveClub } from '@/lib/actions/clubs'
-import { acceptTerms, setUsername } from '@/lib/actions/onboarding'
+import { acceptTerms, setHomeCountry, setUsername } from '@/lib/actions/onboarding'
 import { signOut } from '@/lib/actions/auth'
+import { releaseCurrentDevice } from '@/lib/push/registration'
 import { invalidate, clearQueryCache } from '@/lib/query'
 import { clearGuardCache, invalidateOnboardingState } from '@/lib/auth/guard-cache'
 
@@ -150,6 +161,7 @@ beforeEach(() => {
   vi.mocked(clearQueryCache).mockClear()
   vi.mocked(invalidateOnboardingState).mockClear()
   vi.mocked(clearGuardCache).mockClear()
+  vi.mocked(releaseCurrentDevice).mockClear()
   timeline.length = 0
   getUser.mockResolvedValue({ data: { user: USER } })
 })
@@ -349,23 +361,26 @@ describe('acceptTerms', () => {
 })
 
 describe('setUsername', () => {
-  it('writes the username FIRST, stamps completion SECOND, invalidates ONCE after both', async () => {
+  it('writes the username, invalidates, and does NOT stamp completion', async () => {
+    // PD-428 moved the completion stamp to `setHomeCountry`. Leaving the RPC
+    // here would be refused for every new rider once `114` applies — it
+    // refuses to stamp while `home_country` is NULL — so the username step
+    // would fail with a message about a country nobody has asked for yet.
+    //
+    // The invalidation stays and is asserted on its own, because its reason
+    // changed rather than went away: it now publishes `has_username`, which is
+    // what the guard's resume branch reads to pick between the two steps.
     const { builder, calls } = chain({ data: { id: USER.id }, error: null })
     from.mockReturnValue(builder)
-    rpc.mockResolvedValue({ data: true, error: null })
 
     const state = await setUsername(emptyActionState, form({ username: 'dawnrider' }))
 
-    expect(state.error).toBeNull()
+    expect(state).toEqual({ error: null, redirectTo: '/onboarding/country' })
     expect(from).toHaveBeenCalledWith('profiles')
     expect(calls[0]).toEqual({ method: 'update', args: [{ username: 'dawnrider' }] })
     expect(calls[1]).toEqual({ method: 'eq', args: ['id', USER.id] })
-    expect(rpc).toHaveBeenCalledWith('complete_onboarding', { p_location: null })
-    expect(timeline).toEqual([
-      'from:profiles',
-      'rpc:complete_onboarding',
-      'invalidateOnboardingState',
-    ])
+    expect(rpc).not.toHaveBeenCalled()
+    expect(timeline).toEqual(['from:profiles', 'invalidateOnboardingState'])
     expect(invalidateOnboardingState).toHaveBeenCalledTimes(1)
   })
 
@@ -393,15 +408,17 @@ describe('setUsername', () => {
     expect(invalidateOnboardingState).not.toHaveBeenCalled()
   })
 
-  it('does not invalidate when the completion RPC refuses (consent still missing)', async () => {
+  it('hands the rider to the country step rather than to /postcards', async () => {
+    // The wizard's exit moved with the stamp. A redirect straight to
+    // `/postcards` would be undone by the guard — `onboarding_completed_at` is
+    // still NULL at this point — so the rider would see the home screen flash
+    // and then land back in the wizard.
     const { builder } = chain({ data: { id: USER.id }, error: null })
     from.mockReturnValue(builder)
-    rpc.mockResolvedValue({ data: null, error: { code: '23514' } })
 
     const state = await setUsername(emptyActionState, form({ username: 'dawnrider' }))
 
-    expect(state.error).toBe('Finish the earlier steps first.')
-    expect(invalidateOnboardingState).not.toHaveBeenCalled()
+    expect(state.redirectTo).toBe('/onboarding/country')
   })
 
   it('refuses an invalid username before reaching the database', async () => {
@@ -410,6 +427,97 @@ describe('setUsername', () => {
     expect(state.error).toBeTruthy()
     expect(from).not.toHaveBeenCalled()
     expect(rpc).not.toHaveBeenCalled()
+  })
+})
+
+describe('setHomeCountry', () => {
+  // The wizard's terminal writer since PD-428, and it inherited the ordering
+  // contract `setUsername` used to carry: the column write FIRST, the
+  // completion RPC SECOND, one invalidation after both. `114` refuses to stamp
+  // while `home_country` is NULL, so the reverse order is refused every time.
+
+  it('writes the country FIRST, stamps completion SECOND, invalidates ONCE after both', async () => {
+    const { builder, calls } = chain({ data: { id: USER.id }, error: null })
+    from.mockReturnValue(builder)
+    rpc.mockResolvedValue({ data: true, error: null })
+
+    const state = await setHomeCountry(emptyActionState, form({ country: 'NL' }))
+
+    expect(state).toEqual({ error: null, redirectTo: '/postcards' })
+    expect(from).toHaveBeenCalledWith('profiles')
+    expect(calls[0]).toEqual({ method: 'update', args: [{ home_country: 'NL' }] })
+    expect(calls[1]).toEqual({ method: 'eq', args: ['id', USER.id] })
+    expect(rpc).toHaveBeenCalledWith('complete_onboarding', { p_location: null })
+    expect(timeline).toEqual([
+      'from:profiles',
+      'rpc:complete_onboarding',
+      'invalidateOnboardingState',
+    ])
+    expect(invalidateOnboardingState).toHaveBeenCalledTimes(1)
+  })
+
+  it('normalises the code rather than refusing it on case', async () => {
+    // `countryCodeSchema` uppercases, because the column stores `NL` and
+    // nothing else. A rider whose client sends `nl` gets their country.
+    const { builder, calls } = chain({ data: { id: USER.id }, error: null })
+    from.mockReturnValue(builder)
+    rpc.mockResolvedValue({ data: true, error: null })
+
+    await setHomeCountry(emptyActionState, form({ country: ' nl ' }))
+
+    expect(calls[0]).toEqual({ method: 'update', args: [{ home_country: 'NL' }] })
+  })
+
+  it('refuses an unassigned code before reaching the database', async () => {
+    // `ZZ` matches the shape and is not a country. Zod owns this message;
+    // `113`'s membership CHECK owns the guarantee.
+    const state = await setHomeCountry(emptyActionState, form({ country: 'ZZ' }))
+
+    expect(state.error).toBeTruthy()
+    expect(from).not.toHaveBeenCalled()
+    expect(rpc).not.toHaveBeenCalled()
+    expect(invalidateOnboardingState).not.toHaveBeenCalled()
+  })
+
+  it('refuses an empty submission before reaching the database', async () => {
+    const state = await setHomeCountry(emptyActionState, form({ country: '' }))
+
+    expect(state.error).toBeTruthy()
+    expect(from).not.toHaveBeenCalled()
+  })
+
+  it('never stamps completion, and never invalidates, when the UPDATE matched no row', async () => {
+    // PostgREST reports no error for a zero-row update; `.select().maybeSingle()`
+    // is what makes it distinguishable. Stamping completion for a rider whose
+    // row does not exist is the trap `setUsername` documents.
+    const { builder } = chain({ data: null, error: null })
+    from.mockReturnValue(builder)
+
+    const state = await setHomeCountry(emptyActionState, form({ country: 'NL' }))
+
+    expect(state.error).toBe('Your profile could not be found. Sign in again.')
+    expect(rpc).not.toHaveBeenCalled()
+    expect(invalidateOnboardingState).not.toHaveBeenCalled()
+  })
+
+  it('does not invalidate when the completion RPC refuses (an earlier step is missing)', async () => {
+    const { builder } = chain({ data: { id: USER.id }, error: null })
+    from.mockReturnValue(builder)
+    rpc.mockResolvedValue({ data: null, error: { code: '23514' } })
+
+    const state = await setHomeCountry(emptyActionState, form({ country: 'NL' }))
+
+    expect(state.error).toBe('Finish the earlier steps first.')
+    expect(invalidateOnboardingState).not.toHaveBeenCalled()
+  })
+
+  it('refuses a signed-out caller before touching the table', async () => {
+    getUser.mockResolvedValue({ data: { user: null } })
+
+    const state = await setHomeCountry(emptyActionState, form({ country: 'NL' }))
+
+    expect(state).toEqual({ error: null, redirectTo: '/auth/login' })
+    expect(from).not.toHaveBeenCalled()
   })
 })
 
@@ -436,6 +544,50 @@ describe('signOut', () => {
 
     expect(authSignOut).toHaveBeenCalledTimes(2)
     expect(authSignOut).toHaveBeenLastCalledWith({ scope: 'local' })
+    expect(clearQueryCache).toHaveBeenCalledTimes(1)
+    expect(clearGuardCache).toHaveBeenCalledTimes(1)
+  })
+
+  it('releases this device BEFORE the session is revoked — PD-431', async () => {
+    // The ordering is not a preference: `release_push_device` is a server write
+    // and `auth.uid()` is its whole subject, so after the revocation there is
+    // no session to resolve it against and the row survives naming the
+    // departing rider. On a shared phone that is their notifications on
+    // somebody else's lock screen.
+    //
+    // Pinned on the timeline rather than on a call count, because a count
+    // passes with the call in the wrong place — which is the only way this
+    // regresses.
+    authSignOut.mockResolvedValue({ error: null })
+
+    await signOut()
+
+    // The release leads, and the two clears follow the revocation as before.
+    expect(timeline).toEqual(['releaseCurrentDevice', 'clearQueryCache', 'clearGuardCache'])
+
+    // **The claim that matters is against `auth.signOut()`, which is not on the
+    // timeline** — so it is read off the invocation order rather than inferred
+    // from the two clears, which sit on the far side of the revocation anyway
+    // and would pass with the release moved after it.
+    expect(releaseCurrentDevice).toHaveBeenCalledTimes(1)
+    expect(releaseCurrentDevice).toHaveBeenCalledWith()
+    expect(vi.mocked(releaseCurrentDevice).mock.invocationCallOrder[0]).toBeLessThan(
+      authSignOut.mock.invocationCallOrder[0],
+    )
+  })
+
+  it('signs the rider out even when the device release rejects', async () => {
+    // The offline case, one step earlier than the existing fallback above. A
+    // rider who pressed Sign out and is still signed in because a push RPC
+    // could not reach the network is the worst available outcome, so the
+    // failure is swallowed and the window is closed at the next boot instead.
+    vi.mocked(releaseCurrentDevice).mockRejectedValueOnce(new Error('fetch failed'))
+    authSignOut.mockResolvedValue({ error: null })
+
+    const state = await signOut()
+
+    expect(state).toEqual({ error: null, redirectTo: '/auth/login' })
+    expect(authSignOut).toHaveBeenCalledTimes(1)
     expect(clearQueryCache).toHaveBeenCalledTimes(1)
     expect(clearGuardCache).toHaveBeenCalledTimes(1)
   })

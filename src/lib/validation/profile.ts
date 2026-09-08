@@ -98,14 +98,19 @@ export const LOCATION_MAX_LENGTH = 100
  * a rider who cleared a field indistinguishable from one who never filled it
  * in only by inspection, and every render site already branches on null.
  *
- * **No CHECK constraint stands behind `bio` or `bike_model`** — `001`
- * declares both columns as bare `text`. The length limits are an application
- * rule: enforced on the server because the action parses `FormData`, but not
- * by the database, so a direct PostgREST call with a 10 MB bio would be
- * accepted. Worth a constraint if it ever matters; stated rather than
- * silently assumed. `location` does carry one — `018`'s
- * `profiles_location_length` bounds its length and refuses a trimmed-empty
- * string, which is exactly what `|| null` here avoids ever sending.
+ * **A CHECK constraint stands behind all three** — `018` adds
+ * `profiles_bio_length` (≤ 500), `profiles_bike_model_length` (≤ 60) and
+ * `profiles_location_length`, the last of which also refuses a trimmed-empty
+ * string, which is exactly what `|| null` here avoids ever sending. So these
+ * bounds are database guarantees and Zod owns only the message, which is the
+ * rule `CLAUDE.md` states for every integrity rule in this app.
+ *
+ * **This paragraph said the opposite until 2026-09-07** — *"No CHECK
+ * constraint stands behind `bio` or `bike_model`… a direct PostgREST call with
+ * a 10 MB bio would be accepted"* — naming `001`'s bare `text` declarations
+ * and missing that `018` bounded them afterwards. It is corrected rather than
+ * deleted because it invited exactly one action: adding a constraint that is
+ * already there, in a migration that would then be a no-op or a duplicate.
  *
  * **`location` used to be mandatory on this form**, because `003`'s
  * completion trigger refused the onboarding stamp while `location` was
@@ -215,6 +220,18 @@ export const profileIdSchema = z.uuid()
  * strict — `014` stores `NL` and nothing else — so normalising here is
  * consistent with it and a caller that sends `nl` gets their country rather
  * than an error.
+ *
+ * **It serves two different columns and they are not the same concept.**
+ * `profile_countries.country_code` is the travel log — countries a rider says
+ * they have *ridden in* (`014`'s own comment) — and `profiles.home_country` is
+ * where the rider lives (`113`, PD-428). One is a set, the other is a single
+ * value; overloading either to mean the other corrupts both and is very hard
+ * to unpick later. What they legitimately share is the *shape* rule, which is
+ * this schema and nothing more, and `113` gives `home_country` its own pair of
+ * CHECK constraints rather than borrowing `020`'s.
+ *
+ * As everywhere in this repo, Zod owns the **message** and the database owns
+ * the **guarantee**: a rider can simply not run this.
  *
  * **`usernameSchema` no longer works this way and the two are not a pair**, which
  * this comment used to claim. A country code has one correct spelling and the

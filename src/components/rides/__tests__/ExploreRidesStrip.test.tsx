@@ -34,16 +34,16 @@ const UTRECHT = { name: 'Utrecht' }
 describe('ExploreRidesStrip — the place clause', () => {
   it('names the place when the position resolved and rides are near it', () => {
     const out = html({ near: UTRECHT, nearCount: 3 })
-    expect(out).toContain('Explore public rides near Utrecht')
+    expect(out).toContain('Explore rides near Utrecht')
   })
 
   it('names it for a single near ride too — the clause is not a plural', () => {
-    expect(html({ near: UTRECHT, nearCount: 1 })).toContain('Explore public rides near Utrecht')
+    expect(html({ near: UTRECHT, nearCount: 1 })).toContain('Explore rides near Utrecht')
   })
 
   it('drops the place when nothing is near it, rather than claiming it', () => {
     const out = html({ near: UTRECHT, nearCount: 0 })
-    expect(out).toContain('Explore public rides')
+    expect(out).toContain('Explore rides')
     expect(out).not.toContain('Utrecht')
   })
 
@@ -76,7 +76,7 @@ describe('ExploreRidesStrip — the door', () => {
   it.each(states)('renders and links to /rides/explore with %s', (_label, props) => {
     const out = html({ ...props })
     expect(out).toContain('href="/rides/explore"')
-    expect(out).toContain('Explore public rides')
+    expect(out).toContain('Explore rides')
   })
 
   it('offers no way to turn anything off', () => {

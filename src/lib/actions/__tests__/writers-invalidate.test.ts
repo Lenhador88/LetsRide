@@ -100,6 +100,78 @@ describe('every stamp writer invalidates the guard cache', () => {
   }
 })
 
+/**
+ * The same rule, per EXPORTED FUNCTION rather than per file — PD-428.
+ *
+ * **The file-granular check above cannot see a writer that loses its
+ * invalidation while a sibling in the same module keeps one**, and PD-428 is
+ * what made that matter: `onboarding.ts` now holds three writers of fields the
+ * guard reads (`acceptTerms`, `setUsername`, `setHomeCountry`), so deleting any
+ * one call still leaves the file matching and every assertion above green.
+ * Measured before this block existed: removing `setHomeCountry`'s invalidation
+ * left 30/30 passing.
+ *
+ * `setUsername` is the case that shows why the pattern list is wider than the
+ * two RPCs. It writes no stamp — since PD-428 it does not call
+ * `complete_onboarding` at all — but it writes `username`, and `has_username`
+ * is exactly what the guard's resume branch reads to choose between the two
+ * wizard steps. A writer of any field the decision reads owes the
+ * invalidation, and the decision reads three.
+ */
+const GUARD_FIELD_WRITER =
+  /\.rpc\('(?:accept_terms|complete_onboarding)'|\.auth\.signUp\(|\.update\(\{\s*username:|\.update\(\{\s*home_country:/
+
+function exportedFunctions(source: string): Map<string, string> {
+  const out = new Map<string, string>()
+  // Split on the export boundary rather than brace-matching: these modules are
+  // a flat list of exported async functions, and a parser here would be more
+  // machinery than the rule is worth.
+  const parts = source.split(/^export\s+(?:async\s+)?function\s+/m).slice(1)
+  for (const part of parts) {
+    const name = part.match(/^(\w+)/)?.[1]
+    if (name) out.set(name, part)
+  }
+  return out
+}
+
+describe('every writer of a field the guard reads invalidates it — per function', () => {
+  const found: string[] = []
+  for (const [file, source] of sources) {
+    for (const [name, body] of exportedFunctions(source)) {
+      if (!GUARD_FIELD_WRITER.test(body)) continue
+      found.push(`${file}:${name}`)
+      it(`${file} — ${name}`, () => {
+        expect(body).toMatch(/\binvalidateOnboardingState\(\)|\bclearGuardCache\(\)/)
+      })
+    }
+  }
+
+  it('the per-function detector still finds the writers it exists for', () => {
+    // The both-ways half, per this file's own standing rule: a regex that
+    // quietly stops matching must fail here rather than pass for ever. These
+    // four are the whole population — if one disappears, either it was renamed
+    // or the splitter stopped working, and both are worth failing over.
+    expect(found).toEqual(
+      expect.arrayContaining([
+        'src/lib/actions/auth.ts:signUp',
+        'src/lib/actions/onboarding.ts:acceptTerms',
+        'src/lib/actions/onboarding.ts:setUsername',
+        'src/lib/actions/onboarding.ts:setHomeCountry',
+      ])
+    )
+  })
+
+  it('splits a module into its exported functions rather than returning one blob', () => {
+    // The failure that would make every assertion above vacuous: a splitter
+    // returning the whole file as one entry passes for exactly the reason the
+    // file-granular check already did.
+    const fns = exportedFunctions(sources.get('src/lib/actions/onboarding.ts')!)
+    expect(fns.size).toBeGreaterThan(2)
+    expect(fns.has('setHomeCountry')).toBe(true)
+    expect(fns.get('setHomeCountry')).not.toMatch(/export\s+(?:async\s+)?function\s+setUsername/)
+  })
+})
+
 describe('the session ender clears both caches', () => {
   for (const file of sessionEnders) {
     it(file, () => {

@@ -1,5 +1,14 @@
 # Tasks — enforce ride capacity
 
+> ⚠ **THE FEATURE THIS CHANGE SPECIFIES WAS REMOVED — do not archive without reading PD-436.**
+> `063` shipped the cap; `077` (PD-293, 2026-08-24) then dropped `max_riders` in full — the
+> column, `018`'s `rides_max_riders_range` CHECK and `private.enforce_ride_capacity()`. So
+> `specs/ride-capacity/spec.md` below is **fifteen** requirements describing a rule the database
+> no longer has (`grep -c "^### Requirement:" specs/ride-capacity/spec.md`), and archiving this
+> change would fold them into `openspec/specs/` as a standing contract. **§6.2 and §6.3 are done
+> (PD-264); §6.1 and §6.4 are the only tasks here that still apply, and §6.4 is what blocks
+> archiving today.** What happens to this directory is PD-436's question.
+
 Specs: `specs/ride-capacity/spec.md`, `specs/database-enforced-integrity/spec.md`.
 Mechanism and the rejected alternatives: `design.md`.
 
@@ -127,7 +136,7 @@ is how the next session re-derives the gap.
       an open gap. **This file was locked by another session at proposal time and was deliberately
       not edited**; do it in the apply phase, or hand it to the main thread if it is still locked.
       **Still open at merge**: PR #252 was open across that file for the whole build, so the three
-      stale claims (lines 250, 664, 731) are logged in `docs/HANDOFF.md` §Known issues with their
+      stale claims (lines 250, 664, 731) are logged in `docs/reference/journal.md` §Known issues with their
       line numbers instead. The next branch that opens that file fixes them.
 
 ## 6. OpenSpec coordination — do not skip, this is the one that outlives the change
@@ -139,15 +148,60 @@ dispatched under. Filed as its own issue so it is not lost with this change dire
 - [ ] 6.1 Before archiving: re-read `openspec/specs/database-enforced-integrity/spec.md` as the
       previous archive left it and rewrite the MODIFIED block against **that** text, keeping every
       scenario the siblings added. The version transcribed in the delta was read 2026-08-18.
-- [ ] 6.2 Delete the `Unenforced capacity is recorded, not silently assumed` scenario from
+- [x] 6.2 **DONE — PD-264, 2026-09-07.** Deleted the `Unenforced capacity is recorded, not
+      silently assumed` scenario from
       `openspec/changes/add-account-deletion/specs/database-enforced-integrity/spec.md` and
-      `openspec/changes/add-ride-map-tiles/specs/database-enforced-integrity/spec.md`. Both carry
-      it verbatim, and archiving replaces a requirement wholesale — so whichever of the three
-      archives last reinstates a spec asserting the cap is not enforced, about a database where it
-      is. Re-derive the claimant list first:
-      `grep -rn "^### Requirement:" openspec/changes/*/specs/ | grep -v archive`.
-- [ ] 6.3 Add a one-line pointer to this change in both siblings' existing coordination banners,
-      so the next reader of either finds the third claimant.
+      `openspec/changes/add-ride-map-tiles/specs/database-enforced-integrity/spec.md`. Both
+      carried it verbatim, and archiving replaces a requirement wholesale — so whichever of the
+      three archived last would have reinstated it. Claimant list re-derived first, and it is
+      still exactly these three.
+
+      **The scenario is VOID, not false, and that is stronger than this task assumed.** It said
+      "about a database where it is [enforced]". That was true on 2026-08-18 and stopped being
+      true six days later: `077` (PD-293) dropped `max_riders` — column, CHECK and trigger — so
+      the scenario now names a column that does not exist. Each deletion leaves a comment saying
+      so, because a reader who greps `enforce_ride_capacity`, finds `077` removing it and
+      concludes the scenario is true again would restore a claim about nothing.
+- [x] 6.3 **DONE — PD-264, 2026-09-07.** Both siblings' coordination banners now name this
+      change as the third claimant, carry the re-derivation command, and say that this change
+      *removes* where the other two *extend*.
+- [ ] 6.4 **Refresh ALL THREE deltas against the standing spec, not just this one — and this is
+      what actually blocks archiving today.** `openspec archive` refuses a MODIFIED block that
+      lacks a scenario the current spec has (`specs-apply.js`: *"current spec contains
+      scenario(s) not present in the modified block"*). The standing
+      `openspec/specs/database-enforced-integrity/spec.md:420` carries it — **already correct and
+      current**, citing `077` and the drop — and none of `add-account-deletion`,
+      `add-ride-map-tiles` or this change carries it. So all three throw on archive right now.
+
+      **COPY THE NAME EXACTLY, BACKTICKS INCLUDED. It is:**
+
+      ```
+      #### Scenario: No capacity rule is claimed for `ride_members`
+      ```
+
+      `parseScenarioBlocks` captures `/^####\s*Scenario:\s*(.+)\s*$/` and
+      `findMissingCurrentScenarios` compares those strings **raw** — unlike requirement names,
+      which go through `normalizeRequirementName`. So pasting it without the backticks around
+      `ride_members` throws again, naming the real scenario as still missing.
+
+      **The trap is what a reader then does about that throw.** `findMissingCurrentScenarios`
+      only checks current ⊆ incoming, so an EXTRA scenario in the delta is never refused — adding
+      the correctly-named one *beside* the mistyped one clears the throw and archives, leaving the
+      requirement carrying **two** capacity scenarios. That is the exact outcome §6.2 exists to
+      prevent, reached by following this task and then fixing the error it caused. Delete the
+      mistyped line; do not add a second beside it.
+
+      **Why this is filed here rather than in each sibling.** `add-account-deletion`'s tasks say
+      nothing about the refresh at all (its §7.7 re-reads for drift, which is a different job).
+      `add-ride-map-tiles` §7.2 **does** state the obligation — but it says *"whichever of the
+      **two**"*, so it predates and does not know about the third claimant, **and it is ticked
+      `[x]` while the obligation is still outstanding.** One task naming all three is the only
+      form that is true.
+
+      Keep the standing scenario when refreshing — do not "fix" it, and do not reinstate the
+      deleted `Unenforced capacity is recorded, not silently assumed` beside it.
+
+      Measured 2026-09-07 (PD-264): missing from all three deltas.
 
 ## 7. Apply and verify
 

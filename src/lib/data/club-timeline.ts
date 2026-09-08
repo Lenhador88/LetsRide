@@ -4,7 +4,11 @@ import { RIDES_PAGE_SIZE } from '@/lib/data/rides'
 import { resolveAvatarUrls } from '@/lib/data/media'
 import { unwrapList } from '@/lib/data/unwrap'
 import { resolveSupabase } from '@/lib/supabase/resolve'
-import { boundedHorizon, type TimelineSource } from '@/lib/timeline/window'
+import {
+  boundedHorizon,
+  resolveThreadCountExactness,
+  type TimelineSource,
+} from '@/lib/timeline/window'
 import { clubIdSchema } from '@/lib/validation/clubs'
 import type {
   ClubRosterMember,
@@ -18,22 +22,6 @@ export type ClubJoin = Omit<ClubRosterMember, 'profile'> & {
   profile: PublicProfile & { username: string }
 }
 
-/**
- * The newest message in one thread — *someone is talking in here right now*.
- *
- * **This is the entry that makes the word "timeline" true**, and it exists
- * because the thread's own entry cannot do the job: a thread is placed by when
- * it was STARTED, so one begun three weeks ago and busy this morning sits three
- * weeks down the stream. Placing the thread by its last message instead was the
- * obvious fix and is the wrong one — the row reads "Pedro started a thread",
- * and dating that today when he started it in January is the screen telling a
- * small lie. A reply is its own event, at its own instant, and both can be true
- * at once.
- *
- * **One per thread, never one per message.** A club argument runs to forty
- * messages and would bury everything else under one conversation; the stream
- * carries the fact that a thread is alive, not a transcript of it.
- */
 /**
  * What a thread looks like from outside — who is in it and how big it is
  * (product owner, 2026-08-31: *"a thread should somehow show who is involved,
@@ -63,9 +51,34 @@ export type ClubThreadActivity = {
  *  time beside them. */
 export const THREAD_PARTICIPANT_LIMIT = 3
 
+/**
+ * The newest message in one thread — *someone is talking in here right now*.
+ *
+ * **It stopped being an entry of its own in `116` (PD-439) and became the
+ * thread row's lead line**, and the argument it used to carry is worth
+ * replacing rather than deleting, because it is the one a reader re-derives.
+ * It said: a thread is placed by when it was STARTED, so one begun three weeks
+ * ago and busy this morning sits three weeks down the stream; placing the
+ * thread at its last message instead makes the row read *"Pedro started a
+ * thread"* under today's date when he started it in January. So a reply was
+ * given its own row, at its own instant.
+ *
+ * **What that reasoning missed is that the two rows say the same thing**, and
+ * the product owner saw it on DEV before anyone else did (2026-09-07): the
+ * thread's own row already draws the reply count, the faces and `12+`, so the
+ * reply row summarised a conversation the row above it already summarised. The
+ * dating objection is answered by the LEAD rather than by a second row — a
+ * bumped row reads *"bram replied"*, never *"Pedro started a thread"* — which
+ * is why `ClubTimelineEvent`'s thread arm carries `latestReply`.
+ *
+ * **Still one per thread, never one per message.** A club argument runs to
+ * forty messages, and what the stream carries is the fact that a thread is
+ * alive, not a transcript of it.
+ */
 export type ClubThreadReply = {
-  /** The MESSAGE's id — the reply is the event, so two replies in one thread
-   *  across a refetch are the same entry only if they are the same message. */
+  /** The MESSAGE's id. It is no longer an entry key — `absorbClubReplyWindow`
+   *  folds these windows on it, so two replies in one thread across a refetch
+   *  are the same row only if they are the same message. */
   id: string
   created_at: string
   thread_id: string
@@ -236,6 +249,30 @@ export const CLUB_TIMELINE_REPLIES = 200
 export type ClubTimelineEvent =
   | { kind: 'ride'; at: string; key: string; ride: RideListItem }
   | { kind: 'postcard'; at: string; key: string; postcard: Postcard }
+  /**
+   * A thread — **one row, at its newest activity** (`116`, PD-439).
+   *
+   * Product owner, 2026-09-07: *"when I create a thread, and I reply to it, it
+   * shows up in 2 different lines in the timeline… just display the thread item
+   * in the timeline."* There was a second arm here, `reply`, sitting at the
+   * newest message's instant and drawing the same row through the same
+   * component; the two together drew one conversation twice, and the thread's
+   * own row already carried the reply count and the faces that summarised the
+   * other.
+   *
+   * **`at` is `last_activity_at`, not `created_at`** — the owner chose the
+   * bumping merge over the cheap one, because merging onto the creation date
+   * would sink a thread started in March with a reply this morning back to
+   * March and out of the window, which is the opposite of what the reply row
+   * was doing for the rider.
+   *
+   * **So this is the one row type on either timeline whose position MOVES.** A
+   * postcard, a join, a ride and the club's founding all sit where they
+   * happened, for ever. Two things follow that a reader will not guess: the
+   * thread source is ordered and horizoned in the `last_activity_at` dimension
+   * rather than the creation one, and a thread can appear in two accumulated
+   * paging windows at once — see `newestPerThreadRow`.
+   */
   | {
       kind: 'thread'
       at: string
@@ -243,16 +280,14 @@ export type ClubTimelineEvent =
       thread: ClubThreadListItem
       unread: boolean
       activity: ClubThreadActivity | null
+      /** The newest message in this thread, when the reply source reached it —
+       *  the row's lead line says *"bram replied"* rather than *"Started by
+       *  ana"* once there is one. `null` is a thread nobody has replied to, and
+       *  also a thread whose replies are older than the reply source's window;
+       *  both draw the byline, which is the honest fallback. */
+      latestReply: ClubThreadReply | null
     }
   | { kind: 'join'; at: string; key: string; member: ClubJoin }
-  | {
-      kind: 'reply'
-      at: string
-      key: string
-      reply: ClubThreadReply
-      unread: boolean
-      activity: ClubThreadActivity | null
-    }
   /**
    * The club itself — `clubs.created_at`, the oldest thing that can be on this
    * stream and therefore its floor.
@@ -446,6 +481,24 @@ export type ClubTimelineSources = {
   postcards: TimelineSource<Postcard>
   threads: TimelineSource<ClubThreadListItem>
   joins: TimelineSource<ClubJoin>
+  /**
+   * **A decoration source since `116` (PD-439), not a stream source.** It draws
+   * no row of its own any more: its rows supply each thread row's lead line
+   * (`latestReply`), its `activity` supplies the count and the faces, and its
+   * `horizon` decides whether that count is exact or a floor
+   * (`resolveThreadCountExactness`).
+   *
+   * **Which is why its horizon is NOT in the merge's horizon list below.** A
+   * horizon is the claim *"this source's picture of the stream stops here"*, and
+   * a source that contributes no entry to the stream cannot make that claim: a
+   * club with one busy thread would otherwise report a two-hundred-message
+   * horizon an hour old and cut every ride, postcard and join beneath it, for
+   * rows the timeline no longer draws. The information does not go missing — it
+   * moves to where it belongs, the `partial` flag on the number.
+   *
+   * It is still PAGED (`pendingClubTimelineSources`), because a deeper reply
+   * window lowers that horizon and turns floors into exact counts.
+   */
   replies: TimelineSource<ClubThreadReply>
   /** `thread id -> has unread`, from `getClubThreadUnread`. A missing id is
    *  read (`false`), which is what makes a failed unread call render the
@@ -498,10 +551,11 @@ export function mergeClubTimeline(
   sources: ClubTimelineSources,
   limit = CLUB_TIMELINE_LIMIT
 ): ClubTimeline {
-  // Every thread this merge has a creation DATE for — from the (possibly
-  // paged) threads source alone, never from a reply — so a reply whose thread
-  // has not itself been fetched this deep falls to the safe default below.
-  const threadCreatedAt = new Map(sources.threads.rows.map((thread) => [thread.id, thread.created_at]))
+  // The newest message the reply source reached, per thread — the row's lead
+  // line and nothing else. `getClubThreadReplies` has already collapsed its
+  // window to one row per thread, so this Map is a lookup rather than a second
+  // collapse.
+  const latestReply = new Map(sources.replies.rows.map((reply) => [reply.thread_id, reply]))
 
   const events: ClubTimelineEvent[] = [
     ...sources.rides.rows.map(
@@ -520,20 +574,28 @@ export function mergeClubTimeline(
         postcard,
       })
     ),
-    ...sources.threads.rows.map(
+    ...newestPerThreadRow(sources.threads.rows).map(
       (thread): ClubTimelineEvent => ({
         kind: 'thread',
-        at: thread.created_at,
+        // `116` — the thread's newest activity, which for a thread nobody has
+        // replied to is its own creation instant, so an unanswered thread sits
+        // exactly where it sat before this change.
+        at: thread.last_activity_at,
         key: `thread:${thread.id}`,
         thread,
         unread: sources.unread[thread.id] ?? false,
-        // `design.md` §D5 — a creation row's own `created_at` IS the date
-        // `resolveThreadCount` compares against the reply horizon, so this is
-        // that rule rather than a special case of it: a creation row that
-        // survives the merge's cut was created after every source's horizon,
-        // the reply source's included, and every one of its replies is inside
-        // the accumulated coverage.
-        activity: resolveThreadCount(sources.activity[thread.id], sources.replies.horizon, thread.created_at),
+        // **The thread's own `created_at`, deliberately, not the `at` above** —
+        // `resolveThreadCountExactness` asks whether every message this thread
+        // can have is inside the reply window's coverage, and that is a question
+        // about when the thread STARTED. Passing the bumped stamp would call an
+        // old thread's count exact the moment somebody replied to it, which is
+        // precisely the thread whose earlier messages are outside the window.
+        activity: resolveThreadCountExactness(
+          sources.activity[thread.id],
+          sources.replies.horizon,
+          thread.created_at
+        ),
+        latestReply: latestReply.get(thread.id) ?? null,
       })
     ),
     ...sources.joins.rows.map(
@@ -544,36 +606,17 @@ export function mergeClubTimeline(
         member,
       })
     ),
-    ...sources.replies.rows.map(
-      (reply): ClubTimelineEvent => ({
-        kind: 'reply',
-        at: reply.created_at,
-        key: `reply:${reply.id}`,
-        reply,
-        // The same maps the thread's own entry reads, so a thread is marked and
-        // described identically wherever it appears rather than only at the
-        // point it was started — which is usually the one below the fold.
-        unread: sources.unread[reply.thread_id] ?? false,
-        // The thread's own creation date, if this merge has it — see
-        // `threadCreatedAt` above. Missing is the safe default: an old
-        // thread's earlier messages can genuinely fall outside the reply
-        // source's coverage, so an unknown creation date reads as a floor
-        // rather than an unearned exact.
-        activity: resolveThreadCount(
-          sources.activity[reply.thread_id],
-          sources.replies.horizon,
-          threadCreatedAt.get(reply.thread_id)
-        ),
-      })
-    ),
   ]
 
+  // **The reply source's horizon is deliberately absent** — `116`, PD-439. See
+  // `ClubTimelineSources.replies`: it draws no row, so it makes no claim about
+  // where the stream's picture stops, and including it would cut four sources'
+  // rows on the message volume of a thread nobody is looking at.
   const horizons = [
     sources.rides.horizon,
     sources.postcards.horizon,
     sources.threads.horizon,
     sources.joins.horizon,
-    sources.replies.horizon,
   ].filter((at): at is string => at !== null)
 
   // Lexicographic on ISO-8601 rather than parsed: both are UTC strings from
@@ -600,14 +643,27 @@ export function mergeClubTimeline(
   // it. `mergeRideTimeline` has always used this stronger test and
   // `ride-timeline.ts` carries the argument at its own site.
   //
-  // **Reachable through exactly one of the five sources**, which is what kept it
-  // invisible: a full read of the other four returns at least
-  // `CLUB_TIMELINE_LIMIT` rows, so `shown.length === ordered.length` fails first
-  // and the display cap cuts before the horizon can lie. `getClubThreadReplies`
-  // is the exception — it collapses its window to one row per thread, so a club
-  // with two busy threads returns two rows from a two-hundred-message window
-  // with a live horizon: few enough that the cap does not cut, and a horizon
-  // that does.
+  // **`116` (PD-439) MOVED the source that makes this reachable; it did not
+  // remove it — so the stronger test earns its place more than before, not
+  // less.** The bug needs a source that contributes FEWER entries than its read
+  // returned, because then the display cap does not cut before the horizon can
+  // lie. `getClubThreadReplies` was that source, collapsing two hundred messages
+  // to one row per thread, and `116` took its horizon out of the list above.
+  //
+  // **The threads source inherited the property in the same change.**
+  // `newestPerThreadRow` collapses the accumulated thread rows — a bumped thread
+  // held in two paging windows becomes one entry — and the threads horizon IS in
+  // the list above. So a paged club can still reach a live horizon with the
+  // filter dropping nothing, and the weaker `inside.length === events.length`
+  // would still read `complete` and append the founding entry under a stream
+  // with threads behind it.
+  //
+  // **Do not reach for the inertness argument at `CLUB_TIMELINE_LIMIT` to say
+  // otherwise** — that argument is explicitly scoped to the FIRST window, and
+  // this case only exists past it. The weaker form asks a question the horizon
+  // cannot answer — "did the filter drop anything" instead of "does any source's
+  // picture stop". The stronger form costs one comparison and cannot be wrong in that
+  // direction at all.
   const complete = horizon === null && shown.length === ordered.length
 
   if (complete) {
@@ -635,31 +691,62 @@ export function mergeClubTimeline(
 }
 
 /**
- * The exact-versus-floor rule, generalised — `design.md` §D5, task 1.6.
+ * One row per thread, keeping the newest `last_activity_at` — **the guard that
+ * pays for a row whose position moves** (`116`, PD-439).
  *
- * **Derived from the reply source's ACCUMULATED coverage, and NOT
- * accumulated itself.** A flag set true because some window once saturated is
- * monotonic — it never clears — so a thread whose every message is
- * demonstrably in hand would keep announcing a floor even after the stream
- * reached the club's founding, and it would contradict this very rule, which
- * derives exactness from coverage rather than from window saturation.
+ * The accumulated thread source is several paged WINDOWS folded together
+ * (`absorbClubTimelineWindow`), and that fold is authoritative only *inside*
+ * the interval each window covers: an accumulated row sitting below a window's
+ * horizon is left alone, which is exactly right for every source whose rows
+ * never move. A thread's `last_activity_at` does move. So a thread paged to on
+ * page three, then replied to, is returned by the refetched FIRST window at its
+ * new instant while the deep window's copy survives at its old one — two rows,
+ * one conversation, and the same React key `thread:<uuid>` on both, which is
+ * also a duplicate-key warning and an unstable render.
  *
- * A thread's count is exact when the reply source's accumulated horizon is
- * `null` (nothing of any thread is outside it) OR when the thread is KNOWN to
- * have been created at or after that horizon. `withExactCount`'s old
- * behaviour — force every creation row exact — is the case where the second
- * clause holds by construction, since a creation row that survives the
- * merge's own cut was created after every source's horizon including the
- * reply source's.
+ * Fixed here rather than inside `absorbClubTimelineWindow`, and that is not
+ * squeamishness: the absorb rule is shared with four sources that cannot
+ * produce this state, and its contract — a window is authoritative over its own
+ * interval and silent outside it — is what makes the paged horizon correct. A
+ * de-duplication keyed on identity is a different rule and belongs to the one
+ * source that needs it.
+ *
+ * **Newest wins**, because the fresher window is the one that saw the reply.
+ * Ordering is not relied on: the fold concatenates outside-rows before
+ * window-rows, so a positional "first wins" would silently keep the stale copy.
+ *
+ * The ride's merge needs none of this and does not call it — `mergeRideTimeline`
+ * reads each source whole from one read, so its thread ids are unique by
+ * construction.
+ *
+ * ## The other half of the same property, which this does NOT close
+ *
+ * A mutable position can also make a thread appear in **neither** window. The
+ * first window is read at T1 and reaches back to horizon `h`; a thread below `h`
+ * is then replied to and bumps above it; the deeper read asks for
+ * `last_activity_at <= h` and does not return it, and the accumulated first
+ * window predates the bump. The thread is in no window until the FIRST one is
+ * re-read.
+ *
+ * **Left open deliberately, and it is transient rather than a hole.** It heals
+ * on any refetch of `clubs.threads(clubId)` — which `invalidateThreadMessage`
+ * now issues on every reply written from this client, and which a navigation
+ * back to the club does anyway. Closing it properly means either re-reading the
+ * first window on every deeper fetch (a round trip per scroll step, to catch a
+ * thread somebody else replied to in the last few seconds) or an
+ * `absorbClubTimelineWindow` that consults ids outside its own interval, which
+ * would break the contract four immutable sources rely on. Neither is worth it
+ * for a row that is one refetch from correct, but it is written down here
+ * rather than discovered: it is the cost of the one row type whose position
+ * moves, and a reader is entitled to know it was weighed.
  */
-function resolveThreadCount(
-  activity: ClubThreadActivity | undefined,
-  repliesHorizon: string | null,
-  threadCreatedAt: string | undefined
-): ClubThreadActivity | null {
-  if (!activity) return null
-  const exact = repliesHorizon === null || (threadCreatedAt !== undefined && threadCreatedAt >= repliesHorizon)
-  return { ...activity, partial: !exact }
+export function newestPerThreadRow(rows: ClubThreadListItem[]): ClubThreadListItem[] {
+  const newest = new Map<string, ClubThreadListItem>()
+  for (const row of rows) {
+    const held = newest.get(row.id)
+    if (!held || row.last_activity_at > held.last_activity_at) newest.set(row.id, row)
+  }
+  return [...newest.values()]
 }
 
 /**
@@ -780,7 +867,7 @@ export type ClubTimelineGroup =
   | {
       kind: 'thread'
       key: string
-      event: Extract<ClubTimelineEvent, { kind: 'thread' | 'reply' }>
+      event: Extract<ClubTimelineEvent, { kind: 'thread' }>
     }
   | { kind: 'events'; key: string; events: ClubTimelineEvent[] }
 
@@ -802,7 +889,7 @@ export function groupClubTimeline(events: ClubTimelineEvent[]): ClubTimelineGrou
       continue
     }
 
-    if (event.kind === 'thread' || event.kind === 'reply') {
+    if (event.kind === 'thread') {
       groups.push({ kind: 'thread', key: event.key, event })
       continue
     }

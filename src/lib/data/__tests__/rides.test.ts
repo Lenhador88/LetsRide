@@ -312,17 +312,59 @@ describe('withOrganizer', () => {
     expect(crew.going.map((m) => m.user_id)).toEqual([ORGANIZER.id, 'rider-1'])
   })
 
-  it('promotes an organizer who RSVP’d maybe into going, leaving no duplicate', () => {
-    // The design has one host row and it sits in the first section, so a
-    // "maybe" from the organizer must not strand them under May be going.
+  it('leads May be going when the organizer RSVP’d maybe, leaving no duplicate', () => {
+    // **The inverse of what this asserted until PD-429**, which is the whole of
+    // that story on the read path: the organizer used to be promoted into
+    // `going` whatever the roster said, so a screen that let them answer Maybe
+    // would have contradicted the answer on the very next line. They now lead
+    // whichever section their own row names, and there is still exactly one
+    // host row.
     const crew = withOrganizer(
-      { going: [], maybe: [{ user_id: ORGANIZER.id, profile: ORGANIZER }, crewMember(2)] },
+      { going: [crewMember(1)], maybe: [{ user_id: ORGANIZER.id, profile: ORGANIZER }, crewMember(2)] },
       ORGANIZER.id,
       ORGANIZER
     )
 
-    expect(crew.going.map((m) => m.user_id)).toEqual([ORGANIZER.id])
+    expect(crew.maybe.map((m) => m.user_id)).toEqual([ORGANIZER.id, 'rider-2'])
+    expect(crew.maybe[0].is_host).toBe(true)
+    expect(crew.going.map((m) => m.user_id)).toEqual(['rider-1'])
+    // Not stranded in both sections — the failure a filter-and-prepend pair
+    // makes easy and which no screen would show twice in the same viewport.
+    expect(crew.going.some((m) => m.user_id === ORGANIZER.id)).toBe(false)
+  })
+
+  it('leads going when the organizer holds no row at all', () => {
+    // `103` backfilled every ride and writes one for each new one, so this is
+    // the defensive arm rather than a state DEV holds (measured 2026-09-07: 28
+    // rides, 0 organizers without a row). Absence must still read as `going` —
+    // the by-construction rule this function exists for — and never as an
+    // unanswered organizer dropped off their own crew.
+    const crew = withOrganizer(
+      { going: [crewMember(1)], maybe: [crewMember(2)] },
+      ORGANIZER.id,
+      ORGANIZER
+    )
+
+    expect(crew.going.map((m) => m.user_id)).toEqual([ORGANIZER.id, 'rider-1'])
     expect(crew.maybe.map((m) => m.user_id)).toEqual(['rider-2'])
+  })
+
+  it('always places the host in exactly one section, so a crew screen is never blank', () => {
+    // What the crew page's `crew.going.length > 0` guard rests on: `going` is
+    // emptiable since PD-429, and the guard is only safe because the host is
+    // guaranteed to be somewhere. Asserted over both arms rather than the one
+    // the other cases happen to take.
+    for (const roster of [
+      { going: [], maybe: [{ user_id: ORGANIZER.id, profile: ORGANIZER }] },
+      { going: [{ user_id: ORGANIZER.id, profile: ORGANIZER }], maybe: [] },
+      { going: [], maybe: [] },
+    ]) {
+      const crew = withOrganizer(roster, ORGANIZER.id, ORGANIZER)
+      const hosts = crew.going.concat(crew.maybe).filter((m) => m.is_host)
+
+      expect(hosts).toHaveLength(1)
+      expect(crew.going.length + crew.maybe.length).toBeGreaterThan(0)
+    }
   })
 
   it('falls back to the roster profile when the organizer profile is unreadable', () => {

@@ -160,11 +160,11 @@ let EMAIL = process.env.WALK_EMAIL ?? `walk-${MINT_SUFFIX}@letsride.dev`
 // minting rather than asking for a password to remember.
 let PASSWORD = process.env.WALK_PASSWORD ?? `Walk-mint-${MINT_SUFFIX}-Aa1`
 const MINT_USERNAME = `walk_${MINT_SUFFIX}`.slice(0, 25)
-// Real, not a placeholder — `checkEditProfileRetention`'s first assertion
-// (the `??` fallback to the *stored* profile value) needs a genuine saved
-// location to load, and this is the value the walk's own docs already use
-// for the long-lived account.
-const MINT_LOCATION = 'Amsterdam'
+// The country the minted rider picks at onboarding (PD-428). Its EXACT name,
+// because the picker is filtered by substring and matched exactly — see
+// `finishOnboarding`, where clicking the first filtered row silently chose
+// `Caribbean Netherlands` instead.
+const MINT_COUNTRY = 'Netherlands'
 
 /**
  * Every authenticated route. Detail routes are discovered at run time rather
@@ -589,6 +589,86 @@ async function runRefusedSignup() {
  * throws, because both callers treat a failure as informational — an outage
  * on `delete-account` must never fail the walk itself (see the header).
  */
+
+/**
+ * Walk the minted rider through the whole wizard: username, then home country.
+ *
+ * **Two screens since PD-428**, and both callers need both of them. The
+ * country step is the one that stamps `onboarding_completed_at` now, so a run
+ * that stops after the username has a rider the route guard refuses every app
+ * route to — which would fail every later phase AND strand the account, since
+ * `attemptDeleteAccount` has to reach `/profile`.
+ *
+ * The country control is a combobox over a listbox rather than a native
+ * `<select>` (`src/components/ui/CountrySelect.tsx`), so it cannot be driven
+ * with `selectOption`: type to filter, then click the row whose name matches
+ * EXACTLY. `Netherlands` is picked because DEV's fixtures are Dutch.
+ *
+ * **The full name is not unambiguous under the filter** — see the block at the
+ * pick site for why, and for why this cannot go back to clicking the first
+ * `[role="option"]`.
+ */
+async function finishOnboarding(page) {
+  await page.fill('input[name="username"]', MINT_USERNAME)
+  await Promise.all([
+    page
+      .waitForURL((u) => u.pathname !== '/onboarding/username', { timeout: 20_000 })
+      .catch(() => {}),
+    page.click('button[type="submit"]'),
+  ])
+  await page.waitForTimeout(1000)
+
+  if (new URL(page.url()).pathname !== '/onboarding/country') {
+    // Not fatal here — the caller checks where it ended up and owns the
+    // cleanup. Saying it is what turns "every later phase failed" into one
+    // legible line naming the step that did not open.
+    console.error(
+      `  ! expected /onboarding/country after the username step, got ${page.url()}`
+    )
+    return
+  }
+
+  await page.fill('input[role="combobox"]', MINT_COUNTRY)
+  await page.waitForTimeout(300)
+
+  // **The EXACT row, never the first one.** `filterCountryOptions` matches on
+  // name substring and the list is sorted by `localeCompare`, so filtering for
+  // `Netherlands` returns TWO rows and `Caribbean Netherlands` (`BQ`) sorts
+  // ahead of `Netherlands` (`NL`). Clicking `[role="option"]` took `BQ`, and
+  // **the walk went green doing it** — `BQ` is an assigned code, so the CHECK
+  // passes and `complete_onboarding` stamps. Nothing here would ever have said
+  // so; it breaks later, wherever something expects the minted rider to be
+  // Dutch. Found in review rather than by running this.
+  //
+  // The flag span is `aria-hidden`, so the name is the second span's text.
+  // `$$` takes a snapshot and does NOT wait, where the `click` this replaced
+  // auto-waited for 10s. Without this the failure prints "no country option
+  // named exactly …", which misdiagnoses a timing problem as a naming one.
+  await page.waitForSelector('[role="option"]', { timeout: 10_000 })
+  const rows = await page.$$('[role="option"]')
+  let picked = null
+  for (const row of rows) {
+    const name = await row.evaluate(
+      (el) => el.querySelector('span:nth-of-type(2)')?.textContent?.trim() ?? ''
+    )
+    if (name === MINT_COUNTRY) {
+      picked = row
+      break
+    }
+  }
+  if (!picked) {
+    console.error(`  ! no country option named exactly "${MINT_COUNTRY}" — onboarding cannot finish`)
+    return
+  }
+  await picked.click()
+  await Promise.all([
+    page
+      .waitForURL((u) => u.pathname !== '/onboarding/country', { timeout: 20_000 })
+      .catch(() => {}),
+    page.click('button[type="submit"]'),
+  ])
+  await page.waitForTimeout(1000)
+}
 async function attemptDeleteAccount(password) {
   try {
     await page.goto(`${BASE}/profile`, { waitUntil: 'networkidle' })
@@ -751,8 +831,12 @@ async function mintWalkAccount() {
   if (!permit.ok) {
     console.error(`\nMinting refused after the fact — ${permit.why}.`)
     console.error('Finishing onboarding, deleting the account just created, then aborting.')
-    await page.fill('input[name="username"]', MINT_USERNAME)
-    await page.click('button[type="submit"]')
+    // BOTH steps, not just the username one: `attemptDeleteAccount` reaches
+    // `/profile`, and the guard refuses every app route until onboarding is
+    // COMPLETE — which since PD-428 means the country step has been answered.
+    // Stopping after the username here would leave the wrongly-minted account
+    // undeletable, on the path whose whole purpose is deleting it.
+    await finishOnboarding(page)
     await page.waitForTimeout(1500)
     const cleanup = await attemptDeleteAccount(PASSWORD)
     if (cleanup.ok) {
@@ -764,18 +848,11 @@ async function mintWalkAccount() {
     process.exit(1)
   }
 
-  await page.fill('input[name="username"]', MINT_USERNAME)
-  await Promise.all([
-    page
-      .waitForURL((u) => u.pathname !== '/onboarding/username', { timeout: 20_000 })
-      .catch(() => {}),
-    page.click('button[type="submit"]'),
-  ])
-  await page.waitForTimeout(1000)
+  await finishOnboarding(page)
 
   if (new URL(page.url()).pathname !== '/postcards') {
-    // `setUsername` commits `username` and `onboarding_completed_at` in the
-    // same call (see its own header), so a submit that reached this point is
+    // `setHomeCountry` commits `home_country` and `onboarding_completed_at` in
+    // the same submit (see its own header), so a run that reached this point is
     // fully onboarded regardless of where the browser actually landed —
     // `/profile` is reachable and `attemptDeleteAccount` is exactly what
     // `permit.ok === false` above already does for the wrong-project case.
@@ -793,52 +870,21 @@ async function mintWalkAccount() {
 
   console.log(`  minted ${EMAIL} — username ${MINT_USERNAME}, onboarding complete`)
 
-  // **Follow-up to the mint itself, not a second feature.** PD-286 dropped
-  // `location` from onboarding on purpose — it is a profile field now, not a
-  // gate — so a freshly-minted rider legitimately has none, and
-  // `checkEditProfileRetention`'s first assertion ("location loads from the
-  // stored profile") has nothing to load. Leaving that failing is not a
-  // shrug: CLAUDE.md is explicit that a shrunken `N/N` is a skip rather than
-  // a pass, and an assertion that is known to fail on every minted run is
-  // the same defect wearing a green light — the next session learns it is
-  // "expected" and stops reading the other seventeen. So the mint sets one
-  // for real, through `/profile`'s own edit form — the one screen the walk
-  // otherwise only ever RENDERS and never writes to — which keeps this a
-  // walk rather than a seed script, the same reasoning as signup and
-  // onboarding above.
-  await page.goto(`${BASE}/profile`, { waitUntil: 'networkidle' })
-  await page.waitForSelector('input[name="location"]', { timeout: 20_000 })
-  await page.fill('input[name="location"]', MINT_LOCATION)
-  await Promise.all([
-    page
-      .waitForFunction(
-        () => document.querySelector('form [role="status"]')?.textContent?.trim() === 'Saved',
-        null,
-        { timeout: 20_000 }
-      )
-      .catch(() => {}),
-    page.click('button[type="submit"]'),
-  ])
-  await page.waitForTimeout(500)
-
-  const savedLocation = await page.inputValue('input[name="location"]').catch(() => null)
-  if (savedLocation !== MINT_LOCATION) {
-    // Fully onboarded — reachable exactly like the /postcards case above.
-    console.error(
-      `\nMinting failed: could not set the minted rider's location through /profile — ` +
-        `read back ${JSON.stringify(savedLocation)}.`
-    )
-    console.error(`${EMAIL} is fully onboarded; deleting it before aborting.`)
-    const cleanup = await attemptDeleteAccount(PASSWORD)
-    if (cleanup.ok) {
-      console.error(`${EMAIL} deleted.`)
-    } else {
-      console.error(`Could not clean up ${EMAIL} — ${cleanup.why}. Remove it by hand.`)
-    }
-    await browser.close()
-    process.exit(1)
-  }
-  console.log(`  set location to "${MINT_LOCATION}" through /profile`)
+  // **The mint no longer writes a location, because there is no longer a field
+  // to write it in.** This block existed for one reason: to give the account a
+  // stored `location` so `checkEditProfileRetention`'s first assertion had
+  // something to load. PD-425 deleted the free-text location input from
+  // `EditProfileForm` outright — the screen was carrying two writers for one
+  // column, and the picker-backed `LocationSetting` below the form is the
+  // survivor — so both the write and the assertion it fed are gone.
+  //
+  // **This is what broke the walk on `development`**: PD-425 removed the field
+  // and left `waitForSelector('input[name="location"]')` here, which times out
+  // after 20s and takes the whole run with it. Nothing caught it because the
+  // `Smoke walk` job is skipped until the repository variable `WALK_CI=1`
+  // exists, and the walk is not a required check. Measured 2026-09-07 against
+  // `origin/development`: the form has zero `name="location"` occurrences and
+  // this line was still waiting for one.
 }
 // Full walks only, matching the guard cases below: a subset invocation is
 // someone debugging one screen, and this one costs a whole extra sign-in.
@@ -1431,6 +1477,70 @@ async function provision(wanted, existing = {}) {
   return created
 }
 
+/**
+ * A LIVE invite token for `rideId` — PD-430, task 6.4. Reused if the ride
+ * already carries one, minted through `/rides/detail/invite`'s own "Create an
+ * invite link" control otherwise, exactly the way `provision()` above creates
+ * a ride or a club: through the app's own form, never a direct insert, so the
+ * write exercises `createRideInviteLink` end to end rather than proving
+ * nothing about it.
+ *
+ * **Gated by the identical `fixturesPermitted` every other write in this file
+ * goes through** — a rerun with fixtures off, or against a non-writable ref,
+ * must not mint a new link on shared DEV.
+ *
+ * **The token is read off the network response, never off the DOM** — nothing
+ * on this screen ever prints a token as text; `InviteLinkRow`'s Share control
+ * hands it to `navigator.share`/the clipboard, neither of which this harness
+ * can read back. `getRideInviteLinks`' own SELECT includes `token` (the
+ * organizer's row security, not `anon`'s), so the REST response this
+ * `useQuery` call makes on every load already carries it.
+ *
+ * Liveness is computed the same way `InviteLinkRow` computes `dead` —
+ * `revoked_at === null` and `expires_at` still in the future — rather than
+ * trusted from a display label, since a walk running against a DEV ride
+ * dated a year out (see `provision()`) will always find its own link live.
+ *
+ * Returns the token string, or `null` when there is no live link and none
+ * could be created (fixtures off, or the project is not writable).
+ */
+async function provisionInviteToken(rideId) {
+  const isLinksGet = (r) =>
+    r.url().includes('/rest/v1/ride_invite_links') && r.request().method() === 'GET'
+
+  const liveToken = (rows) => {
+    if (!Array.isArray(rows)) return null
+    const now = Date.now()
+    const live = rows.find(
+      (r) => r.revoked_at === null && new Date(r.expires_at).getTime() > now
+    )
+    return live?.token ?? null
+  }
+
+  const initial = page
+    .waitForResponse(isLinksGet, { timeout: 20_000 })
+    .then((r) => r.json())
+    .catch(() => null)
+  await page.goto(`${BASE}/rides/detail/invite?id=${rideId}`, { waitUntil: 'networkidle' })
+  const existing = liveToken(await initial)
+  if (existing) return existing
+
+  const permit = fixturesPermitted(await authenticatedProjectRef())
+  if (!permit.ok) return null
+
+  const refetch = page
+    .waitForResponse(isLinksGet, { timeout: 20_000 })
+    .then((r) => r.json())
+    .catch(() => null)
+  const clicked = await page
+    .click('button:has-text("Create")', { timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (!clicked) return null
+
+  return liveToken(await refetch)
+}
+
 let fixtureFailures = 0
 
 /**
@@ -1689,6 +1799,13 @@ const GUARD_CASES_SIGNED_IN = [
   ['/auth/signup', '/postcards'],
   ['/onboarding/username', '/postcards'],
   ['/onboarding/terms', '/postcards'],
+  // PD-428's new step. For a fully onboarded rider it must behave exactly as
+  // the other two do — the country requirement gates the WIZARD, never a rider
+  // who has already finished it, and a rider who completed onboarding before
+  // PD-428 has `home_country` NULL for ever and must never be sent back here.
+  // That is the whole of the "existing riders are never re-prompted" decision,
+  // measured against a live session rather than asserted.
+  ['/onboarding/country', '/postcards'],
   // PD-286 (`075`) deleted this route. For a fully onboarded rider it is just
   // another path under `/onboarding`, so `resolveDestination`'s existing
   // `isOnboarding` branch sends it to /postcards with no code of its own —
@@ -1846,6 +1963,15 @@ const INVITE_LANDINGS = [
     // "You have been invited" is a prefix of the live preview's "You have been
     // invited to a ride", so anchoring there would pass on a leaked preview.
     signedOut: /Sign in or create an account/i,
+    // **`115`, PD-430 — the anonymous RPC, and only the ride has one.** Its
+    // presence is what flips this phase's signed-out expectations below from
+    // "generic copy, no call" to "the dead-link message, exactly one call to
+    // THIS function and none to `rpc` above". Substring-safe in both
+    // directions and worth stating because the counters use `includes`:
+    // `ride_invite_link_public_preview` does not contain
+    // `ride_invite_link_preview`, since what follows the shared prefix is
+    // `public_` rather than `preview`.
+    anonRpc: '/rpc/ride_invite_link_public_preview',
   },
   {
     kind: 'club',
@@ -1854,6 +1980,10 @@ const INVITE_LANDINGS = [
     dataMarker: /Private club|\b\d+ riders?\b/i,
     claim: /Join club/i,
     signedOut: /Sign in or create an account/i,
+    // **No anonymous club preview exists and adding one is a NEW decision** —
+    // `CLAUDE.md` decision #1's exception names one function. So this kind
+    // keeps the original contract in full, and `null` here is what asserts it.
+    anonRpc: null,
   },
 ]
 
@@ -1876,28 +2006,46 @@ const DEAD_LINK_COPY = 'This link has expired'
  *
  * ## Signed out, holding a token: the screen must not become an oracle
  *
- * `RideInviteJoin`'s and `ClubInviteJoin`'s shared contract is that a visitor
- * with no session sees generic copy naming neither the ride nor its organizer
- * (neither the club nor its size), and that it **calls neither RPC** — each
- * preview needs `auth.uid()` for its block and participation checks, so there
- * is nothing to render before a session exists and nothing to leak. Decision #1
- * is untouched and no `anon` grant exists to make either screen richer.
+ * **The two kinds no longer share one contract, and `115` (PD-430) is where
+ * they split.** Read the club's first, because it is the original and it is
+ * still true of the club: a visitor with no session sees generic copy naming
+ * neither the club nor its size, and the page **calls no RPC** —
+ * `club_invite_link_preview` needs `auth.uid()` for its block and
+ * participation checks, so there is nothing to render before a session exists.
+ * **No anonymous club preview exists, and adding one is a new decision**:
+ * `CLAUDE.md` decision #1's exception names exactly one function.
  *
- * **The load-bearing assertion is the RPC one, and the reason is worth stating
- * because the obvious reading of this phase is wrong.** A dead token cannot
- * produce ride data whatever the screen does, so "no ride title on screen"
- * passes here on a build that leaks every ride — it is asserted anyway (it
- * would catch `SignedOutInvite` being replaced by a preview) but it proves
- * nothing on its own. What a dead token *can* show is the discriminator: if the
- * component ever reordered its guards so `DeadLink` were reached before the
- * `signedIn === false` branch, or issued the read anonymously, a stranger could
- * tell a live token from a dead one by opening it. That is an existence oracle
- * over every ride and every club in the app, RLS would refuse none of it — each
- * RPC is granted to `authenticated`, so an anonymous call is a refusal rather
- * than a leak, and a refusal answers the question just as well as a row does —
- * and no assertion in `supabase/tests/` can see it. Two assertions close it: the
- * dead token is NOT reported as dead, and no request to the preview RPC leaves
- * the page.
+ * **The ride's signed-out screen now answers.** `115` granted `anon` EXECUTE on
+ * `ride_invite_link_public_preview`, so a signed-out visitor holding a
+ * well-formed token gets the ride's title, time, meeting point and organiser —
+ * and a well-formed token that is dead gets `DeadLink`. So this phase's dead
+ * token, which is 32 valid hex characters, must now reach the dead-link message
+ * rather than the generic copy, and the two assertions that said otherwise were
+ * inverted here rather than deleted.
+ *
+ * **What that costs, stated rather than glossed: signed out, a stranger can now
+ * tell a LIVE ride token from a dead one.** That is not a regression this phase
+ * failed to stop — it is the feature. Showing the ride for a live token is the
+ * entire story, and no screen can do that while staying indistinguishable from
+ * one that shows nothing. The property that survives, and the one the spec
+ * actually requires, is that **the dead states are indistinguishable from each
+ * other**: revoked, expired, ride deleted, ride departed, malformed and
+ * never-existed are one zero-row answer that raises nothing, which is
+ * `115`'s own `2.9` in `supabase/tests/` across all six — the walk holds one
+ * DOM and can only ever see one of them.
+ *
+ * **The load-bearing assertion is still an RPC one, and for the ride it is now
+ * the negative.** A dead token cannot produce ride data whatever the screen
+ * does, so "no ride title on screen" passes here on a build that leaks every
+ * ride — it is asserted anyway (it would catch a preview drawn where none is
+ * owed) but it proves nothing on its own. What must never happen is the page
+ * reaching for the AUTHENTICATED preview with no session: it is granted to
+ * `authenticated`, so the call answers 401/42501, and **a refusal
+ * distinguishes a real token from a guess exactly as well as a row does**.
+ * `115` opened a separate, thinner function and did not widen that one; the
+ * two shapes look interchangeable, which is what makes the assertion worth
+ * keeping. No assertion in `supabase/tests/` can see a client calling the
+ * wrong endpoint.
  *
  * ## Signed in, holding the same dead token: the read has to actually work
  *
@@ -1916,7 +2064,7 @@ const DEAD_LINK_COPY = 'This link has expired'
  * by a tap and by nothing else, and a claim is a write — so the Join control is
  * asserted *absent* on a dead link and is never pressed on a live one.
  */
-async function checkInviteLanding({ kind, path, rpc, dataMarker, claim, signedOut }) {
+async function checkInviteLanding({ kind, path, rpc, dataMarker, claim, signedOut, anonRpc }) {
   console.log(`\nthe ${kind} invite landing route (${path}):`)
   let bad = 0
   let ran = 0
@@ -1936,8 +2084,10 @@ async function checkInviteLanding({ kind, path, rpc, dataMarker, claim, signedOu
   const anonContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
   const anonPage = await anonContext.newPage()
   let anonPreviewCalls = 0
+  let anonPublicPreviewCalls = 0
   anonPage.on('request', (r) => {
     if (r.url().includes(rpc)) anonPreviewCalls += 1
+    if (anonRpc && r.url().includes(anonRpc)) anonPublicPreviewCalls += 1
   })
 
   await anonPage.goto(target, { waitUntil: 'networkidle' }).catch(() => {})
@@ -1972,19 +2122,48 @@ async function checkInviteLanding({ kind, path, rpc, dataMarker, claim, signedOu
     'signed out: the visitor is not bounced to /auth/login',
     `landed on ${anonPath}`
   )
-  report(
-    signedOut.test(anonText),
-    'signed out: the generic invite renders',
-    `body was ${JSON.stringify(anonText.slice(0, 120))}`
-  )
-  report(
-    !new RegExp(DEAD_LINK_COPY, 'i').test(anonText),
-    'signed out: a dead token is NOT reported as dead',
-    'the screen is an oracle — a stranger can tell a live token from a dead one'
-  )
+  // **The two kinds diverge here, and only here — `115`, PD-430.** The club
+  // keeps the original contract in full; the ride's signed-out screen now
+  // ANSWERS a well-formed token, so a dead one must reach the dead-link
+  // message rather than the generic copy. See this function's header.
+  if (anonRpc) {
+    report(
+      new RegExp(DEAD_LINK_COPY, 'i').test(anonText),
+      'signed out: a dead token reaches the dead-link message',
+      `body was ${JSON.stringify(anonText.slice(0, 120))}`
+    )
+    report(
+      !signedOut.test(anonText),
+      'signed out: a well-formed token does NOT fall back to the generic invite',
+      'the anonymous read was skipped — a live token would render nothing either'
+    )
+    report(
+      anonPublicPreviewCalls === 1,
+      'signed out: the ANONYMOUS preview RPC is called exactly once',
+      `${anonPublicPreviewCalls} request(s) to ${anonRpc}`
+    )
+  } else {
+    report(
+      signedOut.test(anonText),
+      'signed out: the generic invite renders',
+      `body was ${JSON.stringify(anonText.slice(0, 120))}`
+    )
+    report(
+      !new RegExp(DEAD_LINK_COPY, 'i').test(anonText),
+      'signed out: a dead token is NOT reported as dead',
+      'the screen is an oracle — a stranger can tell a live token from a dead one'
+    )
+  }
+  // **Unconditional, and for the ride it is now the load-bearing one.** The
+  // AUTHENTICATED preview is granted to `authenticated` alone and must never
+  // be reached with no session — anonymously it answers 401/42501, and a
+  // refusal distinguishes a real token from a guess just as well as a row
+  // does. `115` granted `anon` a SEPARATE, thinner function; it did not open
+  // this one, and this assertion is what would catch a build that reached for
+  // it because the shapes look interchangeable.
   report(
     anonPreviewCalls === 0,
-    'signed out: the preview RPC is never called',
+    'signed out: the AUTHENTICATED preview RPC is never called',
     `${anonPreviewCalls} request(s) to ${rpc}`
   )
   // Trivially true for a dead token — see the header. Kept because it is the
@@ -2061,6 +2240,153 @@ async function checkInviteLanding({ kind, path, rpc, dataMarker, claim, signedOu
     'signed in: no Join control on a dead link',
     'a dead token is offering a claim'
   )
+
+  return { bad, ran }
+}
+
+/**
+ * The anonymous ride preview, signed OUT, holding a LIVE token — PD-430,
+ * tasks 6.4/6.4b, `openspec/changes/preview-a-ride-before-signing-up/`.
+ *
+ * `checkInviteLanding` above proves the shape of every state with a DEAD
+ * token, deliberately, so it writes nothing. It cannot prove the one thing
+ * `115` actually shipped: that a real, LIVE preview puts the ride's own title
+ * and meeting point on a stranger's screen. That needs a ride this rider
+ * owns and a token that resolves — this is the only phase in the walk that
+ * asks for both.
+ *
+ * **The expected strings are read off the ride's own stored row, never a
+ * literal** — through `/rides/detail/edit`'s own controlled inputs, the
+ * exact mechanism `checkEditRetention` already trusts for an untruncated
+ * value. A literal here would pass against a projection that silently
+ * returned the WRONG ride's title, which is exactly the class of bug 2.7 in
+ * `tasks.md` exists to catch at the RLS layer — this is the DOM half of the
+ * same argument.
+ *
+ * **Crew count absence is asserted the same way `checkInviteLanding`'s
+ * `dataMarker` asserts it on the authenticated side** — `\b\d+ riders?\b` — so
+ * a regression that forwarded `crew_count` into `PublicRidePreviewCard`
+ * fails here even though the dead-token phase above can never see it (a dead
+ * token never carries a crew to count).
+ *
+ * **The robots directive is read off the served document, not off
+ * `metadata.robots`** — `layout.test.ts` already pins the object Next
+ * renders the tag from; this is what 6.4b actually asks for, "the document
+ * carries `noindex, nofollow`" read where the document exists.
+ */
+async function checkAnonymousRidePreview(rideId, unavailable) {
+  let bad = 0
+  let ran = 0
+  const report = (ok, label, detail) => {
+    ran += 1
+    if (!ok) bad += 1
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `  (${detail})`}`)
+  }
+
+  console.log('\nthe anonymous ride preview, signed out with a live token (PD-430):')
+
+  if (!rideId) {
+    if (unavailable?.failed) {
+      // Fixtures were permitted and asked for, and still nothing came out of
+      // it — the `! FIXTURE FAILED` line already printed at the caller.
+      // CLAUDE.md: a shrunken N/N is a skip, not a pass.
+      report(false, 'a ride this rider owns was available to preview', unavailable.reason)
+    } else {
+      console.log(
+        `  (no ride this rider owns — not exercised` +
+          `${unavailable?.reason ? `: ${unavailable.reason}` : ''})`
+      )
+    }
+    return { bad, ran }
+  }
+
+  await page.goto(`${BASE}/rides/detail/edit?id=${rideId}`, { waitUntil: 'networkidle' })
+  const formReady = await page
+    .waitForSelector('form [name="meeting_point"]', { timeout: 20_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (!formReady) {
+    report(
+      false,
+      'could read the owned ride’s own stored title and meeting point',
+      'the edit form (this rider is confirmed to own the ride) never rendered'
+    )
+    return { bad, ran }
+  }
+  const expectedTitle = await page.inputValue('form [name="title"]')
+  const expectedMeetingPoint = await page.inputValue('form [name="meeting_point"]')
+
+  const token = await provisionInviteToken(rideId)
+  if (!token) {
+    const permit = fixturesPermitted(await authenticatedProjectRef())
+    report(
+      false,
+      'a live invite token was available to preview',
+      permit.why ?? 'no live invite link on this ride and none could be created'
+    )
+    return { bad, ran }
+  }
+
+  // A throwaway signed-out context, same shape as `checkInviteLanding`'s
+  // anonymous half and for the same reason: it must not see the session the
+  // walk established above.
+  const anonContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
+  const anonPage = await anonContext.newPage()
+  try {
+    await anonPage
+      .goto(`${BASE}/rides/join?token=${token}`, { waitUntil: 'networkidle' })
+      .catch(() => {})
+
+    // A terminal state — the title actually rendering, or the dead-link copy
+    // if the just-minted token were somehow already dead — never the
+    // skeleton's absence (see `INVITE_LANDINGS`'s own note on why that
+    // predicate returns before the screen has mounted at all).
+    await anonPage
+      .waitForFunction(
+        ([title, deadCopy]) =>
+          document.body.innerText.includes(title) || document.body.innerText.includes(deadCopy),
+        [expectedTitle, DEAD_LINK_COPY],
+        { timeout: 20_000 }
+      )
+      .catch(() => {})
+
+    const anonPath = new URL(anonPage.url()).pathname
+    const text = await anonPage.evaluate(() => document.body.innerText).catch(() => '')
+
+    report(
+      anonPath === '/rides/join',
+      'the visitor is not bounced off /rides/join',
+      `landed on ${anonPath}`
+    )
+    report(
+      text.includes(expectedTitle),
+      'the ride’s own title is on the signed-out screen',
+      `expected ${JSON.stringify(expectedTitle)} in ${JSON.stringify(text.slice(0, 200))}`
+    )
+    report(
+      text.includes(expectedMeetingPoint),
+      'the ride’s own stored meeting point is on the signed-out screen',
+      `expected ${JSON.stringify(expectedMeetingPoint)} in ${JSON.stringify(text.slice(0, 200))}`
+    )
+    report(
+      !/\b\d+\s+riders?\b/i.test(text),
+      'no crew count is on the signed-out screen',
+      'a rider count leaked into the anonymous preview'
+    )
+
+    // 6.4b. Read off the served document — never off `metadata.robots`, which
+    // `layout.test.ts` already pins.
+    const robots = await anonPage
+      .evaluate(() => document.querySelector('meta[name="robots"]')?.getAttribute('content') ?? null)
+      .catch(() => null)
+    report(
+      Boolean(robots) && /noindex/i.test(robots) && /nofollow/i.test(robots),
+      'the document carries noindex, nofollow',
+      `meta[name="robots"] content was ${JSON.stringify(robots)}`
+    )
+  } finally {
+    await anonContext.close()
+  }
 
   return { bad, ran }
 }
@@ -2532,40 +2858,45 @@ async function checkEditProfileRetention() {
   const field = (name) => `form [name="${name}"]`
 
   await page.goto(`${BASE}/profile`, { waitUntil: 'networkidle' })
-  await page.waitForSelector(field('location'), { timeout: 20_000 })
+  await page.waitForSelector(field('bike_model'), { timeout: 20_000 })
 
-  const initialLocation = await page.inputValue(field('location')).catch(() => null)
-  report(
-    Boolean(initialLocation && initialLocation.trim().length > 0),
-    'location loads from the stored profile (the `??` fallback)',
-    `read ${JSON.stringify(initialLocation)}`
-  )
-
+  // **This phase used to drive `location` and PD-425 deleted that field.** The
+  // subject was never the location itself — it is PD-199's retain-on-error
+  // rule, that an uncontrolled `defaultValue` form must not revert what the
+  // rider typed when the action returns a refusal. `retaining(updateProfile,
+  // ['bike_model', 'bio'])` names the two fields that carry it, so the phase
+  // now drives those and asserts the same property.
+  //
+  // The first assertion is gone with the field rather than replaced: it read
+  // "location loads from the stored profile (the `??` fallback)", and there is
+  // no longer a stored free-text location to load. The mint's location write
+  // existed only to feed it and is gone too.
   const bikeModel = `Walk probe bike ${Date.now()}`
-  const tooLongLocation = 'A'.repeat(101)
+  const tooLongBio = 'A'.repeat(501)
+
   // `page.fill()` CANNOT deliver this, and finding that out cost a red run:
-  // every field on this form carries `maxLength`, and fill() honours it — so
-  // the 101 characters arrived as 100, the action accepted them, and the phase
-  // failed while ALSO writing a 100-character location over the walk account's
-  // stored one. Since PD-286 made all three fields optional, there is no value
-  // this form's own DOM will let a typist submit that the action refuses.
+  // every field on this form carries `maxLength`, and fill() honours it — so an
+  // over-long value arrives truncated, the action ACCEPTS it, and the phase
+  // fails while also writing the truncated value over the account's stored one.
+  // Since PD-286 made these fields optional, there is no value this form's own
+  // DOM will let a typist submit that the action refuses.
   //
   // So the refusal is driven the way a patched client would drive it: the
   // native value setter past `maxLength`, plus the `input` event React listens
   // for. That is not a contrivance — it is the case the action's parse exists
   // for, since `maxLength` is an editing constraint and not a guarantee, and
-  // `018`'s `profiles_location_length` is what actually holds the line.
+  // `018`'s `profiles_bio_length` is what actually holds the line.
   await page.$eval(
-    field('location'),
+    field('bio'),
     (el, value) => {
       const setter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
+        window.HTMLTextAreaElement.prototype,
         'value'
       ).set
       setter.call(el, value)
       el.dispatchEvent(new Event('input', { bubbles: true }))
     },
-    tooLongLocation
+    tooLongBio
   )
   await page.fill(field('bike_model'), bikeModel)
 
@@ -2588,11 +2919,11 @@ async function checkEditProfileRetention() {
   ).join(' | ')
   report(Boolean(refusal), 'the refusal is reported', 'no alert text on screen')
 
-  const locationAfter = await page.inputValue(field('location')).catch(() => null)
+  const bioAfter = await page.inputValue(field('bio')).catch(() => null)
   report(
-    locationAfter === tooLongLocation,
-    'location survives it',
-    `read ${JSON.stringify(locationAfter)}`
+    bioAfter === tooLongBio,
+    'bio survives it',
+    `read ${JSON.stringify(bioAfter?.slice(0, 40))}… (${bioAfter?.length} chars)`
   )
 
   const bikeAfter = await page.inputValue(field('bike_model')).catch(() => null)
@@ -3746,6 +4077,12 @@ let retentionRan = 0
  * into a pass.
  */
 let inviteLandingRan = 0
+/**
+ * Same reasoning as `inviteLandingRan` — `checkAnonymousRidePreview` throws
+ * to a `.catch()` that reports one failed assertion rather than shrinking
+ * this into a silent pass.
+ */
+let anonymousPreviewRan = 0
 let socialActionFailures = 0
 let socialActionsRan = 0
 if (isFullWalk) {
@@ -3812,6 +4149,24 @@ if (isFullWalk) {
     guardFailures += inviteLanding.bad
     inviteLandingRan += inviteLanding.ran
   }
+
+  // PD-430, tasks 6.4/6.4b — the one phase in this file that previews a LIVE
+  // ride to a stranger, rather than proving the shape of a dead token. Needs
+  // `owned.ride`, established well above by `discoverOwned`/`provision()`;
+  // `ownershipUnavailableReason`/`ownershipGapIsFailure` are the same pair
+  // `checkEditRetention` already reads for its own skip-vs-fail distinction.
+  // **This one DOES write** — a live invite link, minted if the ride does not
+  // already carry one — unlike the read-only phases in the loop just above,
+  // so it sits here rather than being folded into that loop.
+  const anonymousPreview = await checkAnonymousRidePreview(owned.ride, {
+    failed: ownershipGapIsFailure,
+    reason: ownershipUnavailableReason,
+  }).catch((e) => {
+    console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
+    return { bad: 1, ran: 1 }
+  })
+  guardFailures += anonymousPreview.bad
+  anonymousPreviewRan += anonymousPreview.ran
 
   // The four WRITE phases — see their own block comment above
   // `waitForTableWrite` for what these are, why they exist, and the
@@ -3943,6 +4298,10 @@ if (isFullWalk) {
     retentionRan +
     refusedSignupRan +
     inviteLandingRan +
+    // PD-430. Same reasoning as `inviteLandingRan`: skips (no owned ride, or
+    // fixtures off) without moving `ran`; only a fixture asked for and
+    // refused counts against the total. See `checkAnonymousRidePreview`.
+    anonymousPreviewRan +
     // Same reasoning again: `checkLikePostcard`/`checkCommentOnPostcard` skip
     // without a visible postcard, and `checkRsvpToRide`/`checkJoinClub` skip
     // without an eligible ride/club on Explore — none of the four can be

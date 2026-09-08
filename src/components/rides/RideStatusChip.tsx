@@ -33,14 +33,19 @@ import type { RideAttendance } from '@/types'
  *   tap will do; announcing only "Going" would make the control's purpose
  *   invisible to anyone not looking at the chevron.
  *
- * ## The organizer and the past ride never get one, and that is upstream
+ * ## The past ride never gets one, and that is upstream
  *
  * `resolveRideDetailActions` returns `statusChip: null` whenever the RSVP
- * question does not apply to the viewer — the organizer, whose departure `103`
- * refuses and whom `withOrganizer` renders `going` whatever is stored (PD-391),
- * and any past ride, where changing the answer would silently edit history. So
- * this component never has to ask: a chip it is asked to draw is one whose tap
- * does something.
+ * question does not apply to the viewer, which since PD-429 means any past
+ * ride, where changing the answer would silently edit history. So this component
+ * never has to ask: a chip it is asked to draw is one whose tap does something.
+ *
+ * **The organizer used to be the other case and no longer is.** They may answer
+ * Yes or Maybe — `103` guards their presence, not their status — so they get a
+ * chip like anyone else, and tapping it reopens a bar offering those two. What
+ * made the old exclusion necessary was that `withOrganizer` rendered them
+ * `going` whatever was stored (PD-391); it now respects the row, so the chip and
+ * the crew page agree.
  *
  * ## There is no `Not going` chip, and it is not an oversight
  *

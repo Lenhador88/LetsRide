@@ -2,6 +2,7 @@
 
 import { RideCard } from '@/components/rides/RideCard'
 import { isNearby } from '@/lib/location/distance'
+import { nearSectionHeading } from '@/lib/location/explore-label'
 import type { NearLabel } from '@/lib/location/near-label'
 import type { RideListItem } from '@/types'
 
@@ -13,8 +14,8 @@ import type { RideListItem } from '@/types'
  * ## Why sectioned rather than merely sorted
  *
  * - **The strip's `near <place>` clause counts the near ones, and this screen
- *   would otherwise show all of them.** The row reads `Explore public rides
- *   near Hoorn`, the tap lands on thirty, and nothing says which of them are
+ *   would otherwise show all of them.** The row reads `Explore rides near
+ *   Hoorn`, the tap lands on thirty, and nothing says which of them are
  *   near Hoorn. That is PD-258's second trap — *a count that can disagree with
  *   the list one tap away* — in the shape it takes when the count has been
  *   replaced by a word. The heading is what makes the word true, because the
@@ -55,7 +56,7 @@ export function ExploreRidesList({
   return (
     <div className="flex flex-col gap-4">
       <section className="flex flex-col gap-2">
-        <h3 className="px-2 text-sm font-semibold text-foreground">Near {near!.name}</h3>
+        <h3 className="px-2 text-sm font-semibold text-foreground">{nearSectionHeading(near)}</h3>
         <RideList rides={nearby} />
       </section>
 

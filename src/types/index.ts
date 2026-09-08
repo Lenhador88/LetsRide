@@ -33,6 +33,20 @@ export type Profile = {
   bio: string | null
   bike_model: string | null
   location: string | null
+  /**
+   * The rider's home country, ISO 3166-1 alpha-2 (`113`, PD-428). Required at
+   * onboarding since PD-428 and **permanently nullable** — every rider who
+   * completed onboarding before that keeps NULL, is never re-prompted, and
+   * every read has to tolerate it for ever. `location` is the *town* and stays
+   * optional; the two are different fields and neither substitutes for the
+   * other.
+   *
+   * **It is not a position.** It has no centroid, it is not a
+   * `RiderLocationSource`, and nothing may render a proximity claim from it —
+   * `near <country>` is wrong, because a country is a filter and not a
+   * distance. See `lib/location/explore-label.ts` for where that line is held.
+   */
+  home_country: string | null
   created_at: string
 }
 
@@ -358,8 +372,31 @@ export type RideDetail = {
    */
   latitude: number | null
   longitude: number | null
-  /** This viewer's own RSVP. The organizer reads as `going` without a row. */
+  /**
+   * This viewer's own RSVP, **folded**: the organizer reads as `going` without a
+   * row.
+   *
+   * **Not the field the RSVP controls read — that is `own_rsvp`.** The fold is
+   * right for anything answering *is this rider on the ride*, and wrong for
+   * anything answering *what did they choose*, because a pre-`103` organizer
+   * holds no row and this reads `going` for them anyway.
+   */
   attendance: RideAttendance
+  /**
+   * This viewer's raw `ride_members.status`, unfolded — `null` means *no row*,
+   * for an organizer exactly as for anyone else.
+   *
+   * **Added by PD-429, and the fold above is what made it necessary.** An
+   * organizer may now answer Yes or Maybe (`103`'s guard is `BEFORE DELETE`, so
+   * it protects their *presence* and never their *status*), which makes the
+   * RSVP bar and its status chip reachable for them for the first time. Read
+   * `attendance` there and a pre-`103` organizer — one who holds no row at all —
+   * gets a chip saying `Going` over a bar with nothing selected, asserting an
+   * answer they never gave. `src/lib/rides/bottom-slot.ts` predicted this
+   * exact defect and asked for this field in the same commit as the change that
+   * reaches it.
+   */
+  own_rsvp: RideAttendance
   /**
    * The 358×160 panel's static map tile — a signed URL minted for **this**
    * viewer, or null when the ride has no tile. Same rules as
@@ -627,6 +664,49 @@ export type RideInviteLinkPreview = {
 }
 
 /**
+ * What a token holder is shown with **no session at all** —
+ * `public.ride_invite_link_public_preview` (`115`, PD-430), the app's one
+ * anonymous read.
+ *
+ * **Deliberately not `Partial<RideInviteLinkPreview>` and not that type
+ * widened.** Both would make this shape *assignable* to `RideInviteLinkPreview`,
+ * so a component handed this thin object could still write
+ * `preview.crew_count` and get `undefined` — or, worse, a stray `0` — where a
+ * reviewer would expect a compile error. The six fields below are named
+ * separately so that reaching for either excluded field is a type error, not a
+ * runtime one.
+ *
+ * **Every field here also appears in `RideInviteLinkPreview`, and that subset
+ * relation is the whole safety argument for the anonymous grant** (`115`'s
+ * `comment on function`, `proposal.md` §The safety argument). An anonymous
+ * caller learns strictly less than the same person learns by finishing
+ * onboarding and calling `getRideInviteLinkPreview` with the identical token.
+ *
+ * **No `crew_count` and no `organizer` object — not even a bare username
+ * field named the same way.** Both are in the authenticated preview's eight
+ * columns and both are left out on purpose: a count would make the endpoint a
+ * popularity oracle for a caller who is nobody yet, and an avatar cannot
+ * render anyway, since `anon` has no reach into `storage.objects` for
+ * `resolveAvatarUrls` to sign. `organizer_username` is flat rather than
+ * nested in an `organizer` object for the same reason — nesting a single
+ * field invites a sibling field to join it later, which is exactly the
+ * temptation this type exists to refuse.
+ *
+ * **No `club_id`, no `is_public`.** A valid token previews a club-private
+ * ride exactly like a public one (`115`'s own requirement), and carrying
+ * neither field is what makes that class unobservable rather than merely
+ * unfiltered — there is no field here for a later read to infer it from.
+ */
+export type RideInviteLinkPublicPreview = {
+  ride_id: string
+  title: string
+  departure_at: string
+  timezone: string | null
+  meeting_point: string
+  organizer_username: string | null
+}
+
+/**
  * What a successful claim answers — the ride the token admitted the rider to.
  *
  * The RPC returns a bare uuid; naming it is what lets the landing screen route
@@ -771,7 +851,24 @@ export type ClubInviteLinkClaim = { club_id: string }
 export type RideCrewMember = {
   user_id: string
   profile: PublicProfile | null
-  /** The organizer, who leads the Going list whether or not they RSVP'd. */
+  /**
+   * The organizer — on their own ride by construction, whether or not they ever
+   * pressed `Yes!`.
+   *
+   * **It says WHO, never WHERE, and reading it as a position is a live bug that
+   * has already shipped once.** Until PD-429 this said the host *"leads the
+   * Going list"*, which `withOrganizer` guaranteed by prepending them to `going`
+   * unconditionally. It no longer does: an organizer may answer Maybe, and they
+   * then lead `maybe` instead. So `going[0]` is an ordinary crew member on any
+   * ride whose host is wavering, and the one place that inferred the host from
+   * index — `RideCrewRail`'s accent ring — knighted that rider on the organizer's
+   * own screen. **Mark the host from this flag.**
+   *
+   * `RideCard` is the deliberate exception and is not a counter-example:
+   * `toRideListItem` builds its avatar row as `[organizer, ...others]` itself,
+   * so index 0 is the organizer by that function's own construction rather than
+   * by anything `withOrganizer` promises.
+   */
   is_host?: boolean
 }
 
@@ -829,6 +926,12 @@ export type RideThread = {
  */
 export type RideThreadListItem = RideThread & {
   author: Pick<PublicProfile, 'id' | 'username'> | null
+  /** When this thread was last active — `116` (PD-439), `ClubThreadListItem`'s
+   *  column one domain over and under the same rules: server-owned, defaulting
+   *  to the thread's own creation, stamped forward by a trigger on
+   *  `ride_thread_messages`. The ride's timeline positions its one row per
+   *  thread on it. */
+  last_activity_at: string
 }
 
 /**
@@ -1863,6 +1966,22 @@ export type ClubThread = {
  */
 export type ClubThreadListItem = ClubThread & {
   author: Pick<PublicProfile, 'id' | 'username'> | null
+  /**
+   * When this thread was last active — `116` (PD-439), and the column the club
+   * timeline orders, bounds and POSITIONS its one row per thread on.
+   *
+   * Server-owned: `116` grants `authenticated` neither INSERT nor UPDATE on it,
+   * so a rider cannot pin their own thread to the top of a timeline. It
+   * defaults to the thread's own creation and is stamped forward by a trigger
+   * on `club_messages`, so a thread nobody has replied to carries exactly its
+   * `created_at`.
+   *
+   * **On the list item rather than on `ClubThread`**, so `ClubThreadDetail` and
+   * every other reader of the base type are not forced to select a column they
+   * do not draw. The two stamps are not interchangeable — see
+   * `resolveThreadCountExactness`, which needs `created_at` specifically.
+   */
+  last_activity_at: string
 }
 
 /**
@@ -1890,8 +2009,17 @@ export type ClubThreadDetail = ClubThread & {
   author: Pick<PublicProfile, 'id' | 'username'> | null
 }
 
-/** The keyset cursor the Threads list pages on — `(created_at, id)`, for
- * `NotificationCursor`'s reason: `created_at` is not a total order. */
+/**
+ * The keyset cursor a club Threads list would page on — `(created_at, id)`, for
+ * `NotificationCursor`'s reason: `created_at` is not a total order.
+ *
+ * **Nothing references it.** `/clubs/detail/threads` was deleted by PD-426 and
+ * `getClubThreads`' inert `cursor` parameter went with `116` (PD-439), which
+ * re-ordered that read on `last_activity_at` and so made a `created_at` keyset
+ * name neither the order nor the bound. Kept as the written shape for whoever
+ * brings a thread list back — **rebuild it against the column the read actually
+ * sorts on**, rather than restoring this one because it was here.
+ */
 export type ClubThreadCursor = { createdAt: string; id: string }
 
 /** One message inside a club thread (`081`). `author` is narrower than

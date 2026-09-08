@@ -1,0 +1,339 @@
+-- 115: a stranger sees the ride — the app's FIRST and ONLY anonymous read.
+--
+-- Linear PD-430. The proposal is
+-- openspec/changes/preview-a-ride-before-signing-up/ and its
+-- `anonymous-ride-preview` capability is the contract this file implements.
+-- `091` (PD-330) built the authenticated half; this file does not touch it.
+--
+-- ---------------------------------------------------------------------------
+-- THIS FILE BREAKS ARCHITECTURAL DECISION #1, DELIBERATELY AND EXACTLY ONCE
+-- ---------------------------------------------------------------------------
+-- Decision #1 is "no anonymous access, anywhere. No policy grants to `anon`."
+-- It has held since `001` and this is its first named exception, so it is
+-- written down here as well as in CLAUDE.md — an exception that is not written
+-- down is just a broken rule.
+--
+-- **The exception is EXECUTE on ONE function and nothing else.** `anon` gains
+-- no table grant, no column grant, no policy and no second function. There is
+-- no route from this function to a second ride, to a rider list, or to any row
+-- a token does not name.
+--
+-- **The safety argument is a SUBSET RELATION, not a judgement about how
+-- sensitive a meeting point is.** `public.ride_invite_link_preview(t)` (`091`)
+-- already returns EIGHT named columns — ride_id, title, departure_at, timezone,
+-- meeting_point, organizer_username, organizer_avatar_path, crew_count — to
+-- ANY holder of the same token before they claim anything. Its gate is not
+-- membership of the ride: it is `private.ride_invite_link_reachable_by`, whose
+-- three conjuncts are live AND not blocked in either direction AND both
+-- participation stamps on the caller. Two of those three are statements about
+-- **who may participate in this app at all**, which is why what actually stands
+-- between a link recipient and the meeting point today is the forced onboarding
+-- wizard (decision #5, plus a home country since `114`). That is friction, not
+-- a boundary, and every link is shared precisely so its recipients push through
+-- it.
+--
+-- So the six columns below are a STRICT subset of `091`'s eight. A signed-out
+-- caller learns strictly less than the same person learns by finishing the
+-- wizard. **A column added here that is not in those eight would be disclosed
+-- to somebody no signed-in caller could ever have been** — a new decision with
+-- its own argument and its own negative cases, not an extension of this one.
+--
+-- ---------------------------------------------------------------------------
+-- DECISION #2 IS NARROWED FOR THIS PROJECTION ALONE, and the residual is
+-- ACCEPTED rather than mitigated
+-- ---------------------------------------------------------------------------
+-- **There is no `auth.uid()` on this path, so there is no block check.** It is
+-- not weakened, simulated or approximated — it is unavailable by construction.
+-- `private.is_blocked(NULL, organizer_id)` is not a weaker check; it is a
+-- security-critical predicate evaluated against an argument it was never
+-- written for, whose result nobody has reasoned about. This body does not call
+-- it. **The anonymous reach is ONE conjunct, not three: the link is live.**
+--
+-- **The residual, stated plainly because it is real:** a rider the organiser
+-- has blocked can sign out, paste a token they already hold, and read the
+-- ride's title, time, organiser AND MEETING POINT. Symmetric blocking is a
+-- statement about two identities and one of them is absent, so it cannot be
+-- otherwise.
+--
+-- What bounds it: they must already hold the token somebody gave them; every
+-- other holder of that URL reaches exactly the same six columns; it dies at
+-- `least(rides.departure_at, created_at + 14 days)` with departure re-read at
+-- every use; and the organiser can revoke it. **A block is not a mechanism for
+-- withholding a shared URL from somebody who already has it.**
+--
+-- What the block still holds is everything ACTIONABLE.
+-- `public.claim_ride_invite_link` stays `authenticated`-only behind
+-- `reachable_by`'s `is_blocked` conjunct, so the blocked rider cannot join,
+-- cannot reach the crew, the thread, the photos or any message, cannot see the
+-- organiser's other rides or profile, and stays invisible in every list. Signed
+-- in, the authenticated preview returns them zero rows, unchanged.
+--
+-- **No mitigation is invented for the residual.** In particular this function
+-- does NOT refuse a preview because the organiser or the link's creator holds
+-- some block: that would leak the existence of a block to every unrelated
+-- stranger holding the link, make a public surface vary with a private fact,
+-- and still not stop the blocked rider, who reaches the same six columns from
+-- any other copy of the URL.
+--
+-- ---------------------------------------------------------------------------
+-- WHY `091`'s PREVIEW COULD NOT SIMPLY BE RE-GRANTED
+-- ---------------------------------------------------------------------------
+-- Granting `anon` EXECUTE on `public.ride_invite_link_preview` would not loosen
+-- a check. It would make `private.is_blocked(NULL, organizer_id)` and a
+-- `profiles` probe for a NULL id decide the answer — two security-critical
+-- predicates evaluated against an argument they were never written for. `091.13`
+-- asserts by reading `prosrc` that neither public body restates those checks;
+-- that assertion is what makes the single entry point trustworthy, and it is
+-- exactly what a re-grant would quietly void.
+--
+-- **So: a separate, thinner function entering the shared logic ONE LEVEL
+-- LOWER.**
+--
+--   private.live_ride_invite_link(t)                    <- UNCHANGED, reused
+--      +-- private.ride_invite_link_reachable_by(t,uid) <- UNCHANGED, authed
+--      |      +-- public.ride_invite_link_preview(t)     <- UNCHANGED, authed
+--      |      +-- public.claim_ride_invite_link(t)       <- UNCHANGED, authed
+--      +-- public.ride_invite_link_public_preview(t)     <- NEW, anon only
+--
+-- **The reuse point is chosen and it is the whole reason this is safe.**
+-- `private.live_ride_invite_link` is described by its own comment as "THE
+-- SINGLE DEFINITION OF 'LIVE' ... A statement about the LINK alone: it takes no
+-- caller and reads no `auth.uid()`." A caller-free definition of liveness is
+-- precisely what an anonymous path needs, and reusing it means every dead-state
+-- guarantee `091` proved is INHERITED rather than re-implemented: revoked,
+-- expired, ride deleted, ride departed, malformed and never-existed already
+-- return zero rows from one function that never raises. A second liveness
+-- predicate written for `anon` would be the drift `091` and `093` each spent a
+-- whole section preventing.
+--
+-- `private.live_ride_invite_link` gains a second caller and its
+-- `revoke all ... from public, anon, authenticated` stays exactly as it is. The
+-- new function is `security definer`, so it reaches the private helper as the
+-- owner. **`anon` never gains EXECUTE on anything in `private`.**
+--
+-- ---------------------------------------------------------------------------
+-- ADDITIVE IN EVERY STATEMENT, AND MIGRATION-FIRST — both sides answered
+-- ---------------------------------------------------------------------------
+-- This file creates one function and grants EXECUTE on it. It alters no table,
+-- adds no column, touches no policy, hangs no trigger and replaces no existing
+-- function. `public.rides`' SELECT qual and `private.can_read_ride`'s `prosrc`
+-- md5 are BYTE-IDENTICAL after it, pinned at `115.4` the way `091.14` pins them.
+--
+-- CLAUDE.md's sequencing rule asks WHICH SIDE FAILS SAFE, so both are answered
+-- rather than the conclusion asserted:
+--
+--   * Migration applied, OLD bundle serving. The old bundle never calls the new
+--     function. `anon` holds EXECUTE on one function nothing invokes and every
+--     other object is untouched. NOTHING OBSERVES IT. **Safe.**
+--   * NEW bundle serving, migration not applied. Every signed-out visitor's
+--     preview call returns `PGRST202` on the one screen this change exists to
+--     fix — a stranger's first impression, which does not come back.
+--     **Not safe.**
+--
+-- The other three questions the rule asks are empty here: nothing writes a new
+-- column (no `PGRST204`), nothing adds a PostgREST relationship (no HTTP 300),
+-- and nothing is destructive or exhaustive (no "wait until the build is
+-- confirmed serving"). One side fails safe and the other does not, so
+-- **MIGRATION-FIRST is decided rather than free**, and the PROD promotion
+-- carries the same order for the same reason.
+--
+-- **THE HAND-EXERCISE GATE DOES NOT FIRE.** No trigger is hung on any table and
+-- no function on a live write path is replaced, so there is no shipped
+-- transaction this file could take down — the opposite of `091` §5 and `111`
+-- §2, both of which touched live triggers and said so in their own headers.
+--
+-- ROLLBACK, IN ONE STEP:
+--   drop function public.ride_invite_link_public_preview(text);
+-- Nothing else is created, altered or revoked, and no other object references
+-- it, so there is no ordering to get right.
+--
+-- ---------------------------------------------------------------------------
+-- WHAT IS NOT BUILT, AND WHY
+-- ---------------------------------------------------------------------------
+-- **No metering table, attempt ledger or lockout**, and the reason is
+-- STRUCTURAL rather than a judgement. `069`'s `place_search_attempts` is keyed
+-- on `user_id references public.profiles(id)` and both its ceilings are per
+-- rider: **an anonymous caller is not a subject a ledger can be keyed on.** The
+-- only candidate keys are an IP address or a device fingerprint, neither of
+-- which this schema stores, and storing either would add a personal-data table
+-- with its own retention window and its own visibility decision — a larger
+-- change than the thing it would protect. `069`'s SPEND argument does not
+-- transfer either: it metered a paid vendor credit, and this function calls no
+-- vendor and costs one index probe on a unique constraint. Volumetric
+-- protection of an unauthenticated endpoint is Supabase's platform-level rate
+-- limiting, which sits in front of PostgREST and is not this schema's to write.
+--
+-- `091`'s entropy statement is the precedent and it does not weaken when the
+-- caller is anonymous: 128 bits, 32 lowercase hex, zero rows on every failure,
+-- no error to time against, and nothing written.
+--
+-- **The retention answer is that there is nothing to retain.** This path
+-- performs no INSERT, UPDATE or DELETE of any kind — no ledger row, no view
+-- record, no analytics write — so no personal data about the viewer is
+-- collected and no window is owed. The accepted cost of that is recorded in
+-- `design.md` D11: an anonymous read is attributable to NOBODY, so the
+-- organiser cannot know their link was opened, how often, or by whom.
+
+-- ===========================================================================
+-- The function — SIX named columns, and the list is CLOSED
+-- ===========================================================================
+-- **Never `rides.*`**, so a column added to `rides` later is not disclosed by
+-- default. **No `club_id` and no `is_public`**, which is what makes club
+-- privacy UNOBSERVABLE rather than filtered: there is no field to infer from
+-- and no column for a later edit to leak by default. A club-private ride IS
+-- served — the organiser minted a link to THAT ride and shared it, `091`
+-- already settled the identical question, and refusing one would build the
+-- oracle this whole feature is designed to avoid (zero rows for a club-private
+-- ride and a preview for a public one tells any token holder which class of
+-- ride their token names).
+--
+-- `t` is compared as text, inside `private.live_ride_invite_link`, so a
+-- malformed string simply matches no row. A parse error would confirm the token
+-- format to a prober.
+--
+-- **`p.username` is the only column taken from `profiles`.** Not the
+-- organiser's id, not their avatar path, not their location.
+create or replace function public.ride_invite_link_public_preview(t text)
+returns table (
+  ride_id uuid,
+  title text,
+  departure_at timestamptz,
+  timezone text,
+  meeting_point text,
+  organizer_username text
+)
+language sql
+-- ** VOLATILE, DECLARED EXPLICITLY — AND THE REASON EVERY OTHER FILE IN THIS
+--    REPO GIVES FOR THAT LABEL IS FALSE. MEASURED, NOT REASONED. **
+--
+-- This body performs no write and takes no lock, so `stable` would be a
+-- truthful label. It is `volatile` anyway, but NOT for the reason `091`'s
+-- comment, `docs/reference/schema.md` and this change's own `design.md` all
+-- give — that a `stable` function is served over GET while a volatile one is
+-- POST-only, so the label is what keeps a live capability token out of a
+-- query string. **The second half of that is not true on this deployment**,
+-- probed against DEV on 2026-09-08 with the publishable key alone:
+--
+--   GET /rest/v1/rpc/ride_invite_link_public_preview?t=<token>   ->  200
+--
+-- A volatile function is served over GET here. The control that says the
+-- method is not what stops it: the same GET against `091`'s authenticated
+-- `ride_invite_link_preview` answers **401 / 42501 permission denied** — a
+-- privilege error raised at execution, not a 405.
+--
+-- ** SO WHAT ACTUALLY KEEPS THE TOKEN OUT OF THE QUERY STRING IS THE CLIENT. **
+-- `supabase-js`'s `.rpc()` issues a POST, and `src/lib/data/` is the only
+-- caller. Nothing in the database enforces it, and a later session that
+-- believes the label does will be wrong in the dangerous direction — it would
+-- read "volatile is POST-only" and conclude the URL is safe to hand out.
+--
+-- ** AND THE TOKEN IS ALREADY IN A URL BY DESIGN, WHICH IS THE HALF THE OLD
+--    REASONING NEVER SAID OUT LOUD. ** The invite link IS
+-- `/rides/join?token=…`. It arrives as the document request, so it reaches the
+-- server log, any intermediary and the browser's history before
+-- `adoptInviteTokenFromLocation` clears it with `replaceState`. `091` accepted
+-- that: the token is a bearer credential and a URL is how it travels.
+--
+-- What `115` changes is not the exposure but ITS VALUE. Before, redeeming a
+-- leaked line of log needed an account that was onboarded and unblocked — the
+-- three conjuncts of `ride_invite_link_reachable_by`. Now the same string
+-- yields the title, time and meeting point to NOBODY, with no account at all.
+-- That is the accepted cost of the feature rather than a defect to fix here,
+-- and it is bounded the way the link itself is bounded: the expiry, the
+-- organizer's revoke, and 128 bits. It is written down so the next reader
+-- weighs the real exposure instead of the one the `volatile` label implied.
+--
+-- The label still stays, for two honest reasons rather than the false one: it
+-- is the safe default for a function reachable by an unauthenticated caller,
+-- and it matches `091`'s three RPCs, one of which (`claim_ride_invite_link`)
+-- genuinely REQUIRES it — `for share` is refused outright in a non-volatile
+-- function. Pinned by `115.13`'s catalogue assertion on `provolatile`.
+--
+-- `091`'s own comment and `docs/reference/schema.md` carry the false reason
+-- for the OTHER two RPCs and are not corrected here: a migration that has
+-- already applied is never edited, and correcting a deployed comment needs its
+-- own file. Filed rather than absorbed — see the PR.
+volatile
+security definer
+set search_path = ''
+as $$
+  select r.id, r.title, r.departure_at, r.timezone, r.meeting_point, p.username
+    from private.live_ride_invite_link(t) k
+    join public.rides r on r.id = k.ride_id
+    join public.profiles p on p.id = r.organizer_id;
+$$;
+
+-- ===========================================================================
+-- The grant — `anon` ALONE, and `authenticated` named explicitly
+-- ===========================================================================
+-- REVOKE FIRST, THEN GRANT. Supabase's project default is
+-- `alter default privileges in schema public grant execute on functions to
+-- anon, authenticated`, and Postgres's own default grants EXECUTE to PUBLIC, so
+-- a bare `grant execute ... to anon` would leave BOTH in place and this
+-- function would be reachable by every role in the database.
+--
+-- **`authenticated` is named explicitly rather than relied on as absent, and
+-- excluding it is a decision rather than tidiness.** A signed-in rider who is
+-- BLOCKED by the organiser, or who NEVER ACCEPTED THE TERMS, is refused by
+-- `public.ride_invite_link_preview` through `reachable_by`'s block and stamp
+-- conjuncts. If the thin function were also executable by `authenticated`, both
+-- riders could call it instead and get the title, time, meeting point and
+-- organiser anyway — a second door around a gate `091` argued for at length.
+--
+-- It is true that either rider could sign out and call it as `anon`. That does
+-- NOT make the grant harmless: an `authenticated` grant is a path the app's own
+-- client can take by accident, and a reviewer reading `reachable_by` would no
+-- longer be reading the only caller predicate that matters. The narrow grant
+-- keeps "who may reach a ride's title WHILE SIGNED IN" answerable in one place.
+revoke all on function public.ride_invite_link_public_preview(text) from public, authenticated;
+grant execute on function public.ride_invite_link_public_preview(text) to anon;
+
+comment on function public.ride_invite_link_public_preview(text) is
+  'What a SIGNED-OUT visitor holding an invite token is shown — 115, PD-430. THE APP''S FIRST AND ONLY ANONYMOUS GRANT: EXECUTE to `anon` alone, revoked from `public` and from `authenticated`. A second anon-executable function, an anon grant on any table, or any policy naming anon is a NEW decision and not an extension of this one. EXACTLY SIX NAMED COLUMNS of exactly one ride: ride_id, title, departure_at, timezone, meeting_point and the organizer''s username. Never rides.*, so a column added to `rides` later is not disclosed by default. ** THOSE SIX ARE A STRICT SUBSET OF public.ride_invite_link_preview''S EIGHT, AND THAT SUBSET RELATION IS THE WHOLE SAFETY ARGUMENT: ** 091 already returns all eight to ANY holder of the same token before they claim, gated on liveness plus a block check plus both participation stamps and never on membership, so what stood in front of these fields was the onboarding wizard rather than a boundary. A COLUMN ADDED HERE THAT IS NOT IN THOSE EIGHT IS A NEW DECISION — it would be disclosed to somebody no signed-in caller could ever have been. crew_count is absent because it is a fact about RIDERS rather than about the ride and would make this a popularity oracle; organizer_avatar_path because signing a Storage URL is resolveAvatarUrls'' job and anon holds no reach into storage.objects, so it would be a path disclosed for nothing; latitude, longitude and geocode_confidence because a human reading an invite needs a place and not a machine-readable pin, and 091 does not return them either; map_card_path and map_detail_path because they are Storage paths anon cannot sign; club_id, is_public, description, route_description and start_place_id because the projection carries NO club field at all, which makes club privacy UNOBSERVABLE rather than filtered. LIVENESS IS private.live_ride_invite_link''S AND IS CHANGED THERE AND NOWHERE ELSE — this body restates no revoked_at, expires_at or departure_at test, so revoked, expired, ride-deleted, ride-departed, malformed and never-existed are ONE outcome: zero rows, no raise, no oracle. BLOCKING IS UNAVAILABLE RATHER THAN SKIPPED: there is no auth.uid() here, so THE ANONYMOUS REACH IS ONE CONJUNCT — "the link is live" — and private.is_blocked is deliberately NOT called with a NULL caller, a security-critical predicate evaluated against an argument it was never written for being worse than an absent check that is written down. The accepted residual is that a blocked rider who signs out reads all six columns including the meeting point; the claim stays authenticated-only behind reachable_by, so the block still holds everything actionable. Decision #2 is narrowed for THIS PROJECTION ALONE. IS_PUBLIC IS NEVER READ: the grant follows the 128-bit bearer token and nothing else, there is no ride-id parameter and no listing, search or enumeration endpoint reachable by anon, so `is_public = true` still means "visible to any signed-in rider" and never "visible to the internet". WRITES NOTHING — no ledger, no counter, no view record — which is also this path''s retention answer: no personal data about the viewer is collected, so none needs a window. VOLATILE DELIBERATELY AND NOT BY OMISSION, BUT NOT FOR THE REASON THE OTHER RPCs GIVE: the body takes no lock and would be truthfully `stable`. 091''s comment, docs/reference/schema.md and this change''s design.md all say a stable function is served over GET while a volatile one is POST-only, so the label is what keeps a live capability token out of a query string. THE SECOND HALF IS FALSE ON THIS DEPLOYMENT — measured against DEV 2026-09-08 with the publishable key alone, GET /rest/v1/rpc/ride_invite_link_public_preview?t=<token> answers 200, and the control proving the method is not the blocker is that the same GET against 091''s ride_invite_link_preview answers 401/42501 permission denied rather than 405. WHAT KEEPS THE TOKEN OUT OF THE URL IS THE CLIENT: supabase-js .rpc() POSTs, and src/lib/data/ is the only caller. The label stays because it is the safe default for an unauthenticated surface and because it matches 091''s three, one of which genuinely requires it (for share is refused in a non-volatile function) — not because it enforces a method. Pinned by 115.13. A LATER SESSION MUST NOT READ THIS LABEL AS "THE URL IS SAFE TO HAND OUT".';
+
+-- ===========================================================================
+-- Verification — run against the project after applying, do not assume
+-- ===========================================================================
+--
+--   select p.proname, p.prosecdef, p.proconfig, p.provolatile,
+--          pg_get_function_result(p.oid)
+--     from pg_proc p
+--    where p.oid = 'public.ride_invite_link_public_preview(text)'::regprocedure;
+--   -- prosecdef t, proconfig {"search_path="}, provolatile 'v', and the result
+--   --   TABLE(ride_id uuid, title text, departure_at timestamp with time zone,
+--   --   timezone text, meeting_point text, organizer_username text) — SIX, and
+--   --   every name of it present in ride_invite_link_preview's eight.
+--
+--   select has_function_privilege('anon',          'public.ride_invite_link_public_preview(text)', 'execute'),
+--          has_function_privilege('authenticated', 'public.ride_invite_link_public_preview(text)', 'execute'),
+--          has_function_privilege('public',        'public.ride_invite_link_public_preview(text)', 'execute');
+--   -- t, f, f — PER GRANTEE, because postgres and service_role hold everything
+--   --   by Supabase default and an unscoped check passes for the wrong reason.
+--
+--   select count(*) from pg_policies where schemaname = 'public'
+--    and roles::text like '%anon%';
+--   -- 0, unchanged. This file adds, widens and renames no policy.
+--
+--   select md5(prosrc) from pg_proc
+--    where proname = 'can_read_ride' and pronamespace = 'private'::regnamespace;
+--   -- a9b2954b27c970d9b19cd781fbe181c7 — UNCHANGED. A different value means
+--   --   this file moved something it must not.
+--
+--   select qual from pg_policies
+--    where schemaname = 'public' and tablename = 'rides' and cmd = 'SELECT';
+--   -- byte-identical to what 111 left. This file adds NO audience arm.
+--
+--   select count(*) from pg_trigger
+--    where tgname = 'enforce_participation_gate' and not tgisinternal;
+--   -- 22, UNCHANGED. No table is created, so there is no `authenticated`
+--   --   writer for a gate trigger to gate.
+--
+--   -- Advisors: +0 INFO (no table, so no rls_enabled_no_policy). A WARN of the
+--   -- `security_definer_function_executable` family is EXPECTED but its exact
+--   -- label is unmeasured: every existing WARN of that class reads
+--   -- `authenticated_security_definer_function_executable`, and no
+--   -- anon-executable security definer function existed on either project
+--   -- before this file. IF NO ADVISOR FIRES AT ALL, that is a FINDING and not a
+--   -- saving — it means the advisor set cannot see the app's only anonymous
+--   -- surface.
+--   --   mcp__Supabase__get_advisors <ref> security

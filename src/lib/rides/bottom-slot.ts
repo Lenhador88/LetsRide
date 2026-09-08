@@ -53,17 +53,37 @@ import type { RideAttendance, RideCreateOption } from '@/types'
  * exist, and the proof is in the read rather than in the composition:
  *
  * ```
- * src/lib/data/rides.ts:618   is_crew: isRideCrew(isOrganizer, ownRow?.status ?? null)
- * src/lib/data/rides.ts:692   isOrganizer || attendance !== null
+ * src/lib/data/rides.ts:626   is_crew: isRideCrew(isOrganizer, ownRow?.status ?? null)
+ * src/lib/data/rides.ts:701   isOrganizer || attendance !== null
  * ```
  *
- * So for a non-organizer, **crew ⟺ `attendance !== null`**. `rsvpApplies`
- * excludes the organizer, and the bar is owed only while the answer is still
- * `null` — which is exactly when that rider is *not* crew. `canCreate` and an
- * unanswered RSVP are therefore contradictory, the `(+)`'s case is empty, and a
- * fallback nothing can reach is furniture that reads as a live affordance to
- * the next person editing this screen. The invariant it protected survives in a
- * sharper form below.
+ * So for a non-organizer, **crew ⟺ `attendance !== null`**, and the bar is owed
+ * only while the answer is still `null` — which is exactly when that rider is
+ * *not* crew. `canCreate` and an unanswered RSVP are therefore contradictory,
+ * the `(+)`'s case is empty, and a fallback nothing can reach is furniture that
+ * reads as a live affordance to the next person editing this screen. The
+ * invariant it protected survives in a sharper form below.
+ *
+ * **The organizer arm of that proof changed with PD-429, and it is now the
+ * database that carries it rather than `rsvpApplies`.** `rsvpApplies` used to
+ * exclude every organizer, which made their half vacuous. It no longer does, so
+ * the reason is `103`: `establish_ride_organizer_membership` writes the
+ * organizer a `ride_members` row at ride creation and §3 backfilled every ride
+ * that predates it, while `protect_ride_organizer_membership` refuses the
+ * delete that would remove one. An organizer's `own_rsvp` is therefore never
+ * `null`, so the bar is never owed to them *unanswered* and the contradiction
+ * holds for them too. Measured on DEV 2026-09-07 — 28 rides, 0 organizers
+ * without a row:
+ *
+ * ```sql
+ * select count(*) filter (where m.status is null) as organizer_without_row
+ *   from public.rides r
+ *   left join public.ride_members m on m.ride_id = r.id and m.user_id = r.organizer_id;
+ * ```
+ *
+ * **If that ever stops being true the failure is soft and self-clearing**: such
+ * an organizer would see the bar with nothing selected and no create action
+ * until they answer, which is the `reopened` state below, not a wrong claim.
  *
  * **The one state with no create entrance is `reopened`**, and it is
  * rider-initiated, transient and reversible by the same tap that caused it: a
@@ -125,20 +145,19 @@ export function resolveRideDetailActions({
    * also *not crew*, which is the identity the `timelineAdd` proof above rests
    * on.
    *
-   * **`RideDetail.attendance` is the FOLDED field and passing it here is
-   * deliberate rather than an oversight.** `getRide` returns
-   * `ownRow?.status ?? (isOrganizer ? 'going' : null)`, so it reads `going` for
-   * an organizer holding no row — but `rsvpApplies` is false for every
-   * organizer, and both outputs that consume this input are behind it. The fold
-   * is therefore unreachable, and threading a second unfolded field down from
-   * the data layer would add a column to `RideDetail` that nothing could
-   * observe a difference from.
+   * **Pass `RideDetail.own_rsvp` — the RAW `ride_members.status` — and never
+   * the folded `attendance`.** This used to be the folded field, safe only
+   * because `rsvpApplies` excluded every organizer and so put both outputs that
+   * consume this input out of the fold's reach. That note carried a standing
+   * instruction: *if a later change ever lets the organizer answer, this must
+   * become the raw status in the same commit, or the organizer gets a chip
+   * offering a bar the database refuses.*
    *
-   * **What that costs, stated so it is a decision rather than luck**: the
-   * safety is `rsvpApplies`', not this input's. If a later change ever lets the
-   * organizer answer — `103`'s `protect_ride_organizer_membership` is what
-   * stops it today — this must become the raw `ride_members.status` in the same
-   * commit, or the organizer gets a chip offering a bar the database refuses.
+   * **PD-429 is that change and this is that commit.** The organizer answers Yes
+   * or Maybe now, `rsvpApplies` no longer excludes them, and `getRide` grew
+   * `own_rsvp` for this call. Read the fold here instead and a pre-`103`
+   * organizer — one holding no row at all — gets a `Going` chip over a bar with
+   * nothing selected.
    */
   attendance: RideAttendance
   /**

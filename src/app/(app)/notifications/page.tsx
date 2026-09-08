@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Header } from '@/components/layout/Header'
 import { MarkNotificationsRead } from '@/components/notifications/MarkNotificationsRead'
 import { NotificationsListItem } from '@/components/notifications/NotificationsListItem'
+import { PushPrimingRow } from '@/components/push/PushPrimingRow'
 import { Button } from '@/components/ui/Button'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { useOnlineStatus } from '@/components/ui/OfflineState'
@@ -66,6 +67,14 @@ export default function NotificationsPage() {
     <>
       <Header title="Notifications" onBack={goBack} />
       <MarkNotificationsRead />
+      {/* PD-431, and the only screen it draws on — a rider here is already
+          thinking about being told things, and iOS gives exactly one
+          permission dialog to spend. It sits ABOVE `NotificationsScreen`
+          rather than inside it so the offer survives that component's loading,
+          error and empty states: a rider with no notifications yet is the one
+          most worth asking, and gating the row on a list that has not arrived
+          would hide it from exactly them. Draws nothing on the web. */}
+      <PushPrimingRow />
       <NotificationsScreen />
     </>
   )

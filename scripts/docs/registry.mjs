@@ -275,6 +275,53 @@ export const claims = [
     about: '§Technology Decisions, Tests table: "One component test exists"',
   },
 
+  {
+    id: 'jsdom-component-tests-table',
+    file: 'docs/reference/running-locally.md',
+    // The entry above gates the TOTAL and left this one ungated, which is the
+    // failure its own comment predicts: *"the reader most likely to be misled
+    // by a stale count is exactly the one adding a component test that does
+    // need jsdom"*. That is what happened on PD-428 — the total was carried to
+    // 43 and the jsdom count was left at eight while the diff added a ninth,
+    // and `docs:check` reported 42/42 because nothing measured it.
+    //
+    // It matters more than the total does. The sentence next to it instructs
+    // the reader to check their reason against an enumerated list, so a stale
+    // count means a list that no longer contains its newest member — and the
+    // rule it teaches (jsdom only for a mounted effect, a layout, an event or
+    // a portal) is exactly the one a session decides by copying a neighbour.
+    pattern: /all but \*\*([\w-]+)\*\* render through `renderToStaticMarkup`/,
+    extractStated: extractWord(),
+    kind: 'shell',
+    // `git grep -l`, matching the command CLAUDE.md tells the reader to run,
+    // so the claim and its stated verification cannot drift apart.
+    cmd: `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx' | wc -l`,
+    about: '§Component tests — which ones need jsdom: the count',
+  },
+
+  {
+    id: 'jsdom-component-tests-enumerated-table',
+    file: 'docs/reference/running-locally.md',
+    // **The same number, stated twice in one sentence, and gating the first
+    // occurrence alone is not enough.** The entry above was added on PD-428
+    // and the very next delta review found the sentence self-contradicting:
+    // *"all but **nine** … because each of the eight below is there for a
+    // different one"*, with nine entries enumerated after it. The first claim
+    // read `nine` and passed, so `docs:check` was green against a sentence
+    // that disagreed with itself.
+    //
+    // The second number is the one that costs something to be wrong. It
+    // introduces the enumerated list, and the list is what a session adding a
+    // component test actually reads to decide whether jsdom is warranted — a
+    // count that disagrees with the entries below it leaves them guessing
+    // which half is stale.
+    pattern: /because each of the ([\w-]+) below is there for a different one/,
+    extractStated: extractWord(),
+    kind: 'shell',
+    cmd: `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx' | wc -l`,
+    about: '§Component tests — which ones need jsdom: the same count, restated before the list',
+  },
+
   // ---- Migration file count ----------------------------------------------
   {
     id: 'migrations-count-claude',

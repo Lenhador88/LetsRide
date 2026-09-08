@@ -17,6 +17,7 @@ How a rider's session is held, proved and discarded once there is no server to s
 cookie. Covers the move to device secure storage, the replacement for the password-recovery
 marker, and what sign-out must destroy on a device two people share.
 ## Requirements
+
 ### Requirement: Session tokens SHALL be held in device secure storage
 
 The session lives in a storage adapter passed to `@supabase/supabase-js`
@@ -90,12 +91,16 @@ change from any live session, measured, so `026` gates the app's front door and
 
 ### Requirement: Sign-out SHALL destroy every local trace of the rider
 
-Signing out SHALL discard the session, the query cache, cached images and cached signed URLs,
-so that nothing belonging to the previous rider MUST survive on the device.
+Sign-out SHALL leave nothing on the device that identifies the rider or grants reach: no session,
+no cached rows, no stamps, and **no capability token**.
 
-Today sign-out clears a cookie and the server holds nothing else. The client-rendered app holds
-a query cache, signed image URLs, and — later — an offline store. A shared device is the normal
-case for a motorcycle club, not an edge case.
+A stashed invite token is a trace and a credential at once. It is not the signing-out rider's
+property in any meaningful sense — it came from a message — but leaving it behind means the next
+rider on that device inherits a spendable grant.
+
+#### Scenario: A stashed invite token does not survive sign-out
+- **WHEN** a rider signs out with `letsride.pendingInviteToken` set
+- **THEN** the key SHALL be absent afterwards, alongside the session and the query cache
 
 #### Scenario: The next rider sees nothing of the last one
 - **WHEN** rider A signs out and rider B signs in on the same device
@@ -116,21 +121,118 @@ case for a motorcycle club, not an edge case.
 
 ### Requirement: A signed-out visitor SHALL reach no data
 
-A visitor with no session SHALL be able to load the shell and MUST NOT be able to read any
-rider data, from the network or from a cache.
+A visitor with no session SHALL be able to load the shell and MUST NOT be able to read any rider
+data, from the network or from a cache — **with exactly one exception, which SHALL be named here
+rather than discovered in a migration.**
 
-Decision #1 is unchanged: `anon` holds zero table grants and every route except `/auth/*` and
-`/legal/*` requires a session. What changes is that a static bundle is served to anyone who
-asks, so the shell itself is now public even though nothing in it is.
+Decision #1 is narrowed by one function and otherwise unchanged: **`anon` holds zero table grants**,
+no policy names `anon`, and every route except `/auth/*`, `/legal/*` and `/rides/join` requires a
+session. What changed when the shell became static is that a bundle is served to anyone who asks, so
+the shell itself is public even though almost nothing in it is.
+
+**The exception is `public.ride_invite_link_public_preview(t)`** (`115`, PD-430): EXECUTE on one
+`security definer` function, reachable only by a 128-bit bearer token, returning the title, start
+time, zone, meeting point and organiser username of exactly one ride. It exists because a stranger
+tapping a shared invite link was being asked to create an account to find out what they were
+invited to.
+
+**Three properties bound it, and all three SHALL hold:**
+
+1. **A credential, not a visibility class.** The function reads no `is_public` and lists nothing.
+   Without a token there is no call to make and no ride to name — **a ride with `is_public = true`
+   and no live link SHALL show a signed-out visitor nothing**, exactly as before this change, so
+   `is_public` keeps meaning "visible to any signed-in rider".
+2. **Strictly less than the token already buys, and checkable in one comparison.** Every column the
+   anonymous function returns SHALL also be returned by `public.ride_invite_link_preview`, which
+   `091` already grants to any holder of the same token *before* they claim anything — its gate is
+   the participation stamps, not ride membership. The anonymous projection is a strict subset of a
+   projection that already ships, so the exception discloses no fact to a stranger that the token
+   did not already disclose to its holder. Claiming buys strictly more again: the crew, the thread
+   and every message.
+3. **No table, no policy, no write.** `has_table_privilege('anon', …, 'SELECT')` stays `false` for
+   every table; no policy is added or widened; the function writes nothing, so an anonymous caller
+   leaves no row anywhere and there is no personal data about them to retain. **The other side of
+   that is an accepted cost, recorded rather than left to be found**: an anonymous read is
+   attributable to nobody, where every authenticated use of a link writes a `ride_invites` row
+   carrying its `link_id`. It is bounded by the link's expiry, the organiser's revoke and the
+   token's entropy, and **no ledger SHALL be built to close it** — the only keys available are an IP
+   address or a device fingerprint, each of which is personal data with its own retention window.
+
+**The route that renders this exception SHALL declare `noindex, nofollow`.** Until now the
+authenticated wall kept crawlers away from every route as a side effect; this change removes the
+wall from one screen, so the property SHALL be restated as a requirement rather than inherited.
+
+**Anything beyond those three is a new decision.** A second `anon`-executable function, a column
+added to this one **that is not already in `public.ride_invite_link_preview`'s projection**, a
+listing or search reachable without a token, or any grant to `anon` on a table SHALL be proposed on
+its own terms and SHALL NOT be justified by citing this exception.
 
 #### Scenario: The shell renders, the data does not
 - **WHEN** a signed-out visitor loads any authenticated route
-- **THEN** no rider data SHALL be rendered from any source, including a cache left by a
-  previous session
-- **AND** every request the shell makes SHALL be refused by RLS rather than filtered by the
-  client
+- **THEN** no rider data SHALL be rendered from any source, including a cache left by a previous
+  session
+- **AND** every request the shell makes SHALL be refused by RLS rather than filtered by the client
 
 #### Scenario: No anonymous grant is introduced to make first paint faster
 - **WHEN** a screen would benefit from data before the session is restored
 - **THEN** the answer SHALL be to wait for the session, not to grant `anon` a read
+- **AND** the invite-preview exception SHALL NOT be cited as precedent, because it is gated on a
+  bearer token rather than on being early
+
+#### Scenario: The exception is one function, checked per grantee
+- **WHEN** the set of functions in `public` on which `anon` holds EXECUTE is enumerated
+- **THEN** it SHALL contain exactly `ride_invite_link_public_preview`
+- **AND** the enumeration SHALL be scoped to the `anon` grantee, because `postgres` and
+  `service_role` hold everything by Supabase default
+
+#### Scenario: A signed-out visitor with no token still reaches nothing
+- **WHEN** a signed-out visitor loads `/rides/join` with no token, or any other route
+- **THEN** no ride, club, rider or postcard SHALL be named, and no table SHALL return a row
+
+#### Scenario: The cache does not leak between a stranger and a session
+- **WHEN** a signed-out visitor previews a ride and then signs in as a different rider
+- **THEN** the anonymous preview SHALL be held under its own cache key and SHALL NOT be served to the
+  signed-in session, and sign-out SHALL clear it exactly as it clears every other cached read
+### Requirement: A capability token held on the device SHALL be tab-scoped and spendable only by an explicit action
+
+A credential whose whole security is possession SHALL be held in `sessionStorage` and SHALL NOT be
+held in `localStorage`, a cookie, IndexedDB or the query cache.
+
+`sessionStorage` is the choice because it dies with the tab. A token in `localStorage` outlives
+the browsing session, the rider's attention and their intent — on a shared machine it is a grant
+sitting on someone else's device with an expiry only the server knows about.
+
+**It SHALL be spent only from a user-initiated event handler.** No effect, no route-guard branch,
+no `onAuthStateChange` listener and no session-restore path SHALL consume a stashed token.
+
+This is the rule that makes the wrong-rider claim unreachable. Rider A opens a link, abandons
+sign-up, and rider B signs in in the same tab: an automatic claim joins rider B to a private ride
+they were never told about, writes their `ride_members` row and notifies the organizer with their
+name. At the database layer that is a **valid** claim — the caller is authenticated, onboarded and
+unblocked, and the token is live — so no policy, trigger or RLS assertion can distinguish it. Only
+the client contract can.
+
+The stash SHALL be a convenience and never the only copy. The URL is the durable credential, so a
+lost stash SHALL always be recoverable by re-opening the original link, and no additional recovery
+mechanism SHALL be built.
+
+#### Scenario: The stash is tab-scoped
+- **WHEN** a token is stashed and a second tab is opened to the app
+- **THEN** the second tab SHALL NOT see it
+
+#### Scenario: Nothing claims on session establishment
+- **WHEN** a session appears by any route — sign-in, sign-up, email confirmation, token refresh,
+  or restoring a session on load
+- **THEN** no claim SHALL be issued, and the rider SHALL be shown the preview with a control to
+  act on
+
+#### Scenario: A different rider is not admitted silently
+- **WHEN** a stash exists and a rider other than the one who opened the link signs in
+- **THEN** they SHALL be joined to nothing until they tap, and the screen SHALL make clear whose
+  ride they are being offered
+
+#### Scenario: The stash survives onboarding
+- **WHEN** a brand-new rider stashes a token and completes the onboarding wizard in the same tab
+- **THEN** the token SHALL still be readable afterwards, since the participation gate makes
+  claiming impossible until the wizard finishes
 

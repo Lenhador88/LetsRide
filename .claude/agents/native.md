@@ -63,11 +63,17 @@ Manager rather than CocoaPods**, so `cap add ios`, `@capacitor/assets generate -
 `cap sync ios` all complete in this container. `ls ios/App/CapApp-SPM` against `ls ios/App/Pods`
 is the check that distinguishes them.
 
-**What is left is what needs a compiler**: signing, a build, a simulator or device run, and the
-archive. Plus `cap add android`, which is unblocked and simply not asked for.
-A device check that a cold start at a non-root URL lands on its screen is still owed, and
-`src/lib/native/boot-restore.ts` is the client half of it — unit-tested, and **written and
-unverified** until a platform runs.
+**It has now been built and run — 2026-09-08, on the owner's Mac, `iPhone 17 Pro` simulator, 0
+errors.** So "needs a compiler" is no longer the frontier; **"needs a signed DEVICE" is.** What is
+left: a device run, push registration, universal links, the archive, and `cap add android`, which
+is unblocked and simply not asked for. `docs/reference/native-shell.md` §What the first build
+settled is the row-by-row split, and it is the file this brief must not drift from.
+
+**`src/lib/native/boot-restore.ts` is STILL written and unverified, and a simulator run does not
+change that.** It answers a **webview process restore**, which a hand-driven launch does not
+reproduce — so the old condition here, *"until a platform runs"*, has now fired without settling
+anything, which is exactly the wrong way for a condition to resolve. The device check that a cold
+start at a non-root URL lands on its screen is still owed.
 
 **Read Capacitor's Swift from `node_modules/@capacitor/ios`** — all 46 files, at the version the
 build links, offline. Do not go to the network for `capacitor-swift-pm`: it ships binary
@@ -171,9 +177,19 @@ own work.
 - **Deep links must match the route guard's denylist.** A link into a protected route lands on
   the guard, not the screen; that is correct behaviour and the link needs a post-auth
   destination, not a new public path.
-- **You cannot build or submit from this container**, and you should not pretend otherwise.
-  Xcode and the Android SDK are not here. Config, source, scripts and documented steps are
-  legitimate deliverables; "verified on device" is not one you can claim.
+- **Check whether you can build rather than assuming you cannot.** In the Linux build container
+  Xcode and the Android SDK are absent and config, source, scripts and documented steps are the
+  legitimate deliverables. **A session on the owner's Mac is a different case and has happened**
+  (2026-09-08) — there, a simulator build and run are real deliverables. One command tells them
+  apart, and guessing has cost this repo a month of an inherited "needs a Mac" claim that was
+  wrong for a different reason:
+
+  ```bash
+  xcodebuild -version   # absent => container rules apply; present => you can build
+  ```
+
+  What neither case licenses is **"verified on device"**: a simulator is not a device, and no
+  container is either.
 
 ## Before you report done
 

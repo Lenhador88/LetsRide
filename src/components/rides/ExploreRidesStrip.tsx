@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ChevronRightIcon, LocationFilledIcon } from '@/components/icons/generated'
+import { exploreLabel } from '@/lib/location/explore-label'
 import type { NearLabel } from '@/lib/location/near-label'
 
 /**
@@ -33,7 +34,11 @@ import type { NearLabel } from '@/lib/location/near-label'
  *   anywhere else.
  * - **It carries no number**, where the filter's whole content was one. Product
  *   owner, 2026-08-27, giving the string directly: *"Explore public rides near
- *   Hoorn"*. A count here would also be the weaker claim — it is bounded by
+ *   Hoorn"*. **PD-427 dropped the word `public` from it** — the destination has
+ *   always titled itself `Explore rides`, and the two now read the same way —
+ *   but the part that quote settled, that this row names a place and not a
+ *   count, is untouched. A count here would also be the weaker claim — it is
+ *   bounded by
  *   `getExploreRides`'s page, so `Explore 30 rides` against a database of three
  *   hundred understates by an order of magnitude with no way for a rider to
  *   tell.
@@ -46,9 +51,9 @@ import type { NearLabel } from '@/lib/location/near-label'
  * The word is drawn only when there is a place to name AND at least one ride
  * behind this row is actually within `NEARBY_RADIUS_KM` of it. That pairing is
  * `ExploreClubsStrip`'s rule and it survives the loss of the number intact —
- * arguably it matters more without one, since `Explore public rides near Hoorn`
- * over a screen with nothing near Hoorn is a promise a rider cannot check until
- * they tap. `ExploreRidesList` draws its `Near <name>` section from the same
+ * arguably it matters more without one, since `Explore rides near Hoorn` over a
+ * screen with nothing near Hoorn is a promise a rider cannot check until they
+ * tap. `ExploreRidesList` draws its `Near <name>` section from the same
  * array under the same cache key, so the two agree by construction.
  *
  * No button, deliberately: the Navbar's sticky `Create ride` is already this
@@ -74,8 +79,7 @@ export function ExploreRidesStrip({
    */
   nearCount?: number
 }) {
-  const sayNear = !!near && nearCount !== undefined && nearCount > 0
-  const label = sayNear ? `Explore public rides near ${near!.name}` : 'Explore public rides'
+  const label = exploreLabel('rides', near, nearCount)
 
   return (
     // The padded wrapper is the component's own rather than the page's, kept

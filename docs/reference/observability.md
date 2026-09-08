@@ -337,7 +337,7 @@ reach it, and name the email route that does. `ENVIRONMENTS.md` §Owner setup 7d
 
 ## The dependencies
 
-**Three of the twelve are observability (PD-315, PD-353)**, and each is a doorway module in
+**Three of the thirteen are observability (PD-315, PD-353)**, and each is a doorway module in
 `src/lib/` that nothing else imports the package through — the same one-doorway shape as
 `lib/data/` and `lib/actions/`, enforced by a test in each case, because the privacy posture is a
 property of the doorway:

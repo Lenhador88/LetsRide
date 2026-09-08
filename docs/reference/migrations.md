@@ -4,7 +4,7 @@
 
 # Migrations — the recording artefacts, and what reads as drift
 
-`041`–`048` reached PROD on 2026-08-10 and that apply is finished — `docs/HANDOFF.md` §Migrations
+`041`–`048` reached PROD on 2026-08-10 and that apply is finished — `docs/reference/journal.md` §Migrations
 carries the parity claim beside the command that checks it. What is here is what a completed apply
 does *not* consume: the ordering chain, the rollback SQL, and the hand reconciliation for every
 recorded statement that disagrees with its file.
@@ -211,7 +211,7 @@ predict, so it is worth a line. None of it is drift.
   take `103` from the file rather than from DEV's ledger.
 
   **`049` needs no entry of its own beyond DEV's reduced form**, already noted in
-  `docs/HANDOFF.md` §Migrations: same reduction, same class, and its body was verified by the same
+  `docs/reference/journal.md` §Migrations: same reduction, same class, and its body was verified by the same
   digest.
 - **`047` and `048` match their files on NEITHER project, and both are comment edits rather than
   drift.** DEV ran each file verbatim and the recorded statement was byte-identical at apply time;
@@ -329,13 +329,194 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**`list_migrations` prints 115 rows on DEV and 107 on PROD against 112 files, measured
-2026-09-06. The DEV surplus is not a gap, and the PROD shortfall is the ordinary one.** `101`
-through `107` **promoted to PROD on 2026-09-06** between 08:26:24Z and 08:40:28Z, closing the gap
-this heading described for a week; `108` and `110` (PD-402) opened a new one the same day.
+**116 files. DEV is at `116` and PROD at `112` — measured 2026-09-08, after `116` applied.** `113`
+was applied to DEV migration-first, ahead of #428; the merge is what landed its file, so the
+row that read as file-less until then is an ordinary applied migration. DEV's row count reads
+**three** high — the three long-standing hand-applied rows — and **PROD's is exact**, which is the
+direction that matters: nothing is applied there without a file behind it. Neither is a gap.
 
-**What is open is the ordinary promotion gap: `108`–`112`, all five applied to DEV** — `108`–`110`
-from PD-402, `111` from PD-361, and `112` from PD-399/PD-408.
+**The open promotion gap is `113`, `114`, `115` and `116` — in that order, and `113`/`114` NOT
+collapsed.**
+`114` is the narrowing half and must not reach PROD until the same bundle is serving there — see its
+entry below before promoting either. **`115` carries no such gate against the other two**: it
+creates one object nothing existing calls, so it neither depends on `113`/`114` nor is depended on
+by them. It is migration-first on its own account, for the reason its entry gives.
+
+**`113_home_country` (PD-428), applied to DEV 2026-09-07T10:10:07Z as `20260907101007`.** Adds
+nullable `profiles.home_country` (ISO 3166-1 alpha-2), two VALIDATED CHECKs, three column grants
+and one coercion arm on `enforce_onboarding_completion`. **MIGRATION-FIRST**: the bundle that
+writes the column must not reach a database without it (`PGRST204`), and every edit strictly
+widens what is accepted, so it is a no-op against the bundle that was serving.
+
+**`114_a_completion_carries_a_country` (PD-428), applied to DEV 2026-09-07T21:58Z.** Its partner
+`113` was written first and left unwritten deliberately until the gate cleared; the gate cleared
+and it is now applied. It arms `complete_onboarding` to raise `check_violation` when the caller's
+stored `home_country` is NULL, and it changes nothing else — no table, no policy, no grant, and
+the signature stays `complete_onboarding(p_location text)`.
+
+**Gate, measured before applying**: Vercel `dpl_F1kKDd1xAun2qWZzGoLBAwZ8QrnL`, sha
+`c3df294fd46a0d1532bf615c9c20c0587c4c8fad` on `development`, `READY` at 21:17:09Z, `aliasError`
+null, aliased to `app-dev.letsride.social`; `origin/development` still at that sha when the
+migration applied. Applied before the bundle serves, the old bundle's `complete_onboarding(null)`
+is refused on every signup and every new rider is stuck in the wizard with no skip. **The same
+split is owed on the PROD promotion rather than collapsed**: promote `113`, deploy, confirm
+`READY` with `aliasError` null on `app.letsride.social`, then `114`. `108`/`109`'s shape.
+
+**`115_a_stranger_sees_the_ride` (PD-430), applied to DEV 2026-09-08T09:49:46Z as
+`20260908094946`.** Creates `public.ride_invite_link_public_preview(t text)` — six columns of one
+ride — revokes EXECUTE from `public` and `authenticated` and grants it to **`anon`**, which is the
+app's first and only anonymous grant and the named exception in `CLAUDE.md` decision #1. Additive
+in every statement: no table altered, no policy touched, no trigger hung. Rollback is one
+`drop function`. **The hand-exercise gate does not fire** — nothing existing calls the new object,
+so there is no shipped write path a trigger could take down.
+
+**MIGRATION-FIRST, and both sides were answered rather than assumed.** Applied ahead of the bundle,
+`anon` holds EXECUTE on a function nothing invokes and nothing observes it — safe. The bundle
+serving without it puts `PGRST202` on a stranger's first impression, which is the one thing the
+story exists to prevent — not safe. **The PROD promotion carries the same order**, and it needs no
+coordination with `113`/`114`.
+
+**Its recorded statement's md5 does NOT equal the file's, deliberately, and that is the norm this
+document already describes** (§What reads as drift). The file applied cleanly and matched at
+`93aa1f33a5a0709a61bc69aab336d641`; the build then measured that the `volatile`-forces-POST reason
+in its `comment on function` was false, corrected the file, and reissued the corrected
+`comment on function` against DEV so the **object** agrees. Compare the object: the deployed comment
+and the file's are byte-identical at md5 `273030a67e91eb8684363c1ff431a0af`, 4305 characters, and
+the function body md5 is `f11fc97b0b920af7cef924c4a6db272b`. **The promotion applies the corrected
+file, so PROD gets the right comment in one statement.**
+
+**Advisors: +1 WARN, in a class the project had never seen.**
+`anon_security_definer_function_executable` (lint `0028`, *Public Can Execute SECURITY DEFINER
+Function*), one finding, naming this function. It is **not** a 39th
+`authenticated_security_definer_function_executable` — that count is unchanged at 38, and INFO
+`rls_enabled_no_policy` is unchanged at 3. So the advisor set *can* see the app's only anonymous
+surface, which is what the change asked to find out. Gate triggers 22 → 22; the `service_role`
+census unchanged at 30 kept / 3 revoked; `anon` table grants and `anon` policies both still 0.
+
+**`116_a_thread_carries_its_newest_activity` (PD-439), applied to DEV 2026-09-08T12:53:06Z as
+`20260908125306`.** Adds
+`last_activity_at timestamptz not null default now()` to `club_threads` and `ride_threads`,
+backfills every row to `greatest(created_at, max(message.created_at))`, hangs an AFTER INSERT
+trigger on `club_messages` and `ride_thread_messages` stamping the parent with
+`greatest(last_activity_at, new.created_at)`, and adds the two
+`(parent_id, last_activity_at desc, id desc)` indexes both timelines now order and page on. The
+recorded statement's md5 EQUALS the file's — `2d9a9b4c037d954f5536417846a6c0a4` — so there is
+nothing to reconcile here.
+
+**The column is server-owned, and that is the security half rather than tidiness.** `authenticated`
+gets neither INSERT nor UPDATE on it, following `048`'s shape: a grantable `last_activity_at` is a
+"pin my own thread to the top of every timeline, for ever" primitive. **Both tables' INSERT lists
+are restated absolutely** rather than patched, so the file is self-contained.
+
+**Why the trigger function must be `security definer`, measured rather than assumed.** Both tables
+carry a table-level SELECT grant, a COLUMN-level INSERT grant, **no UPDATE grant and no UPDATE
+policy at all**. As invoker the stamp raises `42501` and takes the enclosing message INSERT down
+with it — every reply in the app, not a skipped bump. With a grant but no policy RLS would filter
+the UPDATE to zero rows *silently*, which is the worse of the two. Both functions live in
+`private`, so PostgREST does not publish them.
+
+**Advisors: zero delta, and that is the prediction the `private` schema buys.** 3 INFO
+`rls_enabled_no_policy`, 1 WARN `anon_security_definer_function_executable`, 38 WARN
+`authenticated_security_definer_function_executable`, 1 WARN `auth_leaked_password_protection` —
+identical before and after, and the 38 is the number that could have moved.
+
+**MIGRATION-FIRST.** The column is additive and the client READS it — both timelines order, bound
+and position on it — so a bundle serving ahead of the migration answers `42703` on every club and
+ride detail. Applied ahead of the bundle it is a column nothing reads. The PROD promotion carries
+the same order and needs no coordination with `113`/`114`.
+
+**A deleted message does not un-bump its thread**, decided rather than overlooked: recomputing on
+DELETE costs a scan per moderation action, and the activity did happen. **The announcement
+exclusion stays in the READ**, where PD-372 put it — the trigger stamps every thread uniformly, so
+an introduction's bumped column is simply never selected, and a trigger that special-cased
+`introduces_user_id` would put a presentation rule in the database and be wrong the day `097` NULLs
+the marker on a leave.
+
+**The guard is NOT beside the consent and username arms, and the plan that said it should be was
+wrong.** `openspec/…/require-a-home-country-at-onboarding/tasks.md` §5.3 justified that placement
+by claiming an already-onboarded rider is never refused, "because the guard reads the stored
+column, which they already have". Two measurements on DEV, in rolled-back transactions, killed it:
+
+- **`complete_onboarding` has no idempotency short-circuit.** `003` §6b makes completion one-way
+  with a `coalesce` inside the UPDATE, not an early return, so an already-stamped caller reaches
+  every arm. Proved by nulling a stamped rider's username as the owner and re-running the RPC as
+  them: `23514 onboarding cannot be completed before a username is set`.
+  `enforce_onboarding_completion` DOES return early on `old.onboarding_completed_at`; the two
+  functions carry the same invariants and not the same control flow, which is how the plan erred.
+- **Every rider onboarded before `113` holds a NULL country, permanently and by decision.** DEV:
+  25 profiles, 24 completed, 24 of those NULL. On PROD it is the whole completed population.
+
+So the arm is gated on `not v_was_complete` — the transition into completion, the predicate `058`
+already uses. Beside the other two it would have refused a re-run for exactly the population
+PD-428 promised never to re-prompt. Assertions `114.3` and `114.6` pin both halves; an ungated
+version was built and run, and it turns the suite red at `075`'s own re-run assertion (rider
+`…0012`, already stamped with no country) before it ever reaches `114.3`.
+
+**Object diff after applying**: `md5(prosrc)` `ca084566ec8e85adfab3f8859af42a34`, 12282 bytes —
+equal to the body extracted from the file, so the applied statement and the committed file define
+the same object. One candidate, `p_location text`, `prosecdef` true, `proconfig`
+`{search_path=""}`; `anon` and `public` hold no EXECUTE and `authenticated` does, unchanged
+(`create or replace` preserves the ACL, so `021`'s grant is asserted rather than re-issued).
+`enforce_onboarding_completion` still hashes to `283245b644a1ab4ebcd879a18a6998e7`, which is
+`113`'s value — **not** the `af228c43e105973fe46f02d7df8b8cd8` `113`'s own header quotes, that
+being the PRE-`113` body and the obvious wrong answer to copy forward.
+
+**Security advisors after `114`: 42, unchanged** — 38 `authenticated_security_definer_function_executable`
+WARNs (`complete_onboarding` was already one), 3 `rls_enabled_no_policy` INFO and
+`auth_leaked_password_protection`. The file creates no object that did not already exist.
+
+**Three things `113` measured that were previously stated wrong**, recorded here because two are
+about files older than it:
+
+- **`grant select, insert, update (home_country) on … to authenticated` is not the statement to
+  write.** The column list binds to the LAST privilege only, so that one-liner grants SELECT and
+  INSERT **table-wide** — handing back exactly what `025`, `030` and `096` revoked
+  (`terms_accepted_at`, `onboarding_completed_at`, `terms_version`, `analytics_opt_out_at`, all
+  reachable by `select=*`). Measured on DEV in a rolled-back transaction:
+  `has_table_privilege('authenticated','public.profiles','select')` reads **true** after the
+  one-liner and **false** after three separate statements. `113` issues three, and asserts both
+  table-wide reads.
+- **The "two error identities" rationale is aspirational, in `020` as well as here.** Membership
+  is a strict subset of shape, so no value passes one and fails the other, and Postgres reports
+  CHECKs in constraint-NAME order where `…_is_assigned` sorts first. Measured: `''`, `'nl'`,
+  `'NLD'`, `' NL '` and `'1'` are all reported by the membership constraint on `profiles`. Do not
+  "fix" it by renaming — that would make the shape check report for `ZZ`, which IS a valid shape.
+  The pair stays as defence in depth.
+- **`020`'s and `113`'s footer verification query for the code list is broken and returns NULL.**
+  It matches `\{(.*)\}` while `pg_get_constraintdef` renders `ARRAY['AD'::text, …]`, so it reads
+  as "no answer" rather than "wrong". The working form is `\[(.*)\]` → 249, pinned in the RLS
+  suite at `113.1a` for both constraints. `113` is applied, so its footer is not edited.
+
+**`113` describes a profile-editor country field that does not exist**, in exactly two places: the
+column comment (`:174`) and one paragraph inside `enforce_onboarding_completion` (`:347`–`:356`) —
+not the header, so a reader sent to the header finds nothing. PD-428 shipped the onboarding write
+only; `EditProfileForm` offers no country control, so *"the profile editor's field stays
+OPTIONAL"* is intent rather than fact. Left as written because `113` is applied and this repo does
+not edit an applied migration — but a column comment is the one doc no `CLAUDE.md` edit can reach,
+so it is recorded here. If the editor is built the claim becomes true; if it is decided against, a
+later migration owes a `comment on column`.
+
+**`108`–`112` promoted to PROD on 2026-09-07 with #431**, in the split the files asked for: `108`,
+`110`, `111` and `112` between 13:58:29Z and 14:00:14Z, **before** the promotion merge (14:05:57Z),
+and `109` — the destructive half, `retire_ride_chat` — at 14:07:52Z, **after** it. `list_migrations`
+is the source for those times.
+
+**The `READY` reading that gated `109`, recorded here because that is the whole point of the
+gate:** deployment `dpl_AK1A4JmFCWLorqreBh4BQRr83Rgd`, `githubCommitSha`
+`0dc0264bda3bab875250a5646446940849f72ee2` — the merge sha — `target: production`, `state: READY`
+at 14:06:49Z, `aliasError: null`, aliased to `app.letsride.social`. The deployment record is the
+gate `CLAUDE.md` §Supabase Rules defines, and it was confirmed by a real request rather than left
+at the record: `https://app.letsride.social/auth/login` answered **200** with the app's own HTML.
+**That request cannot be made with `curl` from a session container** — the agent proxy answers the
+CONNECT with `403` for both app hosts, so `curl` reports `000` and a session reading that as an
+outage is measuring the proxy. The Vercel MCP's `web_fetch_vercel_url` goes around it.
+
+**`108` was applied REDUCED and proved by object diff** (§Applying a large file — 77,731 bytes
+against 19,232 of executable statements), so its recorded text does not equal `md5sum` of the file
+on PROD either. Ten `md5` hashes compared against DEV, which already held all four: `pg_get_functiondef`
+over nine functions, the policies, columns, indexes, triggers, table grants, column grants,
+function ACLs, and both the function and table comment sets. **All ten identical.** `109`–`112`
+were applied reduced too and are covered by the same hashes.
 
 **`112_the_reaper_watches_every_child` (PD-399 + PD-408), applied to DEV 2026-09-06T15:5xZ.**
 Additive and **nothing to sequence against**: it touches no file under `src/`, adds no column,
@@ -691,7 +872,7 @@ and re-derive both rather than trusting the numbers in this heading — they hav
 before, in the direction of reading one row too few.
 
 ```bash
-ls supabase/migrations/*.sql | wc -l    # 112
+ls supabase/migrations/*.sql | wc -l    # 113
 ```
 
 *(The `docs:check` anchor for this count is the copy further down, in the promotion log's code
@@ -1372,7 +1553,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 112 — DEV at 112, PROD at 107 (108-112 await promotion)
+ls supabase/migrations/*.sql | wc -l     # 116 — DEV at 116, PROD at 112 (113, 114, 115, 116 await promotion; 113 then 114 in that order)
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```
@@ -1491,11 +1672,10 @@ projects, and it reads exactly like drift. Compare the OBJECT, never the recorde
 
 ## Security advisors
 
-**Security advisors: thirty-nine on BOTH projects since the 2026-09-06 promotion, and only one is
-outstanding on each.** The two-advisor difference that stood before it was `105`+`106` awaiting
-promotion — `106` adds none of its own, being a drop and a create of the same `security definer`
-name — which is the ordinary shape of a gap: a one- or two-advisor difference between the projects
-is almost always a pending promotion, never a finding on its own. Re-derive
+**Security advisors: forty-three on DEV and forty-two on PROD since `115` applied on 2026-09-08, and
+only one is outstanding on each.** The difference is `115`'s pending promotion, in the new
+`anon_security_definer_function_executable` row below. A one- or two-advisor difference between the projects is the ordinary
+shape of a pending promotion, never a finding on its own. Re-derive
 rather than trust the number — `get_advisors(security)`, or, without the payload,
 
 ```sql
@@ -1509,9 +1689,11 @@ cannot tell a session whether a new WARN is expected:
 
 | Count | Advisor | Why it is there |
 |---|---|---|
-| 36 on DEV, 34 on PROD | `authenticated_security_definer_function_executable` (WARN) | Every `security definer` RPC in `public` — the onboarding accessors (`021`), the recovery-grant pair (`026`), the moderation and club-management RPCs, the push-device pair (`078`), the ride and club invite RPCs (`083`, `085`, `091`), `introduce_to_club` (`097`), and the two moderation-reversal accessors (`105`, DEV only until it promotes; `106` REPLACES one of them and is net zero here, because the drop and the create cancel). Every one is `security definer` **by design**, and each is narrow on purpose: takes a row id and never a rider id, writes or answers exactly one row for its caller, and has ONE raise site so it cannot be used as an oracle. **This advisor fires once per such function, so a migration adding two adds two**, and a migration whose functions live in `private` adds none, because PostgREST does not publish `private`. Count them off `get_advisors` rather than off this cell |
-| 2 | `rls_enabled_no_policy` on `password_reset_grants` and `push_devices` (INFO) | Correct by design: `026` and `078` revoke everything on their table from the client roles, so a policy would be the thing that granted reach |
+| 38 on both | `authenticated_security_definer_function_executable` (WARN) | Every `security definer` RPC in `public` — the onboarding accessors (`021`), the recovery-grant pair (`026`), the moderation and club-management RPCs, the push-device pair (`078`), the ride and club invite RPCs (`083`, `085`, `091`), `introduce_to_club` (`097`), the moderation-reversal accessors (`105`/`106`) and `108`'s two ride-thread RPCs. Every one is `security definer` **by design**, and each is narrow on purpose: takes a row id and never a rider id, writes or answers exactly one row for its caller, and has ONE raise site so it cannot be used as an oracle. **This advisor fires once per such function, so a migration adding two adds two**, and a migration whose functions live in `private` adds none, because PostgREST does not publish `private`. Count them off `get_advisors` rather than off this cell |
+| 3 | `rls_enabled_no_policy` on `password_reset_grants`, `push_devices` and `club_removals` (INFO) | Correct by design: `026`, `078` and `111` revoke everything on their table from the client roles, so a policy would be the thing that granted reach. **`club_removals` and `password_reset_grants` still hold Supabase's default `service_role` grant, and should not** — PD-413; `docs/reference/schema.md` §`service_role` grants has the reasoning |
+| **1 on DEV, 0 on PROD** | `anon_security_definer_function_executable` (lint `0028`, WARN) | **A class this project had never seen before `115`**, and its arrival is a finding in itself: it means the advisor set *can* see the app's only anonymous surface, which the change wrote down as a fact to read rather than predict. It names `public.ride_invite_link_public_preview(t text)` and nothing else, and it is `CLAUDE.md` decision #1's one named exception. **It is NOT a 39th of the row above** — that count did not move — so a session reading only the total would mis-attribute it. Zero on PROD until `115` promotes; a **second** finding in this class is a new decision and not this one extended |
 | 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
 
 An unexpected advisor is one **not** in that table. A one-advisor difference between the projects
 is almost always a pending promotion.
+

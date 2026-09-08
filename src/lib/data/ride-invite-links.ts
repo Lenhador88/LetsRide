@@ -2,7 +2,7 @@ import { resolveSupabase } from '@/lib/supabase/resolve'
 import { resolveAvatarUrls } from '@/lib/data/media'
 import { unwrapCount, unwrapList } from '@/lib/data/unwrap'
 import { rideIdSchema, rideInviteTokenSchema } from '@/lib/validation/rides'
-import type { RideInviteLink, RideInviteLinkPreview } from '@/types'
+import type { RideInviteLink, RideInviteLinkPreview, RideInviteLinkPublicPreview } from '@/types'
 
 /**
  * The reads behind ride invite links — `091`, PD-330.
@@ -178,4 +178,95 @@ export async function getRideInviteLinkPreview(
 
   await resolveAvatarUrls([preview.organizer], supabase)
   return preview
+}
+
+/**
+ * The six columns `public.ride_invite_link_public_preview` answers with —
+ * `115`, PD-430. Named here for the same reason `PreviewRow` is: this is the
+ * only place the app knows the RPC's column names, and a column renamed in a
+ * migration is a change to this type and the mapping below it alone.
+ */
+type PublicPreviewRow = {
+  ride_id: string
+  title: string
+  departure_at: string
+  timezone: string | null
+  meeting_point: string
+  organizer_username: string | null
+}
+
+/**
+ * What one token previews with **no session at all** —
+ * `public.ride_invite_link_public_preview(t)` (`115`, PD-430), the app's one
+ * anonymous read.
+ *
+ * ## It does not read the caller, because there is no caller
+ *
+ * **This function SHALL NOT call `supabase.auth.getUser()`, ever.** That is
+ * the entire point of the anonymous exception: a stranger who has never heard
+ * of Let's Ride, tapping a link in their crew's group chat, before any account
+ * exists for them at all. `getRideInviteLinkPreview` above reads the caller
+ * because its RPC is granted to `authenticated` and gates on `auth.uid()`;
+ * `ride_invite_link_public_preview` is granted to `anon` alone and has no
+ * `auth.uid()` to read — passing one in would be pretending a session exists
+ * where the whole design is that it does not.
+ *
+ * ## No second read, unlike its authenticated sibling above
+ *
+ * `getRideInviteLinkPreview` follows its RPC with an `is_crew` probe (the
+ * caller's own `ride_members` row) and an avatar-signing pass. Neither has
+ * anything to attach to here: there is no caller for `is_crew` to be about,
+ * and `anon` holds no reach into `storage.objects` for `resolveAvatarUrls` to
+ * sign a path against. Adding either back is not a smaller version of this
+ * function — it is a second RPC's worth of surface with no grant behind it.
+ *
+ * ## What this does NOT return, and why forwarding it would be the bug
+ *
+ * The next reader's instinct will be to forward `crew_count` and
+ * `organizer_avatar_path`, because `public.ride_invite_link_preview` returns
+ * both to any holder of the SAME token once they sign in. They are left out on
+ * purpose and the omission is the whole safety argument (`115`'s `comment on
+ * function`, `proposal.md` §The safety argument): `RideInviteLinkPublicPreview`
+ * is a **strict subset** of `RideInviteLinkPreview`'s eight columns, which is
+ * what keeps an anonymous caller learning strictly less than the same person
+ * learns by finishing onboarding and calling the function above with the
+ * identical token. A column added to `PublicPreviewRow` that is not already in
+ * `PreviewRow` is a new decision, not an extension of this one — see `115`'s
+ * migration file for the six-column signature this must never exceed.
+ *
+ * ## `null` is decided, exactly as it is above
+ *
+ * The RPC returns **zero rows** for every dead state — expired, revoked, the
+ * ride deleted, the ride departed, malformed, or a token that never
+ * existed — and raises for none of them, so `null` here means exactly one
+ * thing: *this link is no longer valid*, with no second failure shape to
+ * invent. A read that genuinely fails still throws, through `unwrapList` —
+ * a dropped connection is a different screen with a retry on it, not a dead
+ * link.
+ */
+export async function getRideInviteLinkPublicPreview(
+  token: string
+): Promise<RideInviteLinkPublicPreview | null> {
+  // Same reasoning as `getRideInviteLinkPreview`: a malformed token can only
+  // ever come back as zero rows, so refusing it here saves a round trip on a
+  // string that cannot match a 32-hex column.
+  if (!rideInviteTokenSchema.safeParse(token).success) return null
+
+  const supabase = await resolveSupabase()
+  const rows = unwrapList(
+    await supabase.rpc('ride_invite_link_public_preview', { t: token }),
+    'that invite link'
+  ) as unknown as PublicPreviewRow[]
+
+  const row = rows[0]
+  if (!row) return null
+
+  return {
+    ride_id: row.ride_id,
+    title: row.title,
+    departure_at: row.departure_at,
+    timezone: row.timezone,
+    meeting_point: row.meeting_point,
+    organizer_username: row.organizer_username,
+  }
 }

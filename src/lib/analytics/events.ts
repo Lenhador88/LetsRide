@@ -64,11 +64,24 @@ export type AnalyticsEvent =
   | {
       name: 'onboarding_step'
       properties: {
-        /** The wizard as it stands after PD-286 dropped the location step. */
-        step: 'terms' | 'username'
+        /**
+         * The wizard as it stands: `075`/PD-286 dropped the location step and
+         * PD-428 added the home-country one, which is now the terminal step —
+         * so `country`, not `username`, is where `status: 'completed'` means
+         * onboarding actually finished.
+         */
+        step: 'terms' | 'username' | 'country'
         status: 'submitted' | 'rejected' | 'completed'
-        /** Only on `rejected`, and only ever one of these — never the value. */
-        reason?: 'taken' | 'invalid' | 'failed'
+        /**
+         * Only on `rejected`, and only ever one of these — never the value.
+         * `incomplete` is the country step being refused by
+         * `complete_onboarding`'s own guards (consent, username or — since
+         * `114` — a stored country missing),
+         * which is distinct from `invalid` — a code the CHECK constraints
+         * refused — because they turn a rider away for different reasons and
+         * the funnel question is *which*.
+         */
+        reason?: 'taken' | 'invalid' | 'failed' | 'incomplete'
       }
     }
 
