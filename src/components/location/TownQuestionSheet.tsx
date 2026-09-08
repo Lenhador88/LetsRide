@@ -77,11 +77,21 @@ export function TownQuestionSheet({
   onSaved,
 }: {
   open: boolean
-  onClose: () => void
+  /**
+   * Closed without a stored town.
+   *
+   * **`saveFailed` is what separates walking away from trying and failing —
+   * PD-447.** The Explore row treats an ordinary close as a dismissal and goes
+   * quiet for a month; a rider whose save failed because they were offline
+   * answered the question and was refused, so silencing them would punish the
+   * network. A caller with no ladder to move ignores the argument, which is why
+   * a plain `() => void` handler still satisfies this type.
+   */
+  onClose: (info: { saveFailed: boolean }) => void
   /** Fired once the town is stored. Separate from `onClose` so a caller can
-   *  tell *the rider answered* from *the rider walked away* — the automatic
-   *  ask spends itself on either, but only one of them should close a
-   *  `blocked` sheet behind it. */
+   *  tell *the rider answered* from *the rider walked away* — only one of them
+   *  should close a `blocked` sheet behind it, and only one of them is a
+   *  dismissal. */
   onSaved: () => void
 }) {
   const [place, setPlace] = useState<PlaceValue | null>(null)
@@ -106,15 +116,23 @@ export function TownQuestionSheet({
     })
   }
 
-  // **`label` below is matched by `scripts/walk.mjs`'s `LOCATION_SHEETS` —
-  // change the two together, or the walk goes red on a screen that works.**
-  // That helper dismisses this sheet so the next click on Explore is
-  // actionable; it asserts nothing, so a stale selector fails silently there
-  // and surfaces as a red JOIN phase pointing at the wrong thing (PD-410's
-  // shape). It deliberately does NOT track the visible heading, which is
-  // measured from `2074:5185` and says something different.
+  // **`label` below is no longer paired with anything in `scripts/walk.mjs` —
+  // PD-447.** It used to be: `LOCATION_SHEETS` matched this string so
+  // `dismissLocationSheet()` could clear a sheet that had opened by itself, and
+  // a stale selector there failed silently and surfaced as a red JOIN phase on
+  // a screen that worked. No sheet opens by itself now, so the helper and the
+  // constant are gone and this string is free to change with its component. It
+  // still deliberately differs from the visible heading, which is measured from
+  // `2074:5185` and says something else.
   return (
-    <ContextMenu open={open} onClose={pending ? () => {} : onClose} label="Where you ride from">
+    <ContextMenu
+      open={open}
+      // `error` is set only by a save that came back refused, and cleared at the
+      // start of the next attempt — so it is exactly "the rider tried and it did
+      // not land" at the moment they close.
+      onClose={pending ? () => {} : () => onClose({ saveFailed: error !== null })}
+      label="Where you ride from"
+    >
       <div className="flex flex-col gap-4 pb-2">
         <span className="flex h-12 w-12 items-center justify-center rounded-full bg-background">
           <LocationFilledIcon className="h-6 w-6 text-accent" aria-hidden="true" />
@@ -166,7 +184,12 @@ export function TownQuestionSheet({
               `onSaved`. The `onClose` passed above is neutered for the same
               window rather than only this button, because the button is the one
               path of three. */}
-          <Button variant="ghost" size="lg" onClick={onClose} disabled={pending}>
+          <Button
+            variant="ghost"
+            size="lg"
+            onClick={() => onClose({ saveFailed: error !== null })}
+            disabled={pending}
+          >
             Not now
           </Button>
         </div>

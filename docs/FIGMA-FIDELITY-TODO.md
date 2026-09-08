@@ -1904,7 +1904,7 @@ item.
       the copy and the vertical rhythm are **written, not measured**. Everything they are built
       *from* is measured: `ContextMenu` is `v2 / Component / Context Menu` (390 wide, flush to
       the bottom edge, 16px radius on the top corners, padding 16/24/32/24), the buttons are
-      `Button / Regular / *` at `lg`, and `UseMyLocationRow` is `ExploreClubsStrip`'s row
+      `Button / Regular / *` at `lg`, and `LocationQuestionRow` is `ExploreClubsStrip`'s row
       verbatim — 56px on `White/100` at radius 8, 16px padding, 12px gap, a 24px `Location
       Filled` in `Accent Brand/100`, label at Poppins/14/Semibold, chevron trailing.
 - [ ] **Two claims in that copy are a store-review surface, not decoration.** Apple reads the
@@ -1932,9 +1932,13 @@ item.
         instead of linking to `/profile`. **It carries a THIRD store-review claim** beside the
         two above — *"Tell us the town you ride from and we will measure from there instead"* is
         a promise about what the app does with a refusal.
-      - **`UseMyLocationRow`'s two new labels** — `Set where you ride from`, and
-        `Near {town} · Use my location`, the only line in the app that says where a distance was
-        measured from.
+      - **`LocationQuestionRow`'s two labels** — `Still in {town}?` and `Where do you ride
+        from?` (PD-447, replacing `Set where you ride from` and `Near {town} · Use my
+        location`). Written, not measured: `npm run figma -- ls` has no priming, permission or
+        explainer frame of any kind, so there is nothing to be unfaithful to. The first is the
+        only line in the app that says where a distance was measured from, and it is now a
+        question rather than an offer — the row was two near-identical 56px rows with the Explore
+        strip when it read as one.
       - **`LocationSetting` on `/profile`**, which the design has no equivalent of at all.
 
 ### Private clubs in Explore, and the ride marker on a stamp — built 2026-08-28 (PD-325, PD-328)

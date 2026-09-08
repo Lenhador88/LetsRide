@@ -81,9 +81,10 @@ lives in Linear); §7 names what it owes.
 - [ ] 3.2 It keeps `clearRiderLocation()`, `invalidate(queryKeys.profile.all())` and
       `invalidate(queryKeys.riderLocation())`, and **does not gain `invalidateOnboardingState()`**.
       The spec has the argument; put a one-line WHY in the code, not the argument.
-- [ ] 3.3 `TownQuestionSheet` — pass `place.countryCode` to `setRiderTown`. One line. **Do not touch
-      `ContextMenu label="Where you ride from"`**: `scripts/walk.mjs`'s `LOCATION_SHEETS` matches it
-      and a change there fails silently, surfacing as a red phase pointing at the wrong thing.
+- [ ] 3.3 `TownQuestionSheet` — pass `place.countryCode` to `setRiderTown`. One line. **The
+      `ContextMenu label="Where you ride from"` is no longer pinned by anything** — PD-447 deleted
+      `scripts/walk.mjs`'s `LOCATION_SHEETS` and `dismissLocationSheet()` along with the automatic
+      ask they existed to clear, so the silent-failure hazard this task warned about is gone.
 - [ ] 3.4 `LocationSetting`'s `Remove` still calls `setRiderTown(null)` and still works. PD-419's
       decision obliges it; verify by hand as well as in the unit test.
 

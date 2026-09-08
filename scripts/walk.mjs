@@ -3465,38 +3465,6 @@ async function checkCommentOnPostcard() {
  * screens reachable, the same way it already dismisses a member-mode
  * introduction sheet it did not ask for.
  */
-// **These are `ContextMenu` `label` props, not visible headings, and the two
-// deliberately differ on the town sheet** — its `aria-label` is `Where you ride
-// from` while its `<h2>` reads `Where are you located?` (measured from
-// `2074:5185`). Match the labels. Changing one of these strings without changing
-// its component leaves this helper silently returning false — it asserts
-// nothing — and the failure surfaces as a red JOIN phase on a screen that works.
-const LOCATION_SHEETS = ['Find rides near you', 'Location is switched off', 'Where you ride from']
-
-async function dismissLocationSheet() {
-  const closed = await page
-    .$$eval(
-      LOCATION_SHEETS.map((label) => `[role="dialog"][aria-label="${label}"] button`).join(','),
-      (buttons) => {
-        const target = buttons.find((b) => ['Not now', 'Close'].includes(b.textContent?.trim()))
-        if (!target) return false
-        target.click()
-        return true
-      }
-    )
-    .catch(() => false)
-
-  // Wait for it to actually detach before returning. Returning on the click
-  // alone would hand the caller a screen whose scrim is still in the tree for a
-  // frame, which is the same failed-actionability click one line later.
-  if (closed) {
-    await page
-      .waitForSelector('[role="dialog"]', { state: 'detached', timeout: 5_000 })
-      .catch(() => {})
-  }
-  return closed
-}
-
 /**
  * A ride this rider neither organizes nor has already answered —
  * `/rides/explore` excludes both by construction (`getExploreRides` filters
@@ -3510,7 +3478,6 @@ async function dismissLocationSheet() {
 async function discoverRsvpCandidate() {
   await page.goto(`${BASE}/rides/explore`, { waitUntil: 'networkidle' }).catch(() => {})
   await page.waitForTimeout(800)
-  await dismissLocationSheet()
   return page.evaluate(() =>
     [...document.querySelectorAll('a[href]')]
       .map((a) => new URL(a.href, location.origin))
@@ -3734,7 +3701,6 @@ const WALK_INTRODUCTION =
 async function discoverJoinableClub() {
   await page.goto(`${BASE}/clubs/explore`, { waitUntil: 'networkidle' }).catch(() => {})
   await page.waitForTimeout(800)
-  await dismissLocationSheet()
   return page.evaluate(() => {
     const button = document.querySelector('button[aria-label^="Join "]')
     if (!button) return null
@@ -4150,12 +4116,6 @@ async function checkJoinClub() {
     }
 
     await page.goto(`${BASE}/clubs/explore`, { waitUntil: 'networkidle' })
-    // The ask is once per device, so it will not normally reappear here — but
-    // `hasJoinButton` reads the DOM rather than clicking, and a stray scrim
-    // would not affect it either way. Called for the same reason the other two
-    // sites do: an Explore navigation is where this sheet can appear, and a
-    // phase that skips it is one localStorage clear away from being flaky.
-    await dismissLocationSheet()
     const backOnExplore = await hasJoinButton()
     report(backOnExplore, 'leaving it again survives a reload (back on Explore)', 'the club did not reappear on Explore')
   } catch (e) {

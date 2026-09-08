@@ -123,8 +123,8 @@ half. `null` still clears the town, and a clear writes **no** country key at all
 ### 5. `TownQuestionSheet` stops discarding the country
 
 One line: it passes `place.countryCode` to `setRiderTown` instead of dropping it. Its
-`ContextMenu label="Where you ride from"` is matched by `scripts/walk.mjs`'s `LOCATION_SHEETS` and
-**does not change**.
+`ContextMenu label="Where you ride from"` **does not change** — and since PD-447 nothing in
+`scripts/walk.mjs` matches it either, so a change there would no longer fail silently.
 
 ### 6. The primitive
 
@@ -253,4 +253,5 @@ Eleven. The full scenarios are in `specs/`; this is the index.
   `my_onboarding_state()`'s return shape; the guard cache's generation counter; the four
   `invalidateOnboardingState()` call sites (a rename is not a fifth writer); `CountrySelect` itself;
   `COUNTRY_CODES`; `LOCATION_MAX_LENGTH` and `018`'s CHECK; `PlaceSearchField`'s props and
-  behaviour; `LOCATION_SHEETS` in `scripts/walk.mjs`; and PD-419's device-position chain.
+  behaviour; and PD-419's device-position chain. (`LOCATION_SHEETS` was on this list until
+  PD-447 deleted it.)

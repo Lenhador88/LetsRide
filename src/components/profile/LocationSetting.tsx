@@ -49,7 +49,7 @@ import { queryKeys } from '@/lib/query/keys'
  * `resolveRiderLocation()` is the silent resolver: its device source answers
  * only where permission is ALREADY granted. Opening the settings screen must
  * not raise an OS dialog, so nothing here calls `requestDeviceLocation` — the
- * one control that may prompt stays `UseMyLocationRow`'s, which is reached from
+ * one control that may prompt stays `LocationQuestionRow`'s, which is reached from
  * a screen that explains why.
  */
 export function LocationSetting() {
@@ -61,7 +61,7 @@ export function LocationSetting() {
   const [error, setError] = useState<string | null>(null)
 
   // In an effect, never during render — `navigator` does not exist in the
-  // prerender pass. Same guard as `UseMyLocationRow`'s.
+  // prerender pass. Same guard as `LocationQuestionRow`'s.
   useEffect(() => {
     let cancelled = false
     void deviceLocationPermission().then((state) => {

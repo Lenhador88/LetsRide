@@ -20,15 +20,16 @@ import { cn } from '@/lib/utils'
  *
  * ## It draws on `/notifications` and nowhere else
  *
- * That is task 2.9's decision and it is narrower than the location row's, which
- * draws on three screens. The reason is the one-shot dialog: the more places an
- * ask appears, the more likely a rider dismisses it reflexively, and iOS gives
- * no second chance. `/notifications` is the one screen where a rider is already
- * thinking about being told things, so the offer is in context rather than
- * interruptive.
+ * That is task 2.9's decision. The reason is the one-shot dialog: the more
+ * places an ask appears, the more likely a rider dismisses it reflexively, and
+ * iOS gives no second chance. `/notifications` is the one screen where a rider
+ * is already thinking about being told things, so the offer is in context
+ * rather than interruptive.
  *
- * **There is deliberately no automatic ask.** `UseMyLocationRow` has one, on a
- * timer, for the Explore screens; this row has none and must not grow one. A
+ * **There is deliberately no automatic ask, and since PD-447 that is the app's
+ * posture rather than this row's alone.** `LocationQuestionRow` had one, on a
+ * timer, for the Explore screens; it was removed, so no sheet in this app opens
+ * without a rider gesture. This row never had one and must not grow one — a
  * sheet that opens itself is how the one dialog gets spent by a rider who was
  * scrolling.
  *
