@@ -440,7 +440,8 @@ rather than through a single label on the whole section.
 | Automatic signing provisions a simulator build | no profile, no device registration |
 | The app launches and the webview loads the export | postcard deck rendered from `App/App/public` |
 | `RouteGuard` resolves inside a webview | reached `/postcards`, then `/profile`, no splash lock |
-| The keychain **read** returns a real session | written by the Aug 25 install; the write and clear paths are still unexercised |
+| The keychain **read** returns a real session | written by the Aug 25 install; the **write** path is still unexercised |
+| The keychain **clear** actually clears | sign out, force-quit, cold launch → Login. Run twice, the second time uninterrupted |
 | The app icon renders, correctly masked | white motorcycle on `#3D996B` — generated headlessly in August and never once looked at until now |
 | `LSApplicationCategoryType` reaches the bundle | only after this change: the `INFOPLIST_KEY_*` form was inert |
 | Supabase reads work from the bundle | DEV data, avatars and covers from Storage |
@@ -452,8 +453,52 @@ rather than through a single label on the whole section.
 | Push registration | needs a signed device — a simulator gets no APNs token |
 | Universal links | no Associated Domains entitlement exists yet (PD-205) |
 | The location prompt | not exercised; the string is verified in the bundle, the dialog is not |
-| Sign-out clearing the keychain | not run — it would have destroyed the owner's live session |
+| ~~Sign-out clearing the keychain~~ | **settled 2026-09-08** — see below |
 | A device build, the archive, TestFlight | none attempted |
+
+### `clearSessionStore` really clears a platform keychain — 2026-09-08
+
+**The invariant this settles is the one `native-shell`'s own §The shell says has been broken once
+already**: `clearSessionStore` sweeps any store that can enumerate itself, rather than only
+`kind === 'local'`. The narrower version leaves yesterday's keychain entry behind on sign-out, in
+the store where a leftover credential matters most. Until now that was asserted against a **mocked**
+plugin.
+
+**The cold relaunch is the whole test, and sign-out landing on Login is not.** An app that merely
+forgot the session in memory also draws Login — and this same simulator had already proved a
+keychain entry survives a full app *reinstall*, which is how the very first launch of the day came
+up signed in from an August build. So the question is only ever answered after the process dies:
+
+```
+sign out  →  xcrun simctl terminate <udid> social.letsride.app  →  xcrun simctl launch …
+```
+
+Login, both times it was run — the second in one uninterrupted pass, because the first cycle was
+followed minutes later by a signed-in screen and the honest reading of that was *someone signed
+back in*, not *the sweep failed*. **Re-run it rather than reasoning about it**: an interrupted
+observation of a shared simulator is not evidence.
+
+**The write path is still unexercised.** What has been proven is read and clear; the token this
+build read was written by a different binary.
+
+### The bundle is iPhone-only and portrait-only — decided 2026-09-08
+
+Product owner's call, in response to it finally being *observed* in a shipped bundle rather than
+inferred from the Capacitor template: **pause iPad.** `TARGETED_DEVICE_FAMILY` is `1`, and
+`UISupportedInterfaceOrientations` is portrait alone, with the `~ipad` key deleted.
+
+Both were stock defaults nobody had chosen — iPhone **and** iPad, three orientations — against a
+`design/` that is phone-portrait throughout, on a binary App Review runs on an iPad. Read the
+built bundle rather than the project file, because the previous commit shipped a category setting
+that was inert exactly because the project file said otherwise:
+
+```bash
+python3 -c "import plistlib;p=plistlib.load(open('<built>/App.app/Info.plist','rb'));\
+print(p['UIDeviceFamily'], p['UISupportedInterfaceOrientations'])"   # [1] ['UIInterfaceOrientationPortrait']
+```
+
+**Reversing it is one build setting and one plist array**, so this is a pause rather than a
+door closing. What it costs today is nothing: no iPad layout exists to lose.
 
 ### Store readiness — assessed 2026-08-06
 
