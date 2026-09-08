@@ -56,7 +56,7 @@ history.
   group into slot-1 and released on the merge.
 - **`Development (AI)`:** PD-421 only (the log digest's HTTP call has never succeeded), carrying
   no slot label — so it occupies no slot, which is deliberate rather than a gap.
-- **`Queued (AI)`:** empty. PD-431 was taken 2026-09-07 and its **registration half is built** —
+- **`Queued (AI)`:** PD-430. PD-431 was taken 2026-09-07 and its **registration half is built** —
   child B of `openspec/changes/deliver-push-notifications`, every non-`[device]` box ticked. It
   stays open: what its title names is a rider getting a reminder, and the sender is child C,
   blocked on the APNs `.p8` and the FCM service account (task 0.4, owner-only).
@@ -64,13 +64,11 @@ history.
   epic that already owns the written proposal. Which row should carry the remaining work is a
   three-option table on PD-431 and is the owner's call — until it is made, a firing reading
   `Queued (AI)` cannot tell which row it would be building.
-- **Three stories are open on purpose, and one of them is the next decision.** **PD-430** is
-  parked in `Needs help`: its proposal is merged and validates clean, and it stops on one question
-  — the owner's five fields include *the town*, and **no ride carries one**. `rides` has no
-  locality column, `meeting_point` is the place name or free text, and the geocoder stores neither.
-  The comparison table is on the issue; the recommendation is to ship the other four fields now.
-  **PD-385**: 9 DEV rides carry a coordinate and no tile, repairable only by each ride's own
-  organizer. **PD-428**: `114` is written and applied to DEV, so
+- **PD-430 is decided: the preview shows the ride's real `meeting_point`, not a town.** `091`
+  already returns it to any token holder before they claim — gated on the participation stamps,
+  not ride membership — so the anonymous projection is a strict subset of one that ships.
+- **Two stories are open on purpose.** **PD-385**: 9 DEV rides carry a coordinate and no tile,
+  repairable only by each ride's own organizer. **PD-428**: `114` is written and applied to DEV, so
   what it still owes is a way to change the country after onboarding — a decision rather than a
   branch.
 

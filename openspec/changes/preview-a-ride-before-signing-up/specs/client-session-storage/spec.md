@@ -15,24 +15,40 @@ the shell itself is public even though almost nothing in it is.
 
 **The exception is `public.ride_invite_link_public_preview(t)`** (`115`, PD-430): EXECUTE on one
 `security definer` function, reachable only by a 128-bit bearer token, returning the title, start
-time, zone and organiser username of exactly one ride. It exists because a stranger tapping a shared
-invite link was being asked to create an account to find out what they were invited to.
+time, zone, meeting point and organiser username of exactly one ride. It exists because a stranger
+tapping a shared invite link was being asked to create an account to find out what they were
+invited to.
 
 **Three properties bound it, and all three SHALL hold:**
 
 1. **A credential, not a visibility class.** The function reads no `is_public` and lists nothing.
-   Without a token there is no call to make and no ride to name.
-2. **Strictly less than the token already buys.** The same token already permits
-   `public.claim_ride_invite_link`, which makes the holder a member of the ride and gives them the
-   crew, the thread and the exact meeting point. The preview discloses a subset of what the holder
-   could obtain by signing up.
+   Without a token there is no call to make and no ride to name — **a ride with `is_public = true`
+   and no live link SHALL show a signed-out visitor nothing**, exactly as before this change, so
+   `is_public` keeps meaning "visible to any signed-in rider".
+2. **Strictly less than the token already buys, and checkable in one comparison.** Every column the
+   anonymous function returns SHALL also be returned by `public.ride_invite_link_preview`, which
+   `091` already grants to any holder of the same token *before* they claim anything — its gate is
+   the participation stamps, not ride membership. The anonymous projection is a strict subset of a
+   projection that already ships, so the exception discloses no fact to a stranger that the token
+   did not already disclose to its holder. Claiming buys strictly more again: the crew, the thread
+   and every message.
 3. **No table, no policy, no write.** `has_table_privilege('anon', …, 'SELECT')` stays `false` for
    every table; no policy is added or widened; the function writes nothing, so an anonymous caller
-   leaves no row anywhere and there is no personal data about them to retain.
+   leaves no row anywhere and there is no personal data about them to retain. **The other side of
+   that is an accepted cost, recorded rather than left to be found**: an anonymous read is
+   attributable to nobody, where every authenticated use of a link writes a `ride_invites` row
+   carrying its `link_id`. It is bounded by the link's expiry, the organiser's revoke and the
+   token's entropy, and **no ledger SHALL be built to close it** — the only keys available are an IP
+   address or a device fingerprint, each of which is personal data with its own retention window.
+
+**The route that renders this exception SHALL declare `noindex, nofollow`.** Until now the
+authenticated wall kept crawlers away from every route as a side effect; this change removes the
+wall from one screen, so the property SHALL be restated as a requirement rather than inherited.
 
 **Anything beyond those three is a new decision.** A second `anon`-executable function, a column
-added to this one, a listing or search reachable without a token, or any grant to `anon` on a table
-SHALL be proposed on its own terms and SHALL NOT be justified by citing this exception.
+added to this one **that is not already in `public.ride_invite_link_preview`'s projection**, a
+listing or search reachable without a token, or any grant to `anon` on a table SHALL be proposed on
+its own terms and SHALL NOT be justified by citing this exception.
 
 #### Scenario: The shell renders, the data does not
 - **WHEN** a signed-out visitor loads any authenticated route
