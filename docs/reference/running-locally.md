@@ -491,9 +491,8 @@ because each of the eleven below is there for a different one. Count them with
   every claim about what a failed rail *opens* would pass against one that opens nothing. It also
   needs a **second** click for the retry, because `refetch()` clears the error before its own
   request resolves and the rail passes through a state that is neither loaded nor failed.
-- `RideCrewRail.dom.test.tsx` (PD-382) — the same two reasons on the ride rail. Its own pair are
-  the entry above's mirror: the fold-in first shipped with static coverage only, which a review
-  found could not see either the panel or the retry.
+- `RideCrewRail.dom.test.tsx` (PD-382) — the same two reasons on the ride rail, whose failed state
+  is the entry above's twin.
 - `CountrySelect.test.tsx` (PD-428) — a real click and keyboard traversal through a mounted
   listbox: arrow keys, Enter, Escape and a blur-revert, none of which a static render can
   dispatch. It gates a required onboarding step, so a rider who cannot reach it by keyboard

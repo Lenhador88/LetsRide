@@ -27,16 +27,27 @@ export const SIGNED_URL_TTL_SECONDS = 60 * 60
  * and lands as null. Never treat "got a URL" as "the viewer is allowed" — the
  * postcards SELECT policy already decided that upstream by returning the row.
  *
- * **It never throws, and the `try` is the whole point rather than defensive
- * padding.** The returned `error` covers a Storage answer; it does not cover
- * the request failing to get one — a rejection from `fetch` on a flaky
- * connection propagates out of `createSignedUrls`. Every caller awaits this
- * AFTER unwrapping its rows, so a throw here discards a roster, a feed or a
- * crew that the database already returned, over a photo. `getClubMembers` is
- * the measured instance: an avatar the browser could not sign took the whole
- * member list down, which is the failure PD-382's rail then disguised as a
- * link. One unsigned image costs that image and nothing else — the same rule
- * the per-item errors above already follow.
+ * **It never throws, and that is a promise about the CALLERS rather than about
+ * this function's own risk.** Every one of them awaits this *after* unwrapping
+ * its rows, so anything escaping here discards a roster, a feed or a crew the
+ * database has already returned — over a photo. One unsigned image must cost
+ * that image and nothing else, which is the rule the per-item errors above
+ * already follow.
+ *
+ * **What the `catch` covers is narrow, and worth naming so nobody widens the
+ * claim.** `@supabase/storage-js` 2.111.0 converts a `fetch` rejection into a
+ * `StorageUnknownError` and **returns** it, so a flaky connection lands in
+ * `error` and never here — probed directly, 2026-09-08. What escapes is the
+ * band that is not a `StorageError` at all and is therefore rethrown: a 200
+ * whose body is not an array (`data.map is not a function`), or `encodeURI`
+ * on a malformed path. Rare, reachable, and silent by construction — there is
+ * no breadcrumb, so this band is invisible rather than merely tolerated.
+ *
+ * **It is NOT established that this caused PD-382's failed roster read.** That
+ * issue's own comment lists a `signImagePaths` throw as one of two candidates
+ * to establish, and the probe above weakens it: `resolveAvatarUrls` is still an
+ * unguarded await in `getClubMembers`, which is worth closing on its own terms,
+ * but PD-438 holds the open question and this is not the answer to it.
  */
 export async function signImagePaths(
   paths: string[],

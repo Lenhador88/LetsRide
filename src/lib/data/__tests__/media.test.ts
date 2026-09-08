@@ -100,12 +100,13 @@ describe('signImagePaths', () => {
   })
 
   it('returns empty rather than throwing when the request never gets an answer', async () => {
-    // **The case above is a Storage *answer*; this is the absence of one.** A
-    // rejection from `fetch` never reaches the returned `error`, and every
-    // caller awaits this AFTER unwrapping its rows — `getClubMembers` last —
-    // so a throw here discards a roster the database already returned, over an
-    // avatar. Found by review on PD-382, whose reported symptom was exactly
-    // that roster failing.
+    // **The case above is a Storage *answer*; this is anything that is not
+    // one.** storage-js returns a `StorageUnknownError` for a fetch rejection,
+    // so what actually escapes is the non-`StorageError` band it rethrows — a
+    // 200 whose body is not an array, a malformed path. The throw below stands
+    // for that band rather than for a specific cause. Every caller awaits this
+    // AFTER unwrapping its rows, so an escape discards a roster the database
+    // already returned, over an avatar.
     const client = {
       storage: {
         from: () => ({

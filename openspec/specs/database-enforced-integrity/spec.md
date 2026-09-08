@@ -545,10 +545,12 @@ participant's thread permanently, and the only remedy is a delete.
 **A secret narrows the choice to one of the two, and `091` is the sharpest instance in the
 schema.** `public.ride_invite_links.token` is the credential itself, so a client able to name it
 could mint a link with a token it chose — a predictable or reused string, or one already pasted
-somewhere — and the entropy guarantee would be worth nothing. A trigger that overwrites the value
-still lets the client *send* it and still returns the row, so for a secret the enforcement SHALL be
-the withheld **grant** specifically. `expires_at` is the same argument one step down: a client able
-to name it sets its own ceiling. **This narrows the rule for secrets and does not replace it**: a
+somewhere — and the entropy guarantee would be worth nothing. For a secret the enforcement SHALL
+therefore be the withheld **grant** specifically, on `044`'s reason rather than a new one: a
+withheld grant refuses the write at the door with `42501`, where a trigger silently rewrites what
+the client sent — and a client that believes it chose the token is the one state this column cannot
+afford. `expires_at` is the same argument one step down: a client able to name it sets its own
+ceiling. **This narrows the rule for secrets and does not replace it**: a
 write-once stamp a grant cannot express — `012`'s `profiles.terms_accepted_at`, and `044` lines
 48–65 on why — is still correctly a trigger.
 
