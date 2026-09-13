@@ -19,7 +19,7 @@ git diff --stat origin/development -- docs/HANDOFF.md   # is this file itself un
 
 ## Position
 
-**Updated 2026-09-08.** Prune the lines that are no longer true when you land work; do not add
+**Updated 2026-09-13.** Prune the lines that are no longer true when you land work; do not add
 history.
 
 - **`development` is the default branch and deploys to DEV** (`app-dev.letsride.social`);
@@ -32,11 +32,10 @@ history.
   exception to decision #1 — so its advisor class
   (`anon_security_definer_function_executable`) is now on both projects rather than DEV alone.
   `docs/reference/migrations.md` §Applied state has the per-file log.
-- **Edge Functions: the two projects DISAGREE, and that is the resting state after a merge.**
-  `resolve-ride-location` is DEV `v8` (2026-09-07T20:42Z) / PROD `v6` (the 2026-09-06T22:20Z
-  dispatch), and the `ezbr_sha256` differs. The next promotion to `main` levels them. Read the
-  `deploy` job's conclusion, never the run's — without the token the job skips and the run is
-  still green.
+- **Edge Functions: all three `ezbr_sha256` are EQUAL on both projects** — measured 2026-09-13,
+  PROD's 2026-09-08T15:16Z deploy levelled them. **Equality is not currency**: compare each
+  against its own last commit. Read the `deploy` job's conclusion, never the run's — without the
+  token the job skips and the run is still green.
 - **The walk is green on DEV** as both fixture accounts (2026-09-06 baselines in
   `docs/reference/running-locally.md` §The walk). In CI it is still **skipped** — the Actions
   secrets name PROD and `WALK_CI` is unset (see §Blocked on the owner).
@@ -49,9 +48,10 @@ history.
 
 ## In flight
 
-- **`Queued (AI)` and `Needs help` are both empty**, so the next firing has nothing to take.
-- **`Development (AI)`:** PD-447 in `slot-1` and PD-448 in `slot-2`, both with their PR merged or
-  merging; PD-421 carries no slot label, so it occupies no slot — deliberate rather than a gap.
+- **All three Routines are DISABLED** (last fired 2026-09-08) and `Queued (AI)` holds four
+  stories **no firing can build**: PD-303 and PD-450 want the APNs/FCM credentials, PD-451 an
+  owner design decision, PD-421 `api.supabase.com`, which the proxy refuses from every container.
+  Re-enabling first spends a firing per story parking it. **Both slots are free.**
 - **Nothing in this app opens a sheet by itself** (PD-447, reversing PD-419). The Explore question
   is `LocationQuestionRow`, on the two Explore screens only. **`profiles.location` has TWO
   writers** — `setRiderTown` and `setHomeTown` — so anything keyed to "the rider stored a town"
