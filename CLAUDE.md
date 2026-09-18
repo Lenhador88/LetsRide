@@ -794,16 +794,18 @@ is the backlog, and it is not this hook's to clear.
 **Full detail is [`docs/reference/linear.md`](docs/reference/linear.md).** Read it before the first
 Linear call of a session, and before ANY call touching a Routine. What must be true without it:
 
-- Workspace **`lets-ride`**, team **Pedro & Dave (`PD`)**. **Pass the project id —
-  `88f3f224-ecf0-46f0-a032-c86b7a12f81c`** — never the name (it holds a curly apostrophe, and the
-  straight-quote version silently matches the deprecated project). Read the field back off the
-  response.
+- Workspace **`lets-ride`**, team **`PD`**. **Pass the ids, never the display names** — team
+  `7388c68e-ef17-4998-a9b7-d8ad8ce66038` (its name has been changed, and a stale team name fails
+  in more than one shape — `[]` from one call and `Could not find team` from another, so an empty
+  answer is not proof the name is right), project `88f3f224-ecf0-46f0-a032-c86b7a12f81c` (the name
+  holds a curly apostrophe, and the straight-quote version silently matches the deprecated
+  project). Read the field back off the response.
 - **Do not ask permission to touch Linear** (standing grant, 2026-08-07) — except to delete
   anything a human authored.
 - **`Queued (AI)` is the only start signal.** `Development (AI)` claims **one issue**; so does
   `Needs help`. The one queue-wide stop is a `<!-- halt-queue -->` marker.
 - **The two `slot-*` labels are the concurrency cap, and the board is the whole lock.**
-- **Never type a status name from memory** — `list_issue_statuses team=Pedro & Dave`.
+- **Never type a status name from memory** — `list_issue_statuses team=7388c68e-ef17-4998-a9b7-d8ad8ce66038`.
 - **An issue opens with the five-rating block; a parked one owes a comparison table.**
 - **A story closes when the thing it names exists, not when the part you built does.** Partly
   delivered stays open. "The rest needs an owner action" is not a split.

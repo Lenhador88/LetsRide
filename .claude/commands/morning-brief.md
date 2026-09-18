@@ -15,8 +15,9 @@ other aspects we should consider?"* Those four are the brief's four sections, in
 the fourth is the one that is easy to drop and the reason this exists rather than a status query.
 
 Read `CLAUDE.md` fully first — it is auto-loaded and it is the contract. Workspace `lets-ride`,
-team **Pedro & Dave** (`PD`), project **Let's ride (AI)**
-(`88f3f224-ecf0-46f0-a032-c86b7a12f81c`); note the curly apostrophe in that name and pass the id.
+team `PD` (`7388c68e-ef17-4998-a9b7-d8ad8ce66038`), project **Let's ride (AI)**
+(`88f3f224-ecf0-46f0-a032-c86b7a12f81c`); pass both ids, never the display names — the project
+name holds a curly apostrophe and the team has already been renamed once.
 
 **No section here is numbered `STEP n`** — `queue-run.md` and `queue-pickup.md` own that
 namespace and `src/__tests__/agent-briefs.test.ts` resolves every citation against their headings
@@ -95,7 +96,7 @@ mcp__Linear__list_issues  project=<id> state="Needs help"     limit=250
 a truncated `Owner only` list reads exactly like a shorter to-do list.
 
 The statuses above are exact strings and **must not be typed from memory** —
-`mcp__Linear__list_issue_statuses team=Pedro & Dave` is the list, and a status name that no longer
+`mcp__Linear__list_issue_statuses team=7388c68e-ef17-4998-a9b7-d8ad8ce66038` is the list, and a status name that no longer
 exists filters to nothing rather than erroring. What to pull out:
 
 | For the brief | Where |
