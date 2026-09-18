@@ -67,22 +67,35 @@ below on a schedule rather than when something is already suspected, and
 PD-352 built the schedule: `.github/workflows/log-digest.yml` reads both
 projects at 06:00 and 18:00 UTC, plus `workflow_dispatch`.
 
-**It has never produced a reading, and it was NEVER the missing credential this
-paragraph used to blame.** Every run since the first — 2026-08-31, 14 runs across
-both projects — fails identically: the token is present and masked in the env
-block, the API answers **200**, and the body carries
-`{"error": "Backend error! Retry your query. …"}`, so `parseRows` throws and the
-run exits 2 with that sentence. Invariant over seven days and two projects is
-deterministic, which rules the retry out far harder than a repeat would.
+**It produced nothing for its first 14 runs, and it was NEVER the missing
+credential this paragraph used to blame.** Runs 1–14 (2026-08-31 to 09-06, both
+projects) failed identically: the token present and masked in the env block, the
+API answering **200**, and the body carrying
+`{"error": "Backend error! Retry your query. …"}`, so `parseRows` threw and the
+run exited 2 with that sentence.
 
-**Both ends are exonerated; the middle is not.** Auth and reachability are proven
-by the 200. The SQL is proven by running the exact `SQL` constant through
-`mcp__Supabase__query_logs` against the same project and window, which returns
-rows. What is refused is the *query as this script poses it*:
-`GET /v1/projects/<ref>/analytics/endpoints/logs.all` with `sql`,
-`iso_timestamp_start` and `iso_timestamp_end`. PD-421 has the three suspects; a
-`workflow_dispatch` on a branch is the only way to test one, since no session can
-reach `api.supabase.com`.
+**The cause was one path segment (PD-421).** The script posed ClickHouse SQL —
+one `logs` table, a `source` column, `log_attributes['<key>']` — at
+`GET /v1/projects/<ref>/analytics/endpoints/logs.all`, which is the older
+**Logflare/BigQuery** endpoint, where each service is its own table and nested
+fields come out of `cross join unnest(metadata)`. The ClickHouse endpoint is the
+same path **without `.all`**, and it takes the same `sql`, `iso_timestamp_start`
+and `iso_timestamp_end`. Both answer 200, so the mismatch is invisible at
+transport level. `.all` is the obvious reading of "all the logs" and is what the
+script carried for 14 runs, so the discriminator is the *dialect the query is
+written in*, never the name.
+
+The other two suspects were excluded by measurement rather than by the fix
+working — both tested 2026-09-18 through `mcp__Supabase__query_logs`, which
+poses the same GET: the multi-line `SQL` **with** its comment block is accepted,
+and a window of **exactly** 24h with millisecond precision is accepted. (That
+is one accepted call plus the MCP client's own guard, which is `> 24h` rather
+than `>=` — not a reading of the API's cap, which nothing here can see.)
+Trimming either would have looked like a fix.
+
+**No session can confirm the fix end to end** — `api.supabase.com:443` is a
+policy denial at the agent proxy (403 to CONNECT) — so the first green run of
+the workflow is the proof.
 
 **The four-day claim that the secret was missing is the lesson here.** Nothing
 was red, nothing contradicted it, and the check that would have caught it is the
@@ -127,11 +140,12 @@ SUPABASE_ACCESS_TOKEN=sbp_... npm run logs:errors -- --prod  # PRODUCTION
 ```
 
 `scripts/db/logs-errors.mjs` carries the query and the credential rules. **Its
-SQL is verified against both projects; its HTTP call reaches the API and is
-refused there, 14 runs out of 14** (above). **No session can exercise it** —
+SQL is verified against both projects; its HTTP call was refused 14 runs out of
+14 until PD-421 corrected the endpoint** (above), and the first green run is what
+confirms the correction. **No session can exercise it** —
 `api.supabase.com:443` is a policy denial at the agent proxy, which answers 403
 to CONNECT, so `fetch` reports only "fetch failed" and curl reports status 000 —
-so a fix is tested through `workflow_dispatch` on a branch, not from here.
+so a fix is tested through the workflow, not from here.
 Re-derive rather than trusting it, since a network policy changes without
 announcement:
 

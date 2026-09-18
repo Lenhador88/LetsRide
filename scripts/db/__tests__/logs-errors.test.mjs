@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
+  LOG_WINDOW_MS,
   SQL,
+  buildLogsUrl,
   classify,
   describeSchemaMismatch,
   formatSummary,
@@ -296,6 +298,69 @@ describe('the SQL window', () => {
     // `limit 50` is a count. Ordered by `n` alone a single 5xx is the first row
     // evicted, and "any 5xx is always ours" is the loudest rule in the file.
     expect(SQL).toMatch(/order by \(status >= 500 or status = 404 or status = 300\) desc, n desc/)
+  })
+})
+
+
+describe('the analytics endpoint', () => {
+  /**
+   * PD-421: 14 runs over seven days, both projects, every one a 200 carrying
+   * `{"error": "Backend error! Retry your query. …"}`, because ClickHouse SQL
+   * was posed at `analytics/endpoints/logs.all` — the Logflare/BigQuery
+   * endpoint. The dialect and the endpoint have to agree, and NOTHING ELSE IN
+   * THIS FILE CAN SEE THAT: the SQL cases above stay green against either
+   * spelling, and the transport cannot run in any build container.
+   *
+   * `.all` is the endpoint in Supabase's own API reference and the obvious
+   * spelling of "all the logs", so this is a plausible re-introduction rather
+   * than a typo nobody would make twice.
+   */
+  const start = new Date('2026-09-17T15:44:58.938Z')
+  const end = new Date('2026-09-18T15:44:58.938Z')
+
+  it('poses the query at the ClickHouse endpoint', () => {
+    expect(buildLogsUrl('fpmrimzxadewsaiwpsel', start, end).pathname).toBe(
+      '/v1/projects/fpmrimzxadewsaiwpsel/analytics/endpoints/logs',
+    )
+  })
+
+  it('does not pose it at logs.all', () => {
+    // Verified both ways: this assertion fails when the path is reverted, and
+    // `toBe` above fails when `.all` is appended — a `toContain('logs')` would
+    // pass against both, which is the trap the SQL block above records.
+    expect(buildLogsUrl('fpmrimzxadewsaiwpsel', start, end).pathname).not.toContain('logs.all')
+  })
+
+  it('sends the SQL and both window bounds as query parameters', () => {
+    // The endpoint changed and the parameter names did not; pinning them here
+    // is what keeps a future endpoint move from silently dropping the window
+    // and reading a default one instead.
+    const url = buildLogsUrl('fpmrimzxadewsaiwpsel', start, end)
+    expect(url.searchParams.get('sql')).toBe(SQL)
+    expect(url.searchParams.get('iso_timestamp_start')).toBe('2026-09-17T15:44:58.938Z')
+    expect(url.searchParams.get('iso_timestamp_end')).toBe('2026-09-18T15:44:58.938Z')
+  })
+
+  it('encodes the query the way the only working shape does', () => {
+    // NOT assertable through `searchParams.get`, which decodes `+` and `%20`
+    // to the same string — so the case above cannot see this and a reviewer
+    // caught it. `URLSearchParams` writes a space as `+`; `encodeURIComponent`
+    // writes `%20`, and `openapi-fetch` 0.13.5 — the path the MCP client's
+    // working call goes through — uses the latter. 139 bytes of this query are
+    // spaces, and a strict RFC-3986 reader of `+` answers with the same
+    // generic "Backend error!" PD-421 spent 14 runs on.
+    const raw = buildLogsUrl('fpmrimzxadewsaiwpsel', start, end).search
+    expect(raw).toContain('%20')
+    expect(raw.split('&')[0]).not.toContain('+')
+  })
+
+  it('keeps the window at exactly 24h, which the API accepts', () => {
+    // Asserts the constant `main()` actually uses. An earlier version of this
+    // case compared two `Date` literals declared in this file and called
+    // nothing from the module — it stayed green with the real window widened
+    // to 48h, which is this repo's vacuous-assertion trap in its purest form.
+    expect(LOG_WINDOW_MS).toBe(24 * 60 * 60 * 1000)
+    expect(end.getTime() - start.getTime()).toBe(LOG_WINDOW_MS)
   })
 })
 
