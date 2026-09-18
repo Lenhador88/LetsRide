@@ -38,7 +38,7 @@
  * project ref at all is a **failure**, not a pass.
  */
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { walkFiles } from './export-guards.mjs'
 
@@ -114,6 +114,115 @@ export const BENIGN_ORIGINS = new Set(['http://localhost:9999'])
  * produced a tenth of that is a failed build rather than a tidy one.
  */
 export const MIN_FILES = 100
+
+/**
+ * The copy a store actually receives, per platform — PD-204.
+ *
+ * **`out/` is not the artifact.** `npx cap sync` copies `out/` into the
+ * platform project, and it is the platform project that is archived, signed and
+ * uploaded. So a fresh `out/` sitting beside a month-old platform copy passes
+ * every check above while the submission carries the old backend and the old
+ * origin — the same class of gap this file exists to close, one level further
+ * down.
+ *
+ * `project` is what says a platform exists at all. `ios/` is generated and
+ * committed; `android/` is not (PD-442), and a missing platform must be silent
+ * rather than a failure — otherwise this gate is red for everyone until the day
+ * somebody generates a platform nobody has asked for.
+ *
+ * `bundle` is gitignored on purpose: it is generated output, and the whole
+ * point of this check is that its staleness is invisible in the repository.
+ */
+export const PLATFORM_BUNDLE_DIRS = [
+  { platform: 'iOS', project: 'ios', bundle: path.join('ios', 'App', 'App', 'public') },
+  {
+    platform: 'Android',
+    project: 'android',
+    bundle: path.join('android', 'app', 'src', 'main', 'assets', 'public'),
+  },
+]
+
+/**
+ * What is wrong with the copy `cap sync` left in a platform project, given the
+ * `out/` it should have been made from.
+ *
+ * Two different failures, and the second is the one that made this worth
+ * writing:
+ *
+ * 1. **The copy is itself a bad bundle** — an old sync carrying the DEV ref or
+ *    no canonical origin. That is `releaseProblems`' existing job, so this
+ *    hands the platform directory to the same scan rather than re-deciding what
+ *    "bad" means. A detector that only ran over `out/` is a detector that never
+ *    read the artifact.
+ * 2. **The copy is stale** — every file in it is individually fine, but it is
+ *    not the build that was just made. Byte comparison against `out/` is what
+ *    catches that, and nothing softer does: a bundle synced before the origin
+ *    guard existed contains no `localhost` and no wrong ref, so scan (1) passes
+ *    it.
+ *
+ * **Extra files in the platform copy are scanned, not refused.** `cap copy`
+ * writes `capacitor.config.json` and can leave plugin shims beside the web
+ * assets, so "the file sets must be equal" would be a gate that cries wolf on a
+ * correctly-synced project. Scan (1) already reads whatever is actually there,
+ * which is the property that matters: an extra file carrying the DEV ref is
+ * caught, an extra file carrying nothing dangerous is not a submission risk.
+ *
+ * **A platform project with no `public/` at all is a failure, not a skip.** It
+ * means `cap sync` has never run for that platform, so the archive would ship
+ * an empty webview — a white screen on a device, which is the most expensive
+ * place in this epic to find a missing command.
+ */
+export function platformCopyProblems(root, outFiles, { platform, project, bundle }) {
+  const projectDir = path.join(root, project)
+  if (!existsSync(projectDir)) return []
+
+  const bundleDir = path.join(root, bundle)
+  if (!existsSync(bundleDir)) {
+    return [
+      `${platform}: ${bundle} does not exist, but ${project}/ does — cap sync has never run ` +
+        'for this platform, so the archive would ship an empty webview. Run `npx cap sync`.',
+    ]
+  }
+
+  const problems = scanReleaseBundle(bundleDir).problems.map(
+    (problem) => `${platform} (${bundle}): ${problem}`
+  )
+
+  const differing = []
+  const missing = []
+  for (const relative of outFiles) {
+    const copied = path.join(bundleDir, relative)
+    if (!existsSync(copied)) {
+      missing.push(relative)
+      continue
+    }
+    if (!readFileSync(copied).equals(readFileSync(path.join(root, 'out', relative)))) {
+      differing.push(relative)
+    }
+  }
+
+  // Named examples rather than the whole list: a genuinely stale copy differs
+  // in hundreds of files, and a wall of paths buries the one sentence that says
+  // what to do about it.
+  const sample = (list) => list.slice(0, 3).join(', ') + (list.length > 3 ? ', …' : '')
+
+  if (missing.length > 0) {
+    problems.push(
+      `${platform}: ${missing.length} ${missing.length === 1 ? 'file' : 'files'} from out/ ` +
+        `${missing.length === 1 ? 'is' : 'are'} absent from ${bundle} (${sample(missing)}) — ` +
+        'the copy predates this build. Run `npx cap sync` and build again.'
+    )
+  }
+  if (differing.length > 0) {
+    problems.push(
+      `${platform}: ${differing.length} ${differing.length === 1 ? 'file differs' : 'files differ'} ` +
+        `between out/ and ${bundle} (${sample(differing)}) — the copy is STALE, and it is the ` +
+        'copy that gets archived. Run `npx cap sync` and build again.'
+    )
+  }
+
+  return problems
+}
 
 /**
  * Is the bundle about to be submitted allowed to run under the minimum it will

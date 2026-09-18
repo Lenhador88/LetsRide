@@ -3,6 +3,7 @@ import { Poppins } from 'next/font/google'
 import { RouteGuard } from '@/components/auth/RouteGuard'
 import { Observability } from '@/components/observability/Observability'
 import { UpdateGate } from '@/components/native/UpdateGate'
+import { DeepLinkListener } from '@/components/native/DeepLinkListener'
 import './globals.css'
 
 const poppins = Poppins({
@@ -151,6 +152,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             renders through, is already being watched when it happens. Both are
             below it for that reason and not by accident. */}
         <Observability />
+        {/* Renders nothing; mounted here because a universal link can arrive on
+            any screen and has to be honoured from all of them. On the web it
+            subscribes to nothing at all. */}
+        <DeepLinkListener />
         {/* Outside the guard, because a build too old to run is too old
             whoever is holding it — signed out, mid-onboarding or ten clubs
             deep. It renders `children` untouched until it knows otherwise, so

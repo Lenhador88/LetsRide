@@ -177,10 +177,18 @@ PD-188, 2026-08-12.** Two things landed:
   with `origin.ts` about what "set" means. Why it matters, measured against PROD's auth server
   2026-08-12: docs/ENVIRONMENTS.md §The redirect allowlist. No dashboard action needed — PD-106
   allowlisted `https://app.letsride.social` already.
-- **`npm run release:check` is the pre-submission gate** over the built `out/`: the PROD ref
+- **`npm run release:check` is the pre-submission gate** over the built `out/` **and over
+  `ios/App/App/public`, which is the copy a store actually receives** (PD-204): the PROD ref
   present, no other ref (DEV by name), the canonical origin baked in, no `localhost` one — and a
-  **failure when it finds no ref at all**, so an empty `out/` cannot read as clean. Deliberately
-  not in `build:native`, which runs on local and on-device builds that may point at DEV.
+  **failure when it finds no ref at all**, so an empty `out/` cannot read as clean. The platform
+  copy is compared byte for byte against `out/` as well as scanned, because a stale-but-valid sync
+  passes every content check; a project with no `public/` is refused, and a platform that does not
+  exist is silent. Deliberately not in `build:native`, which runs on local and on-device builds
+  that may point at DEV.
+
+  **Run it AFTER `npx cap sync`, not before** — the whole point is that it reads the synced copy,
+  so running it on a project that has not been synced since the build reports exactly the
+  staleness it exists to catch.
 
 ```bash
 NEXT_PUBLIC_CANONICAL_ORIGIN=https://app.letsride.social npm run build:native && npm run release:check
@@ -388,9 +396,17 @@ the obvious filter reports 3-against-4 on a correct tree and sends the next sess
 needless `cap sync` or file a phantom finding. Exclude it, and check the filter both ways:
 
 ```bash
-grep -c '\.package(name:' ios/App/CapApp-SPM/Package.swift        # one per plugin — 3
+grep -c '\.package(name:' ios/App/CapApp-SPM/Package.swift        # one per plugin — 4
 node -p "Object.keys(require('./package.json').dependencies).filter(d=>/^@capacitor\/|^@aparajita\/|^@sentry\/capacitor/.test(d) && d !== '@capacitor/core').join('\n')"
 ```
+
+**That staleness is not hypothetical — it happened on 2026-09-18.** PD-205 added `@capacitor/app`
+to `package.json` and the committed `Package.swift` still listed three, so an Xcode build from the
+committed project would not have linked `AppPlugin`: the entitlement and the association file
+would both work, the link would open the app, and `appUrlOpen` would never fire — a silent no-op
+on the one device run meant to verify the story. Caught by `reviewer`, fixed by `npx cap sync ios`
+in this container. **Adding a native plugin is two commits' worth of work in one: the dependency,
+and the sync.**
 
 What a session CAN now do, all of it exercised on 2026-08-25:
 
@@ -458,10 +474,60 @@ rather than through a single label on the whole section.
 |---|---|
 | `boot-restore.ts` | answers a webview **process restore**; a hand launch does not reproduce one |
 | Push registration | needs a signed device — a simulator gets no APNs token. **The project can now ask**; §Push registration is provisioned in the project has what changed and what a device still settles |
-| Universal links | no Associated Domains entitlement exists yet (PD-205) |
+| Universal links | the entitlement, the association file and the listener all landed 2026-09-18 (PD-205) and **not one of them has been exercised** — Apple fetches the file from its own CDN onto a real device, so a simulator settles nothing. §Universal links has what a device run has to check |
 | The location prompt | not exercised; the string is verified in the bundle, the dialog is not. **The camera prompt joins it as of PD-453** — and it is the one whose absence was a process kill rather than a silent no-op, so it is worth exercising first on the next device run |
 | `clearSessionStore`'s sweep | **still unexercised.** Sign-out was run, but auth-js removes the `sb-` keys by name first, so the sweep had nothing to find |
 | A device build, the archive, TestFlight | none attempted |
+
+### Universal links — built 2026-09-18, unverified
+
+**Three pieces, and each is a no-op without the other two**, which is what makes this feature fail
+silently rather than loudly:
+
+| Piece | Where | What it does |
+|---|---|---|
+| The entitlement | `ios/App/App/App.entitlements` — `com.apple.developer.associated-domains`, one entry, `applinks:app.letsride.social` | makes iOS fetch the association file at install |
+| The association file | `public/.well-known/apple-app-site-association`, plus a `Content-Type: application/json` header in `next.config.ts` (it has no extension, so a static host has nothing to type it from) | tells Apple which app may claim which paths — `6V6M44T7KV.social.letsride.app`, all paths |
+| The listener | `src/lib/native/deep-links.ts`, mounted by `src/components/native/DeepLinkListener.tsx` | turns the `appUrlOpen` event into a route |
+
+**No Swift changed, and the obvious assumption is the opposite one.** `SceneDelegate.swift`
+already forwards `scene(_:continue:)` and `scene(_:willConnectTo:options:)` to Capacitor's
+`SceneDelegateProxy`, so the `NSUserActivity` reaches the bridge unaided. The APNs half of this app
+*did* need hand-written delegate methods, for the different reason §Push registration gives.
+
+**`app-dev.letsride.social` is deliberately absent from the entitlement.** It sits behind Vercel
+SSO (`docs/ENVIRONMENTS.md` §Domains) and Apple's CDN fetches with no credential, so a DEV entry
+could never verify — and a build carrying one falls back to the browser silently, which reads as a
+broken implementation rather than an unverifiable host.
+
+**There is no `assetlinks.json`, and that is not an oversight.** Android App Links need the signing
+certificate's SHA-256 fingerprint. `android/` has never been generated (PD-442) and nothing is
+signed, so the value does not exist; a placeholder would fail Google's verification while reading,
+in the repository, as delivered. `src/__tests__/apple-app-site-association.test.ts` asserts both
+absences so the day `android/` lands, the missing half is a failing test rather than a memory.
+
+**The legacy shapes had to be handled in the same change, or this would have made things worse.**
+A `/postcards/<uuid>` link — the shape `ShareButton` handed out before PD-142, still sitting in
+people's messages — resolves on the web through `next.config.ts`'s `redirects()`. There is no
+server in a bundle to run one, so once universal links exist that link opens the *app* at a path
+the export never prerendered. `src/lib/legacy-routes.ts` is the one table both readers share.
+
+**What a device run has to check**, none of which a simulator or this container can:
+
+1. Associated Domains is enabled on the App ID in the Apple Developer portal, so the provisioning
+   profile carries the entitlement — **an owner action**, and the build fails to sign without it.
+2. `https://app.letsride.social/.well-known/apple-app-site-association` answers 200,
+   `application/json`, with no redirect and no auth.
+3. A tap on a confirmation link from a real signup email opens the app rather than Safari.
+4. A tap on a shared ride link, with the app already running, lands on that ride.
+5. A tap on an old `/postcards/<uuid>` link lands on the postcard rather than a blank screen.
+
+**What is still not built: the post-auth destination.** A deep link into a protected route reaches
+`RouteGuard` like any other navigation and bounces a rider with no session to `/auth/login`, which
+loses the link. Carrying them onward needs `resolveDestination(pathname, state)` to see the query
+string — the id of every detail route lives there — and that is a change to the guard's signature
+and to `RouteGuard`, which would have to read `useSearchParams()` in the root layout. Separate
+work, and `boot-restore.ts`'s header already called it that.
 
 ### Sign-out leaves no usable session in a platform keychain — 2026-09-08
 

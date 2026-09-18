@@ -40,6 +40,8 @@ history.
 - **The walk is green on DEV** as both fixture accounts (2026-09-06 baselines in
   `docs/reference/running-locally.md` §The walk). In CI it is still **skipped** — the Actions
   secrets name PROD and `WALK_CI` is unset (see §Blocked on the owner).
+- **The Linear team is `Let's ride`, not `Pedro & Dave`** — the old name errors,
+  `list_issue_statuses` included. Pass the id `7388c68e-ef17-4998-a9b7-d8ad8ce66038`.
 - **OpenSpec has 33 open changes and 22 archived**
   (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`).
   **Archiving one is not two commands**: a stale `## MODIFIED Requirements` block drops scenarios
@@ -49,8 +51,6 @@ history.
 
 ## In flight
 
-- **`Queued (AI)` holds the store-submission run** and `Needs help` is empty — read the column
-  rather than this line; the Routine takes highest priority, then oldest.
 - **Nothing in this app opens a sheet by itself** (PD-447, reversing PD-419). The Explore question
   is `LocationQuestionRow`, on the two Explore screens only. **`profiles.location` has TWO
   writers** — `setRiderTown` and `setHomeTown` — so anything keyed to "the rider stored a town"
@@ -61,6 +61,10 @@ history.
   ceiling (2000/24h across all riders) — so a lookup failure reveals a country select on its own
   and the rider finishes with no town. **The 2026-09-08 walk hit exactly that**: no suggestions for
   `Amsterdam`, and the minted rider took the escape. Every walk run spends two credits.
+- **Universal links are built and UNVERIFIED** (PD-205) — Apple fetches the association file onto
+  a real device, so a simulator settles nothing. `docs/reference/native-shell.md` §Universal links
+  has the device checks and the owner action. **PD-205 stays open**: the Android half needs a
+  signing fingerprint that cannot exist until `android/` does.
 - **Push, `openspec/changes/deliver-push-notifications`:** child B is complete in the repository
   (#438, #446) and **unverified on a device** — tasks 2.15–2.19a wait on a provisioning profile
   carrying the Push capability, an owner action. **Child C (PD-303) is the sender**, blocked on the
