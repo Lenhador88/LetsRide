@@ -376,23 +376,44 @@ revoke all on function private.transfer_owned_clubs(uuid) from public, anon, aut
 -- ---------------------------------------------------------------------------
 -- §3. Verification
 -- ---------------------------------------------------------------------------
--- Hand-exercised on DEV before this file applied, as the owner, inside a
--- transaction that was rolled back — `CLAUDE.md`'s rule for a change to an
--- already-shipped write path. The welcome club on DEV holds all five of its
--- club-attached postcards, so this is the live shape rather than a fixture.
+-- Hand-exercised on DEV, as the owner, inside transactions that were rolled
+-- back — `CLAUDE.md`'s rule for a change to an already-shipped write path. It
+-- runs against the LIVE welcome club rather than a fixture: DEV's five
+-- club-attached postcards are all in it, and its own owner authored every one
+-- of them, so the third-party postcard has to be staged inside the transaction.
 --
---   begin;
---     -- a third-party postcard already sits in the welcome club
---     select count(*) from postcards p join clubs c on c.id = p.club_id
---      where c.is_default and p.author_id <> c.owner_id;             -- 4
---     select count(*) from private.transfer_owned_clubs(<welcome club owner>);
---     delete from profiles where id = <welcome club owner>;
---     select count(*) from clubs where id = <welcome club>;          -- 1 (was 0)
---     select owner_id is null, is_default from clubs
---      where id = <welcome club>;                                    -- t, f
---     select count(*) from postcards where club_id = <welcome club>; -- preserved
---     select alert_key from private.system_alerts;  -- welcome_club_kept_ownerless
---   rollback;
+-- ** Measured 2026-09-18, in this order. ** The baseline is the half that says
+-- the defect was real rather than theoretical:
+--
+--   A. BASELINE, against the function as `107` left it — a flagged club whose
+--      owner is its only member, holding one postcard by somebody else:
+--        club rows after the transfer ................... 0   (deleted)
+--        that third party's postcard .................... 0   (destroyed)
+--
+--   B. THE LIVE SHAPE, after this file applied — the welcome club's nine other
+--      memberships deleted (everybody left), ONE of its five postcards
+--      re-attributed to a rider who is not the owner, then the transfer and the
+--      `profiles` cascade in the order `delete-account` uses:
+--        club rows ...................................... 1   (kept)
+--        owner_id is null ............................... t
+--        is_default ..................................... f   ** the fix **
+--        clubs carrying the flag, anywhere .............. 0
+--        the third party's postcard ..................... 1   (preserved)
+--        the departing owner's own four .................. 0   (profiles cascade)
+--        members ........................................ 0
+--        private.system_alerts ......... welcome_club_kept_ownerless, one row
+--
+--   C. THE DELETE ARM, the same transaction with NOTHING third-party staged:
+--        club rows ...................................... 0   (032's arm, unchanged)
+--        private.system_alerts ......... welcome_club_deleted, one row
+--
+--   D. THE SUCCESSOR ARM, which this file does not touch — the welcome club
+--      with its ten memberships intact:
+--        club rows 1 · is_default t · owner changed t · alerts 0 · 2 paths
+--
+--   Every one of the four rolled back, and DEV was re-read afterwards: one
+--   flagged club, same owner, 5 postcards, 10 members, 30 profiles, and zero
+--   rows in private.system_alerts.
 --
 -- After applying, confirm the object rather than the statement:
 --
