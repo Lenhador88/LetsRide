@@ -177,10 +177,18 @@ PD-188, 2026-08-12.** Two things landed:
   with `origin.ts` about what "set" means. Why it matters, measured against PROD's auth server
   2026-08-12: docs/ENVIRONMENTS.md §The redirect allowlist. No dashboard action needed — PD-106
   allowlisted `https://app.letsride.social` already.
-- **`npm run release:check` is the pre-submission gate** over the built `out/`: the PROD ref
+- **`npm run release:check` is the pre-submission gate** over the built `out/` **and over
+  `ios/App/App/public`, which is the copy a store actually receives** (PD-204): the PROD ref
   present, no other ref (DEV by name), the canonical origin baked in, no `localhost` one — and a
-  **failure when it finds no ref at all**, so an empty `out/` cannot read as clean. Deliberately
-  not in `build:native`, which runs on local and on-device builds that may point at DEV.
+  **failure when it finds no ref at all**, so an empty `out/` cannot read as clean. The platform
+  copy is compared byte for byte against `out/` as well as scanned, because a stale-but-valid sync
+  passes every content check; a project with no `public/` is refused, and a platform that does not
+  exist is silent. Deliberately not in `build:native`, which runs on local and on-device builds
+  that may point at DEV.
+
+  **Run it AFTER `npx cap sync`, not before** — the whole point is that it reads the synced copy,
+  so running it on a project that has not been synced since the build reports exactly the
+  staleness it exists to catch.
 
 ```bash
 NEXT_PUBLIC_CANONICAL_ORIGIN=https://app.letsride.social npm run build:native && npm run release:check

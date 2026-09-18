@@ -136,6 +136,18 @@ skip-is-not-a-pass rule `docs:check --cheap` follows. Detectors tested against p
 in `scripts/native/__tests__/release-guards.test.mjs`; run against real builds 2026-08-12, a
 PROD-ref bundle passes and a DEV-ref one is refused by name.
 
+**Since PD-204 it also reads `ios/App/App/public`, and that is the directory that actually
+ships.** `out/` is what you built; `npx cap sync` copies it into the platform project, and the
+platform project is what gets archived, signed and uploaded — so a fresh `out/` beside a
+month-old platform copy passed every check above while the submission carried the old backend and
+the old origin. The copy is scanned by the same rules **and** compared byte for byte against
+`out/`, because a sync made before the origin guard existed contains no `localhost` and no wrong
+ref and would otherwise pass. A platform project with no `public/` is a refusal (`cap sync` has
+never run, so the archive would ship an empty webview); a platform that does not exist at all —
+`android/`, PD-442 — is silent, because a gate that is red for everybody gets switched off. The
+closing line names which platforms were compared, since "no platform problems" and "no platform
+was looked at" otherwise read identically.
+
 **It is deliberately not part of `npm run build:native`.** That runs `check-export.mjs` on every
 native build, including the local, CI and on-device ones which may point wherever they like as long
 as they never reach a store (`openspec/changes/archive/2026-09-08-add-static-export-bundle/design.md` §D7) — CI's own

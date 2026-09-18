@@ -4,12 +4,14 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   BENIGN_ORIGINS,
+  PLATFORM_BUNDLE_DIRS,
   DEAD_ORIGIN_PATTERN,
   DEV_PROJECT_REF,
   MIN_FILES,
   PROD_PROJECT_REF,
   PROJECT_REF_PATTERN,
   RELEASE_ORIGIN,
+  platformCopyProblems,
   releaseProblems,
   scanReleaseBundle,
 } from '../release-guards.mjs'
@@ -216,5 +218,144 @@ describe('the release bundle guard', () => {
     )
     expect(problems).toHaveLength(1)
     expect(problems[0]).toContain('capacitor://localhost')
+  })
+})
+
+/**
+ * PD-204 — the gate read `out/`, and `out/` is not what a store receives.
+ *
+ * `cap sync` copies `out/` into the platform project, and it is the platform
+ * project that is archived, signed and uploaded. So a fresh `out/` beside a
+ * month-old platform copy passed every detector above while the submission
+ * carried the old backend and the old origin.
+ *
+ * The fixture is a whole repository root rather than one bundle, because the
+ * check is a comparison between two directories and the absence of one of them
+ * is one of the cases.
+ */
+describe('platformCopyProblems', () => {
+  const IOS = PLATFORM_BUNDLE_DIRS.find((target) => target.platform === 'iOS')
+  const ANDROID = PLATFORM_BUNDLE_DIRS.find((target) => target.platform === 'Android')
+
+  /** A repository root holding `out/`, and a platform copy of whatever is given. */
+  function repo(outFiles, platformFiles, { project = IOS.project, bundle = IOS.bundle } = {}) {
+    const files = {}
+    for (const [relative, contents] of Object.entries(outFiles)) {
+      files[path.join('out', relative)] = contents
+    }
+    if (platformFiles) {
+      // A marker inside the project directory, so the project exists even when
+      // its `public/` copy does not — which is one of the cases.
+      files[path.join(project, '.exists')] = ''
+      for (const [relative, contents] of Object.entries(platformFiles)) {
+        files[path.join(bundle, relative)] = contents
+      }
+    }
+    return fixture(files)
+  }
+
+  const outNames = Object.keys(RELEASE)
+
+  /**
+   * The fixture bundles are four files, so the platform copy trips `MIN_FILES`
+   * exactly as `findings()` above has to pad around it. Dropping that one line
+   * keeps every case below about the thing it is testing — and the floor gets
+   * its own case, because a helper that silently swallowed it would hide the
+   * empty-copy failure this check most needs to catch.
+   */
+  const sized = (problems) => problems.filter((p) => !p.includes('files walked'))
+
+  it('passes a platform copy that is byte-identical to out/', () => {
+    const root = repo(RELEASE, RELEASE)
+    expect(sized(platformCopyProblems(root, outNames, IOS))).toEqual([])
+  })
+
+  it('applies the size floor to the platform copy as well as to out/', () => {
+    const root = repo(RELEASE, RELEASE)
+    const problems = platformCopyProblems(root, outNames, IOS)
+    expect(problems.some((p) => p.includes(`expected at least ${MIN_FILES}`))).toBe(true)
+    // And it says which bundle it is talking about — the gate now has two.
+    expect(problems.find((p) => p.includes('files walked'))).toContain(IOS.bundle)
+  })
+
+  /**
+   * The case the whole change exists for, and the one nothing softer catches:
+   * every file in the copy is individually valid — right ref, right origin — so
+   * scanning it finds nothing. It is simply not the build that was just made.
+   */
+  it('catches a STALE copy whose files are each individually fine', () => {
+    const root = repo(RELEASE, {
+      ...RELEASE,
+      'postcards/detail.txt': '3:I[99999,[],""]\n0:["",{"children":["postcards"]}]\n',
+    })
+    const problems = sized(platformCopyProblems(root, outNames, IOS))
+    expect(problems).toHaveLength(1)
+    expect(problems[0]).toContain('1 file differs')
+    expect(problems[0]).toContain('postcards/detail.txt')
+    expect(problems[0]).toContain('STALE')
+  })
+
+  it('catches a copy that predates a file the build now emits', () => {
+    const { 'postcards/detail.txt': _dropped, ...withoutOneFile } = RELEASE
+    const root = repo(RELEASE, withoutOneFile)
+    const problems = sized(platformCopyProblems(root, outNames, IOS))
+    expect(problems).toHaveLength(1)
+    expect(problems[0]).toContain('1 file from out/ is absent')
+    expect(problems[0]).toContain('postcards/detail.txt')
+  })
+
+  /**
+   * The copy is judged by the same rules as `out/`, so a sync made before the
+   * canonical origin existed — or from a DEV build — is caught on its contents
+   * as well as on its staleness.
+   */
+  it('scans the copy itself, so an old sync pointing at DEV is caught', () => {
+    const stalePlatform = {
+      ...RELEASE,
+      '_next/static/chunks/env.js': `const e={u:"https://${DEV_PROJECT_REF}.supabase.co",o:"${RELEASE_ORIGIN}"};`,
+    }
+    const root = repo(RELEASE, stalePlatform)
+    const problems = platformCopyProblems(root, outNames, IOS)
+    expect(problems.some((p) => p.includes(DEV_PROJECT_REF))).toBe(true)
+    // And separately reported as disagreeing with out/, which is the other half.
+    expect(problems.some((p) => p.includes('files differ') || p.includes('file differs'))).toBe(
+      true
+    )
+    // Every scan problem says which platform and which directory it is about —
+    // the gate now has two bundles to talk about and an unlabelled line would
+    // be ambiguous about the one thing that matters.
+    for (const problem of problems) expect(problem).toContain('iOS')
+  })
+
+  /**
+   * A project with no `public/` means `cap sync` has never run for it, so the
+   * archive ships an empty webview — a white screen on a device.
+   */
+  it('refuses a platform project that has never been synced', () => {
+    const root = repo(RELEASE, {})
+    const problems = platformCopyProblems(root, outNames, IOS)
+    expect(problems).toHaveLength(1)
+    expect(problems[0]).toContain('cap sync has never run')
+  })
+
+  /**
+   * `android/` is not generated (PD-442) and a missing platform must be SILENT.
+   * The other way round, this gate is red for everybody until somebody
+   * generates a platform nobody has asked for — and a gate that is always red
+   * gets switched off.
+   */
+  it('says nothing about a platform that does not exist', () => {
+    const root = repo(RELEASE, RELEASE)
+    expect(platformCopyProblems(root, outNames, ANDROID)).toEqual([])
+  })
+
+  it('and the absence is decided by the PROJECT, not by the bundle directory', () => {
+    // A project directory with no copy is the failure above; no project
+    // directory at all is the silence above. Asserted together because reading
+    // either one alone makes the other look like a bug.
+    const withProject = repo(RELEASE, {})
+    const withoutProject = repo(RELEASE, null)
+    expect(platformCopyProblems(withProject, outNames, IOS)).toHaveLength(1)
+    expect(platformCopyProblems(withoutProject, outNames, IOS)).toEqual([])
   })
 })

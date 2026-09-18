@@ -37,8 +37,10 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
+  PLATFORM_BUNDLE_DIRS,
   PROD_PROJECT_REF,
   RELEASE_ORIGIN,
+  platformCopyProblems,
   releaseVersionProblems,
   scanReleaseBundle,
 } from './release-guards.mjs'
@@ -67,6 +69,17 @@ const publishedMinimum = JSON.parse(
 ).minimum
 problems.push(...releaseVersionProblems(bundleVersion, publishedMinimum))
 
+// **`out/` is not the artifact — PD-204.** What a store receives is the copy
+// `cap sync` made into the platform project, so everything above is a check on
+// the wrong directory unless this runs too. A platform that does not exist
+// (`android/`, PD-442) contributes nothing and says nothing.
+const platformsChecked = []
+for (const target of PLATFORM_BUNDLE_DIRS) {
+  if (!existsSync(path.join(ROOT, target.project))) continue
+  platformsChecked.push(target)
+  problems.push(...platformCopyProblems(ROOT, files, target))
+}
+
 if (problems.length > 0) {
   console.error('This bundle must not be submitted:\n')
   for (const problem of problems) console.error(`  - ${problem}`)
@@ -84,5 +97,14 @@ console.log(
     `canonical origin ${RELEASE_ORIGIN} in ${originFiles} ${originFiles === 1 ? 'file' : 'files'}; ` +
     `version ${bundleVersion} at or above the published minimum ${publishedMinimum}; ` +
     `no localhost origin.\n` +
-    `Refs found: ${[...refs.keys()].join(', ')}`
+    `Refs found: ${[...refs.keys()].join(', ')}\n` +
+    // Named rather than implied: "no platform problems" and "no platform was
+    // looked at" read identically, and the second is what this check exists to
+    // stop being invisible.
+    (platformsChecked.length > 0
+      ? `Platform copies verified against out/: ${platformsChecked
+          .map((target) => `${target.platform} (${target.bundle})`)
+          .join(', ')}`
+      : 'No platform project exists, so NOTHING that a store would receive was checked — ' +
+        'out/ is not the artifact. Generate a platform and run this again before submitting.')
 )
