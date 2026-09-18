@@ -18,9 +18,40 @@
   project has the rest, including why no `remote-notification` background mode
   is declared here.
 -->
+<!--
+  The Associated Domains capability, PD-205. Without this entitlement iOS never
+  fetches `https://app.letsride.social/.well-known/apple-app-site-association`,
+  so every link the app hands out — the signup confirmation, a shared ride, a
+  shared postcard — opens Safari and leaves the installed app where it was.
+
+  `applinks:` and nothing else. The other prefixes this key accepts are for
+  capabilities this app does not have: `webcredentials:` is shared-password
+  autofill and `activitycontinuation:` is Handoff, and each would claim a
+  capability that has to be enabled on the App ID and tested on a device.
+
+  **Production only, deliberately.** `app-dev.letsride.social` sits behind
+  Vercel SSO (`docs/ENVIRONMENTS.md` §Domains), and Apple's CDN fetches the
+  association file with no credential — so a DEV entry could never verify, and
+  listing one would produce a build whose universal links silently fall back to
+  the browser and read as a broken implementation rather than an unverifiable
+  host. The native bundle is built against `https://app.letsride.social` in any
+  case (`next.config.ts`'s `NEXT_PUBLIC_CANONICAL_ORIGIN` guard), so there is no
+  bundle for which a DEV entry would be the right one.
+
+  **Two things outside this repository have to be true**, and neither can be
+  checked here: Associated Domains must be enabled on the App ID in the Apple
+  Developer portal so the provisioning profile carries it, and the file above
+  must be served over HTTPS with no redirect and no auth. `docs/reference/native-shell.md`
+  §Universal links has both, and the first device test is the only thing that
+  proves either.
+-->
 <plist version="1.0">
 <dict>
 	<key>aps-environment</key>
 	<string>$(APS_ENVIRONMENT)</string>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:app.letsride.social</string>
+	</array>
 </dict>
 </plist>

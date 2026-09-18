@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["6V6M44T7KV.social.letsride.app"],
+        "components": [
+          {
+            "/": "/*",
+            "comment": "Every path on this host opens the installed app. The app is the whole site, so an allowlist here could only ever go stale into a link that silently opens Safari."
+          }
+        ]
+      }
+    ]
+  }
+}
