@@ -23,9 +23,9 @@
 -- so every day that passes makes this abort more certain, while a
 -- `--environment=dev` argument is exactly as forgettable in a year as today.
 --
--- It is correct on day one too. Production already holds the two
--- `@letsride.test` fixtures and one real Gmail signup, so the guard fires
--- there right now, before any real rider exists.
+-- It is correct on day one too. Production holds three real signups and, since
+-- 2026-09-18, no `@letsride.test` fixtures at all — so the guard still fires
+-- there right now, on those real rows rather than on the retired fixtures.
 --
 -- Re-running is safe: seed rows are deleted and rebuilt, so this is a reset
 -- rather than an append. The delete cascades through `029`'s FKs.

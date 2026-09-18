@@ -2472,8 +2472,8 @@ The live table is `docs/HANDOFF.md` §Test accounts. This is the history behind 
 
 | Email | Username | State |
 |---|---|---|
-| `duskrider@letsride.test` | `duskrider` | Onboarded. **SQL-inserted**, never signed in |
-| `qa-verify@letsride.test` | `verify24321868` | Onboarded and consented. **SQL-inserted** originally |
+| `duskrider@letsride.test` | `duskrider` | Onboarded. **SQL-inserted**, never signed in. **Deleted from PROD 2026-09-18** |
+| `qa-verify@letsride.test` | `verify24321868` | Onboarded and consented. **SQL-inserted** originally. **Deleted from PROD 2026-09-18** |
 
 **THE WALK NEEDS NO PASSWORD AT ALL — read this before reporting it as blocked, which a session
 did on 2026-09-01.** With `WALK_EMAIL`/`WALK_PASSWORD` both unset, `scripts/walk.mjs` **mints its
@@ -2575,11 +2575,20 @@ onboarding_completed_at = null where id = (select id from auth.users where email
 mechanism and not by sequence.** The walk asserts that sign-out destroys the session, the query
 cache and every `sb-*` key; a *second real rider signing in afterwards* has never been run.
 
-Both accounts are acceptable only because the app is **not live**. **Delete both before launch:**
+Both accounts were acceptable only because the app is **not live**, and both were **deleted from
+PROD on 2026-09-18**, on the product owner's instruction and ahead of the iOS submission:
 
 ```sql
-delete from auth.users where email like '%@letsride.test';
+delete from auth.users where email like '%@letsride.test';   -- run 2026-09-18; PROD answers 0
 ```
+
+**Each was checked before the delete rather than after**, and each held zero postcards, postcard
+comments, clubs owned, club memberships, club threads, rides organised, ride memberships and
+feedback rows, so nothing of anyone else's went with them. That check was not ceremony: the
+account-deletion cascade's own open defect (`add-account-deletion` 1.6b) is that a departing
+rider can destroy third-party postcards, so deleting an account is **not** a safe operation in
+general on this schema — it was safe here because both accounts held nothing. Three real signups
+remain, and `screenshot-account.sql`'s `@letsride.test` arm is retired by the same act.
 
 Two caveats: `.test` is an RFC 2606 reserved TLD that receives no mail, so neither account can
 sign up, recover a password or confirm anything, and PROD has confirmation **on**. Both still

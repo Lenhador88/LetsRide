@@ -44,9 +44,11 @@
 --      cannot start, because nothing points the walk at PROD. It is a POSITIVE
 --      marker of DEV rather than a negative one of PROD, which is the half that
 --      survives PROD growing new kinds of account.
---   2. No `@letsride.test` account exists. Those two rows are PROD's, recorded
---      in `docs/HANDOFF.md` §Test accounts and due for deletion before launch —
---      so this arm is the one that expires, and arm 1 is why that is safe.
+--   2. No `@letsride.test` account exists. Those two rows were PROD's, and they
+--      were deleted on 2026-09-18 — so this arm has now expired exactly as this
+--      comment predicted, and arm 1 is why that was safe to let happen. Kept
+--      rather than deleted: it costs nothing and still refuses a database where
+--      such a row has been reintroduced.
 --
 -- **The caveat, stated rather than papered over:** on a brand-new DEV with no
 -- fixtures at all, arm 1 refuses. That is one deliberate step (run the walk
@@ -89,7 +91,7 @@ begin
     raise exception using
       errcode = 'raise_exception',
       message = format('REFUSING TO SEED: %s @letsride.test account(s) exist.', prod_fixtures),
-      detail  = 'Those two rows are PRODUCTION''s, per docs/HANDOFF.md §Test accounts.',
+      detail  = 'PROD''s own @letsride.test rows were deleted 2026-09-18, so this row is unexpected anywhere.',
       hint    = 'You are pointed at the wrong database. Check DEV_DATABASE_URL.';
   end if;
 
