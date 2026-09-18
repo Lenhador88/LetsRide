@@ -97,32 +97,42 @@ describe('apple-app-site-association', () => {
 })
 
 /**
- * **A native plugin is two things, and adding only the first is silent.**
- *
- * PD-205 added `@capacitor/app` to `package.json` and left the committed
- * `ios/App/CapApp-SPM/Package.swift` listing three plugins. `cap sync` writes
- * that file and no CI job regenerates it, so an Xcode build from the committed
- * project would not have linked `AppPlugin`: the entitlement and the
- * association file would both work, the universal link would open the app, and
- * `appUrlOpen` would never fire. A silent no-op on the exact device run meant
- * to verify the story — caught by `reviewer`, not by any gate, which is why
- * this test now exists.
+ * **A native plugin is two things, and adding only the first is silent.** The
+ * dependency goes in `package.json`; `npx cap sync ios` is what puts it in
+ * `ios/App/CapApp-SPM/Package.swift`, which no CI job regenerates. Skip the
+ * sync and an Xcode build does not link the plugin: the JavaScript resolves,
+ * the event never fires, and nothing is red anywhere.
  *
  * `docs/reference/native-shell.md` §The shell documents the same comparison as
- * a command a session should run. A test is strictly better: nobody has to
- * remember to run it, and the failure names the fix.
+ * a command. A test is strictly better — nobody has to remember to run it, and
+ * the failure names the fix.
  */
 describe('the SPM manifest lists every Capacitor plugin', () => {
   /**
-   * `@capacitor/core` is the runtime rather than a plugin and never appears in
-   * `Package.swift`, so the obvious filter reports one too many on a correct
-   * tree — the trap the reference doc calls out by name.
+   * **Which dependencies belong in the manifest is asked of each package, not
+   * guessed from its name.** A `/^@capacitor\//` prefix is the obvious filter
+   * and it is wrong in both directions: `@capacitor/core` is the runtime and
+   * never appears (the trap `docs/reference/native-shell.md` calls out), while
+   * `@capacitor/ios` and `@capacitor/android` match the prefix and are excluded
+   * today only because they happen to sit in `devDependencies` — Capacitor's own
+   * documented install puts them in `dependencies`, at which point a name filter
+   * reds on a correct manifest.
+   *
+   * A Capacitor plugin declares itself with a `capacitor` field in its
+   * `package.json` carrying an `ios` entry, which is exactly what `cap sync`
+   * reads. Asking that question is exact and survives both cases.
    */
-  const PLUGIN_PACKAGES = /^(@capacitor\/|@aparajita\/|@sentry\/capacitor)/
-
   const plugins = Object.keys(
     (JSON.parse(read('package.json')) as { dependencies: Record<string, string> }).dependencies
-  ).filter((name) => PLUGIN_PACKAGES.test(name) && name !== '@capacitor/core')
+  ).filter((name) => {
+    let manifestJson: { capacitor?: { ios?: unknown } }
+    try {
+      manifestJson = JSON.parse(read(path.join('node_modules', name, 'package.json')))
+    } catch {
+      return false
+    }
+    return manifestJson.capacitor?.ios !== undefined
+  })
 
   const manifest = read(path.join('ios', 'App', 'CapApp-SPM', 'Package.swift'))
 
@@ -137,6 +147,23 @@ describe('the SPM manifest lists every Capacitor plugin', () => {
     // dependency that is actually installed.
     for (const plugin of plugins) {
       expect(manifest).toContain(`node_modules/${plugin}`)
+    }
+  })
+
+  /**
+   * **`.package(…)` declares the dependency; `.product(…)` is what LINKS it.**
+   * Deleting one `.product` line leaves every `.package` entry in place, so a
+   * count of packages alone stays green while `AppPlugin` is not in the binary
+   * — the identical silent no-op this whole block exists to catch, one line
+   * further down the file.
+   */
+  it('links every plugin into the App target, not just declares it', () => {
+    const target = manifest.slice(manifest.indexOf('targets:'))
+    const linked = [...target.matchAll(/\.product\(name: "([^"]+)", package: "([^"]+)"\)/g)]
+    const declared = [...manifest.matchAll(/\.package\(name: "([^"]+)"/g)].map((m) => m[1])
+
+    for (const name of declared) {
+      expect(linked.some(([, , pkg]) => pkg === name)).toBe(true)
     }
   })
 

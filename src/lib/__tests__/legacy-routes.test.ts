@@ -129,6 +129,26 @@ describe('legacyRouteTarget', () => {
     )
   })
 
+  /**
+   * `URL.search` is empty or `?`-prefixed, so the bare form is not reachable
+   * from today's caller — but this module has a second reader and a stated
+   * contract that the two agree, and a stripped `?` glues the parameter onto
+   * the id (`?id=<uuid>utm=x`), which is a wrong URL rather than a missing one.
+   */
+  it('normalises the search, whichever shape a caller passes', () => {
+    for (const search of ['?utm=x', 'utm=x']) {
+      expect(legacyRouteTarget(`/postcards/${ID}`, search)).toBe(
+        `/postcards/detail?id=${ID}&utm=x`
+      )
+    }
+    // A bare `?` is what an empty query would look like if `URL` ever kept it;
+    // it must not become a trailing separator.
+    expect(legacyRouteTarget(`/postcards/${ID}`, '?')).toBe(`/postcards/detail?id=${ID}`)
+    // And the one arm whose destination carries no `?id=` of its own.
+    expect(legacyRouteTarget('/rides/detail/chat', `id=${ID}`)).toBe(`/rides/detail?id=${ID}`)
+    expect(legacyRouteTarget('/rides/detail/chat', '?')).toBe('/rides/detail')
+  })
+
   it('does not match a UUID buried deeper in the path', () => {
     expect(legacyRouteTarget(`/rides/${ID}/crew/extra`)).toBeNull()
     expect(legacyRouteTarget(`/x/rides/${ID}`)).toBeNull()

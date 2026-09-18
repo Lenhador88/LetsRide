@@ -87,13 +87,19 @@ export function deepLinkTarget(url: string, origin: string): string | null {
   // link on the trusted host — and a pathname of `//evil.com/x`. Handed to
   // `router.replace`, Next reads a protocol-relative path as an EXTERNAL url
   // and calls `location.replace('https://evil.com/x')`: the webview leaves the
-  // app, with no address bar to show where it went. `/\evil.com` is the same
-  // case, since WHATWG parsing turns the backslash into the second slash.
+  // app, with no address bar to show where it went.
   //
   // `safeNext` is the repo's existing answer to exactly this shape — it is what
   // guards the `next` parameter on `/auth/confirm` and `/auth/callback` — so it
   // is reused rather than re-spelled. Same rule, one definition, one set of
   // tests: a fix to either flows to both.
+  //
+  // **It is very slightly over-strict here, and that is the direction to err
+  // in.** `safeNext` rejects any backslash anywhere, while `URL` folds `\` to
+  // `/` only inside the *path* of a special scheme — so a literal backslash in
+  // a query or fragment survives parsing and is refused here while the same URL
+  // resolves on the web. The link does nothing rather than doing something
+  // wrong, and no URL this app generates contains one.
   return safeNext(target)
 }
 

@@ -93,12 +93,28 @@ export const RETIRED_CHAT_ROUTES = {
  * incoming query to a redirect destination and the two readers must agree. It
  * is load-bearing for the retired-chat case, where `/rides/detail/chat?id=<uuid>`
  * has the id in the query already and nowhere else.
+ *
+ * **`search` is `URL.search`'s shape** — empty, or `?`-prefixed — and it is
+ * normalised rather than assumed. The bare-string form is not reachable from
+ * today's one caller, but this module has a second reader and a stated contract
+ * that the two agree, so a caller passing `utm=x` gets `&utm=x` rather than a
+ * destination with the parameter glued onto the id.
  */
 export function legacyRouteTarget(pathname: string, search = ''): string | null {
   const uuid = new RegExp(`^(${LEGACY_UUID_PATTERN})$`)
+  // Normalised rather than assumed: `?utm=x`, `utm=x` and `` all have to reach
+  // the same destination, because a stripped `?` would otherwise glue the
+  // parameter onto the id — `?id=<uuid>utm=x`.
+  const params = search === '' || search === '?' ? '' : search.replace(/^\?/, '')
+  /** Appended to a destination that already carries `?id=`. */
+  const extra = params === '' ? '' : `&${params}`
+  /** Appended to a destination that carries no query of its own. */
+  const query = params === '' ? '' : `?${params}`
 
   if (pathname === RETIRED_CHAT_ROUTES.detail) {
-    return `/rides/detail${search}`
+    // The only arm whose destination has no `?id=` of its own — the id is in
+    // the incoming query already, which is the whole point of this shape.
+    return `/rides/detail${query}`
   }
 
   for (const [base, tail] of LEGACY_DETAIL_ROUTES) {
@@ -117,14 +133,14 @@ export function legacyRouteTarget(pathname: string, search = ''): string | null 
     // loses it in the shell — the exact divergence this shared table exists to
     // prevent. `id` is written first, so it wins `searchParams.get('id')` even
     // if the incoming query carries one of its own.
-    return `${base}/detail${tail}?id=${id}${search.replace(/^\?/, '&')}`
+    return `${base}/detail${tail}?id=${id}${extra}`
   }
 
   const chatPrefix = `${RETIRED_CHAT_ROUTES.withId}/`
   const chatSuffix = '/chat'
   if (pathname.startsWith(chatPrefix) && pathname.endsWith(chatSuffix)) {
     const id = pathname.slice(chatPrefix.length, -chatSuffix.length)
-    if (uuid.test(id)) return `/rides/detail?id=${id}${search.replace(/^\?/, '&')}`
+    if (uuid.test(id)) return `/rides/detail?id=${id}${extra}`
   }
 
   return null
