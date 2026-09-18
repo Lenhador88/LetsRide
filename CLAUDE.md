@@ -790,8 +790,9 @@ is the backlog, and it is not this hook's to clear.
 Linear call of a session, and before ANY call touching a Routine. What must be true without it:
 
 - Workspace **`lets-ride`**, team **`PD`**. **Pass the ids, never the display names** — team
-  `7388c68e-ef17-4998-a9b7-d8ad8ce66038` (its name has been changed and a stale name filter
-  answers `[]` rather than erroring), project `88f3f224-ecf0-46f0-a032-c86b7a12f81c` (the name
+  `7388c68e-ef17-4998-a9b7-d8ad8ce66038` (its name has been changed, and a stale team name fails
+  in more than one shape — `[]` from one call and `Could not find team` from another, so an empty
+  answer is not proof the name is right), project `88f3f224-ecf0-46f0-a032-c86b7a12f81c` (the name
   holds a curly apostrophe, and the straight-quote version silently matches the deprecated
   project). Read the field back off the response.
 - **Do not ask permission to touch Linear** (standing grant, 2026-08-07) — except to delete

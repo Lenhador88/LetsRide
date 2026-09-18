@@ -12,10 +12,24 @@ you set back off the response**.
 
 **A team filter is the same trap one level up, and it has already fired.** The team was displayed
 as `Pedro & Dave` until 2026-09-18 and is `Let's ride` now — one rename, nothing in the repo able
-to see it. A stale team name does not error everywhere: `list_issue_statuses` answers `[]` and
-`list_issue_labels` errors, and a procedure that reads *no status came back* as *stop and say so*
-takes the queue down silently. `list_teams` is the one call that recovers it; the id above does
-not move.
+to see it.
+
+**The same stale name does not fail the same way twice, which is what makes it hard to diagnose.**
+Measured within two minutes on 2026-09-18, all on `team=Pedro & Dave`: `list_issue_labels` answered
+`Could not find team`, the 14:40Z queue firing got that same error from `list_issue_statuses`
+(PD-460 records it), and the 14:41Z firing got `[]` from `list_issue_statuses` — twice, on two
+calls ten minutes apart. **So an empty answer is not proof the name is right**, and it is the
+dangerous shape: a procedure that reads *no status came back* as *stop and say so* — which
+`queue-run.md` STEP 1 does — takes the queue down silently rather than loudly. Re-derive with the
+call that recovers a renamed team, whichever shape you met:
+
+```
+# via the Linear MCP: list_teams   -> the live name and the id; the ids above do not move
+```
+
+**Three near-identical names now sit one entity-type apart** — the team `Let's ride`, the live
+project `Let's ride (AI)` and the deprecated project `Let's Ride`. A name lookup is *more*
+ambiguous after the rename, not less, which is the second reason both ids are written above.
 
 **There is a second project called `Let's Ride` and it is deprecated** — 27 issues from 2024–2025
 describing a Thunkable/Firebase build that no longer exists. Not a source of truth; no work is
