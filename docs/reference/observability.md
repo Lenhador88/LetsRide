@@ -93,9 +93,17 @@ is one accepted call plus the MCP client's own guard, which is `> 24h` rather
 than `>=` — not a reading of the API's cap, which nothing here can see.)
 Trimming either would have looked like a fix.
 
-**No session can confirm the fix end to end** — `api.supabase.com:443` is a
-policy denial at the agent proxy (403 to CONNECT) — so the first green run of
-the workflow is the proof.
+**Confirmed by run 38** — dispatched against `development` at `ebc8931` on
+2026-09-18T16:11Z, **exit 0 on both projects**, the first non-red run in 38.
+Exit 0 rather than 1 because both windows were genuinely empty, and that is
+worth stating because "no rows" is also what a silently-broken filter looks
+like: the same SQL through `query_logs` returns `{"result":[]}` on DEV in the
+same hour, and a bare `select count(*) from logs where source = 'edge_logs'`
+over the same window returns 0. `parseRows` throws on any envelope that is not
+`result`/`error`, so an empty result is a real read.
+
+**No session can re-run it locally** — `api.supabase.com:443` is a policy denial
+at the agent proxy (403 to CONNECT).
 
 **The four-day claim that the secret was missing is the lesson here.** Nothing
 was red, nothing contradicted it, and the check that would have caught it is the
@@ -141,8 +149,8 @@ SUPABASE_ACCESS_TOKEN=sbp_... npm run logs:errors -- --prod  # PRODUCTION
 
 `scripts/db/logs-errors.mjs` carries the query and the credential rules. **Its
 SQL is verified against both projects; its HTTP call was refused 14 runs out of
-14 until PD-421 corrected the endpoint** (above), and the first green run is what
-confirms the correction. **No session can exercise it** —
+14 until PD-421 corrected the endpoint, and run 38 confirms the correction**
+(above). **No session can exercise it** —
 `api.supabase.com:443` is a policy denial at the agent proxy, which answers 403
 to CONNECT, so `fetch` reports only "fetch failed" and curl reports status 000 —
 so a fix is tested through the workflow, not from here.
