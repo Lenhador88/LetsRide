@@ -4957,9 +4957,16 @@ select public.accept_terms() is not null as consented;
 select set_config('test.uid', '', false);
 reset role;
 
+-- Compared against the function rather than against a literal. This assertion
+-- read '0-placeholder' until `118` moved the string, and it would have gone red
+-- on a migration that changed nothing it is about: what `030` guarantees is that
+-- `accept_terms()` stamps THE CURRENT VERSION, and the current version is by
+-- definition whatever this function returns. A hardcoded value tests the
+-- constant instead, and has to be chased by every version bump for ever.
 select assert_eq(
   (select terms_version from profiles where id = '00000000-0000-0000-0000-000000030d01'),
-  '0-placeholder', '030: accept_terms() stamps the current version alongside the timestamp');
+  private.current_terms_version(),
+  '030: accept_terms() stamps the current version alongside the timestamp');
 
 -- Idempotency now pins the version as well as the timestamp: a rider who
 -- consented under one version is not silently re-recorded under a later one.
@@ -36772,6 +36779,61 @@ select set_config('test.uid', '', false);
 reset role;
 select set_config('test.uid', '', false);
 rollback to savepoint thread_activity_116;
+
+
+\echo '# 118 — the terms name a person, so the version stops saying they do not (PD-459)'
+
+-- `030`'s section above owns the MECHANISM — server-owned column, no client
+-- grant, idempotent stamp. This owns the VALUE, which is the only thing `118`
+-- changes, and it is asserted here rather than folded into `030` because the two
+-- fail for different reasons: `030` breaks if a rider can reach the column,
+-- this breaks if the string and the published document drift apart.
+
+select assert_eq(
+  private.current_terms_version(),
+  '1.0', '118: the stamped version is 1.0 — the first text a rider could be held to');
+
+-- Nothing was backfilled, for the third time and the same reason: a version
+-- invented for a consent that predates the TEXT is as fabricated as one invented
+-- for a consent that predates the column. Asserted on the seed rather than on a
+-- count, because the counts move with every fixture added above.
+savepoint terms_version_118;
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000001180d01', 'pre-118@example.com');
+reset role;
+
+update public.profiles
+   set terms_accepted_at = '2026-09-01T00:00:00Z', terms_version = '0-placeholder'
+ where id = '00000000-0000-0000-0000-000001180d01';
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001180d01', false);
+select public.accept_terms();
+select set_config('test.uid', '', false);
+reset role;
+
+select assert_eq(
+  (select terms_version from profiles where id = '00000000-0000-0000-0000-000001180d01'),
+  '0-placeholder',
+  '118: ** a rider who consented to the placeholder text keeps 0-placeholder. ** the version bump is not a re-consent, and accept_terms() must not upgrade an older record');
+
+rollback to savepoint terms_version_118;
+
+-- The value is still not a client-readable fact. `118` re-states `030`'s revoke
+-- because a control nobody re-states is one the next `create or replace` can
+-- drop silently, so the assertion is re-stated with it.
+select assert_eq(
+  has_function_privilege('authenticated', 'private.current_terms_version()', 'execute'),
+  false, '118: authenticated still holds no EXECUTE on the version function');
+select assert_eq(
+  has_function_privilege('anon', 'private.current_terms_version()', 'execute'),
+  false, '118: nor does anon');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'current_terms_version'),
+  0, '118: and it is still not published by PostgREST');
 
 
 rollback;

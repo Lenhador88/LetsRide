@@ -424,7 +424,16 @@ export const claims = [
     // refs because there is no direction to infer, and the day they diverge
     // again the sentence has to name them and this pattern has to move with it.
     // Two edits, one commit. Still never a relaxed regex.
-    pattern: /\*\*Applied state: (\d+) files, and BOTH projects are at `\d+` — measured/,
+    // 2026-09-18: `117` (an unmerged branch's) and `118` (PD-459) are on DEV
+    // alone and this went red for the THIRTEENTH time, on the LEVEL sentence
+    // again. Pinned back to DEV AHEAD with both `at \`NNN\`` captures. What is
+    // new here is the FILE COUNT's relationship to them: `117`'s file is on a
+    // branch that has not merged, so `ls` counts 117 files whose highest prefix
+    // is `118` — the count and the level differ by more than the gap, and
+    // neither number reveals it. That belongs in the prose beside the sentence
+    // rather than in this pattern, exactly as the 2026-09-06 note ruled for the
+    // deliberately-unapplied `109`, and it is there. Two edits, one commit.
+    pattern: /\*\*Applied state: (\d+) files, DEV at `\d+` and PROD at `\d+` — measured/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,

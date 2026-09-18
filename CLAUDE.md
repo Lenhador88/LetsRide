@@ -328,12 +328,14 @@ repointed. `docs/ENVIRONMENTS.md` is the contract. **Never promote a Vercel prev
 — both Supabase variables are inlined at build time and promote does not rebuild. **Check drift
 rather than claiming it**: `npm run db:drift` compares migration *names*.
 
-**Applied state: 116 files, and BOTH projects are at `116` — measured 2026-09-08.** DEV-ahead
+**Applied state: 117 files, DEV at `118` and PROD at `116` — measured 2026-09-18.** DEV-ahead
 is the resting state between a merge and its promotion; promote everything the gap contains, in
 filename order, per `docs/ENVIRONMENTS.md` §Migrations, and record each file's ordering in
 `docs/reference/migrations.md` §Applied state. Count rather than trust it — `list_migrations`
 against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV records THREE rows with
-no file and PROD none** — the long-standing hand-applied ones, which is why DEV answers 119 rows.
+no file and PROD none** — the long-standing hand-applied ones; DEV's other two are `117` and `118`,
+applied migration-first ahead of their merges. **`117`'s file is on an unmerged branch, so `ls`
+skips `116` → `118`** — take the next number off `list_migrations`, never off the tree.
 **`113` then `114` was a required order on the PROD promotion and must not be collapsed** if it is
 ever replayed: `114` refuses a NULL country, so applied ahead of the bundle that writes one it
 strands every new signup in a wizard with no skip. PROD's last four rows are `home_country`,
