@@ -23,13 +23,9 @@ export default function PrivacyPage() {
     <>
       <h1 className="text-xl font-semibold">Privacy Statement</h1>
       <p className="text-muted">
-        Placeholder. The signup flow links here because a rider must be able to read this
-        before accepting it; the binding copy is a legal deliverable and has not been written
-        yet.
-      </p>
-      <p className="text-muted">
-        Do not treat this page as a privacy notice. It exists so the signup checkbox has a
-        real destination, and must be replaced before the app accepts real users.
+        This describes what LetsRide collects about you, who else it reaches, and what you can
+        do about it. It is written from what the app actually does rather than from a template,
+        and we keep it that way — if something here stops being true, the page changes.
       </p>
 
       <h2 className="text-base font-semibold pt-4">Who processes your data today</h2>

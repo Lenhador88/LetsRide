@@ -935,7 +935,8 @@ export const claims = [
     kind: 'shell',
     cmd:
       `grep -rn "letsride\\.social" src/ --include=*.ts --include=*.tsx ` +
-      `| grep -v "__tests__" | grep -vE ':[0-9]+:\\s*(\\*|//|/\\*)' | wc -l`,
+      `| grep -v "__tests__" | grep -v "@letsride\\.social" ` +
+      `| grep -vE ':[0-9]+:\\s*(\\*|//|/\\*)' | wc -l`,
     about: '§Branching & CI: the build-time production origin is written down exactly once in src/',
   },
 

@@ -833,7 +833,8 @@ defaults — after applying a migration to a hosted project, also read the secur
   `grep -rn "window.location.origin" src/ --include=*.ts --include=*.tsx | grep -vE ':[0-9]+:\s*(\*|//|/\*)'`
   is 1 — the definition inside `canonicalOrigin()`, nowhere else. The third holds the ceiling on
   the `og:image` literal:
-  `grep -rn "letsride\.social" src/ --include=*.ts --include=*.tsx | grep -v "__tests__" | grep -vE ':[0-9]+:\s*(\*|//|/\*)'` is 1.
+  `grep -rn "letsride\.social" src/ --include=*.ts --include=*.tsx | grep -v "__tests__" | grep -v "@letsride\.social" | grep -vE ':[0-9]+:\s*(\*|//|/\*)'` is 1 — the
+  `@` exclusion is `SUPPORT_EMAIL`, an address on the same domain and not an origin.
 - **Branch off `development`, and open PRs against `development` — not `main`.** `main` receives
   exactly one kind of PR: the promotion from `development`.
 - **Never promote a Vercel preview to production**, and never merge `main` into a feature branch.
