@@ -194,8 +194,10 @@ properties of the repo rather than hypotheticals:
    `@sentry/react` and hands it the options as its sibling `init`; the pair
    covers both build shapes, so `@sentry/nextjs` was NOT taken alongside them.
    `@sentry/capacitor` is additionally a native plugin.
-2. **A store privacy label.** Still `native`'s, and PD-353's unmasked session
-   replay moves it further than this does.
+2. **A store privacy label.** Still `native`'s, and `ios/App/App/PrivacyInfo.xcprivacy`
+   (PD-455) is now the list to fill both store questionnaires from.
+   PD-353's unmasked replay used to be what moved that label furthest;
+   PD-456 switched recording off, so these two SDKs are what is left.
 3. **The consent question turned out to be narrower here than it looked.** It
    lands mostly on analytics, where PD-353 built a separate opt-out stamp
    (`096`). Error reporting sends no rider content by design — see the scrub
@@ -267,8 +269,7 @@ the normal state of DEV, every preview and this container.
 | Sentry DSN | **Missing.** Code ships and stays silent — nothing throws, nothing prints | **Owner**, `ENVIRONMENTS.md` §Owner setup 7b |
 | `NEXT_PUBLIC_POSTHOG_KEY` on Vercel Production | Key exists (PD-353's Ready block carries it); putting it on the target does not | **Owner**, 7c |
 | PostHog's four dashboard toggles | Unverified from here — the code cannot see them, and a mismatch is silent in the expensive direction | **Owner**, 7c |
-| Replay retention | **At whatever the free tier defaults to.** The highest-consequence unset setting here: unmasked video of riders' screens, kept for however long that is. Nothing in the repo can see it | **Owner**, 7c-i |
-| Telling the pilot riders | Not done. PD-353 calls it "a stronger answer than masking" and it costs a sentence; `/legal/privacy` is the written half and does not substitute for it | **Owner**, 7c-ii |
+| The pilot's recordings — **whether any exist is UNKNOWN** | PD-456 stopped new recording on 2026-09-18 and un-collected nothing, so anything captured before then is still in PostHog. How much that is, is not knowable from here and should not be guessed: the key is live in Production only, `opt_out_capturing_by_default` is `true` so only riders who turned usage data ON were ever eligible, and the **project-side** replay toggle was never verified (7c). Signing in to PostHog is the only way to answer it, and it is worth answering before quoting `/legal/privacy`, which now tells riders they may ask for deletion | **Owner**, 7c-i |
 | Sentry's alert rule | Not set. A crash spike on a fresh release has to be known in minutes, and a project created with defaults will not do that. Distinct from the alert→ticket automation, which PD-315 excludes | **Owner**, 7c-iii |
 | The transport, either SDK | **Never exercised.** No DSN and no PostHog key anywhere the walk can reach, and both hosts are outside this container's network policy | Hand-verified on PROD after the promotion. PD-353 makes it a named step before `Done (in production)` |
 | `096` | On DEV. **Additive, so it applies to PROD BEFORE the build serves** — build-first gives `sendFeedback` a `PGRST204` on a column that does not exist and takes feedback submission down entirely. No client ordering constraint | The promotion — **`096` FIRST, before the build serves; `092`–`095` after it is confirmed serving.** Two groups on opposite sides of the build, see the note below |
@@ -299,8 +300,10 @@ curl -s -o /dev/null -w '%{http_code}\n' \
 
 **Two things a reviewer should know are assumptions rather than measurements:**
 
-- **The place-search field is BLOCKED from session replay, and the product owner asked for
-  *unmasked*.** This is one narrowing, taken deliberately and stated rather than slipped in:
+- **The place-search field is BLOCKED from session replay — and since PD-456 there is no replay
+  at all, so the block is dormant rather than load-bearing.** It is kept wired because the
+  mechanism below is the part a masked re-enablement would have to rediscover. The narrowing was
+  taken deliberately and stated rather than slipped in:
   `place_search_attempts` (`069`) holds no column that could store a search term because a meeting
   point is frequently a home address, and an unmasked replay of that field reinstates in a
   third-party store exactly what the schema was written to refuse — at higher fidelity, with a
@@ -312,9 +315,9 @@ curl -s -o /dev/null -w '%{http_code}\n' \
   pilot is most likely to want.
 
   **Read PD-353 carefully before citing it here.** Its "keep the place search masked" sits in the
-  paragraph describing what the FUTURE revisit will probably decide, not the pilot. The settled
-  pilot posture is "ON and UNMASKED" with no carve-out, so this is a real narrowing of an explicit
-  instruction rather than an application of one.
+  paragraph describing what the FUTURE revisit will probably decide, not the pilot. The pilot
+  posture was "ON and UNMASKED" with no carve-out, so this was a real narrowing of an explicit
+  instruction rather than an application of one — and PD-456 has since retired the posture itself.
 
   **`ph-mask` does not work for this and the first version used it**, which is worth knowing
   because it is the obvious implementation and it fails silently. rrweb takes an input's VALUE
@@ -324,13 +327,14 @@ curl -s -o /dev/null -w '%{http_code}\n' \
   leaves the geocoder's returned addresses on screen. It has to be a BLOCK class on the wrapper
   that contains both.
 - **Passwords are masked whatever `maskAllInputs` says.** Measured against the installed rrweb
-  recorder, not recalled, and asserted in `src/lib/analytics/__tests__/client.test.ts` — because
-  the entire unmasked posture rests on it and an SDK bump that changed it would be silent.
+  recorder, not recalled — it is what the entire unmasked posture rested on, and an SDK bump that
+  changed it would have been silent. Moot while recording is off, and the first thing to
+  re-measure if it ever returns.
 
 **The gap neither story closes, and it is the one worth reading:** `delete-account` does not reach
-PostHog. A rider who erases their account leaves their events and their **unmasked recordings**
-behind, so `029`'s "the row goes" contract is silently false for the one processor holding video of
-them. `identify()` uses `auth.uid()` so the handle exists; wiring the erasure needs a PostHog
+PostHog. A rider who erases their account leaves their events behind — and, until the pilot's
+recordings are deleted, those too — so `029`'s "the row goes" contract is silently false for that
+processor. `identify()` uses `auth.uid()` so the handle exists; wiring the erasure needs a PostHog
 private API key in the function's secret store, which is a new secret and arguably its own story.
 Until then `/legal/privacy` and `/legal/account-deletion` both say plainly that deletion does not
 reach it, and name the email route that does. `ENVIRONMENTS.md` §Owner setup 7d.

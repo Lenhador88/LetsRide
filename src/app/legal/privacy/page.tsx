@@ -97,50 +97,57 @@ export default function PrivacyPage() {
           device. Sentry sees your IP address the way any website you connect to does, but we
           do not attach it to the report.
         </li>
-        {/* PD-353, and the hardest bullet on this page to write honestly.
+        {/* PD-353, and PD-456 which switched screen recording OFF on
+            2026-09-18. This bullet no longer describes a replay, because there
+            is no longer one to describe — `disable_session_recording` is
+            `true`.
 
-            Three claims it must NOT make, each of which the obvious wording
-            makes by accident:
+            Two claims it must still NOT make, each of which the obvious
+            wording makes by accident:
 
             1. That the opt-out deletes anything. It stops future collection.
                `delete-account` does not reach PostHog at all, so a rider who
-               erases their account still leaves their events and recordings
-               behind — an open item on PD-353, and until it is wired the only
-               honest thing to name is the email route, exactly as the
-               account-deletion page already does for riders who cannot sign in.
-            2. That a rider can opt out of appearing in someone ELSE'S
-               recording. They cannot, and no schema change could: an unmasked
-               recording captures whatever was on the recorded rider's screen,
-               including other people's postcards, captions, bylines and photos.
-               That limit is the entire reason PD-353's pilot posture carries a
-               retirement condition, so the page states it rather than letting
-               the toggle imply otherwise.
-            3. That the recording is somehow anonymised. It is not — that is
-               what "unmasked" means, and saying so plainly is the point of
-               naming the two things that ARE withheld.
+               erases their account still leaves their events behind — an open
+               item on PD-353, and until it is wired the only honest thing to
+               name is the email route, exactly as the account-deletion page
+               already does for riders who cannot sign in.
+            2. That recording having stopped un-collects what was already
+               recorded. It does not. The pilot ran, and the page says so in
+               the past tense rather than quietly dropping the paragraph —
+               a rider who read the old wording and opted out because of it is
+               owed the rest of that sentence.
+
+            The claim about appearing in another rider's recording is gone
+            because the thing it warned about is gone. Put it back verbatim if
+            replay ever returns, masked or not: it was true of any recording,
+            not only an unmasked one.
 
             Written in the present tense about what the app does when a rider
             acts, like every other bullet here. */}
         <li>
           <span className="font-medium">PostHog</span> — records how the app is used, so we can
           see what is broken or confusing while LetsRide is small. It receives the screens you
-          open, moments like creating a ride or joining a club, and{' '}
-          <span className="font-medium">a video replay of your own screen as you use the app</span>
-          , which shows what you type. Your password is never recorded, and neither is the
-          meeting point or place you search for — that field and the suggestions under it are
-          left out of the recording entirely. Everything else on your screen is.
+          open and moments like creating a ride or joining a club.{' '}
+          <span className="font-medium">It does not record your screen.</span> What it gets is
+          the name of the screen and the action, not a picture of it and not what you type.
         </li>
         <li className="list-none pl-0 pt-2">
-          <span className="font-medium">Turning that off, and what it does not do.</span> Open{' '}
-          <span className="font-medium">Profile</span>, then the menu, then{' '}
-          <span className="font-medium">Privacy</span>. It stops any further recording of you
-          from that moment. It does not delete what has already been collected, and deleting
-          your account does not delete it either — for that, email{' '}
+          <span className="font-medium">We used to be set up to record screens, and
+          stopped.</span> Until September 2026 this app was configured to send PostHog a video
+          replay of your own screen. That is switched off and no longer happens to anybody.
+          Whether any recording of you was ever actually made depends on whether you had turned
+          usage data on at the time — if you want any that exist deleted, email{' '}
           <a href={`mailto:${SUPPORT_EMAIL}`} className="underline">
             {SUPPORT_EMAIL}
           </a>{' '}
-          and ask. It also cannot remove you from another rider&rsquo;s replay: if their screen
-          showed your postcard or your name, that is in their recording rather than yours.
+          and ask.
+        </li>
+        <li className="list-none pl-0 pt-2">
+          <span className="font-medium">Turning the rest off, and what it does not do.</span>{' '}
+          Open <span className="font-medium">Profile</span>, then the menu, then{' '}
+          <span className="font-medium">Privacy</span>. It stops any further collection from
+          that moment. It does not delete what has already been collected, and deleting your
+          account does not delete it either — for that, use the same address above.
         </li>
       </ul>
       {/*

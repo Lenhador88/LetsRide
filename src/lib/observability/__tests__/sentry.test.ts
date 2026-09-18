@@ -143,9 +143,11 @@ describe('what the source must and must not contain', () => {
   })
 
   it('imports no replay integration', () => {
-    // Replay is PostHog's (PD-353) and is ON and unmasked for the pilot there.
-    // A second recorder is a second copy of the same footage, a second privacy
-    // disclosure and a second store-privacy-label answer.
+    // Replay was PostHog's (PD-353) and is now nobody's — PD-456 turned it off
+    // there. A second recorder would have been a second copy of the same
+    // footage, a second privacy disclosure and a second store-privacy-label
+    // answer; with replay gone entirely, adding one here would reintroduce all
+    // three from a standing start.
     expect(source.toLowerCase()).not.toContain('replay')
   })
 })

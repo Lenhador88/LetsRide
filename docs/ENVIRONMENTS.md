@@ -597,7 +597,10 @@ neither can any preview. Two things cover it and both are required —
 hand-verified once on PROD after a promotion**, before PD-353 reaches `Done (in production)`.
 
 **Four PostHog settings live in a dashboard as well as in the code, and nothing checks that the
-two agree.** Autocapture off, heatmaps off, web vitals on, session replay on. A mismatch fails
+two agree.** Autocapture off, heatmaps off, web vitals on, and **session replay off since
+PD-456 (2026-09-18)** — the code sets `disable_session_recording: true`, so the dashboard's own
+recording toggle can no longer produce a recording whatever it says; leave it off anyway rather
+than relying on that. A mismatch fails
 silently in the expensive direction — autocapture switched on in the dashboard collects element
 text from every screen while `src/lib/analytics/client.ts` says it does not. Same class of
 drift as the auth settings below, and the same remedy: read the dashboard, do not trust a
@@ -829,24 +832,27 @@ Nobody in a session can do these.
    nothing prints, so there is no symptom to debug and no way for a session to tell it apart
    from working.
 7c. **Confirm the four PostHog dashboard toggles** (PD-353) — autocapture off, heatmaps off, web
-   vitals on, session replay on — and put `NEXT_PUBLIC_POSTHOG_KEY` on **Production only**. The
-   code cannot see the dashboard half, and a mismatch is silent.
-7c-i. **Set replay retention to the shortest the plan allows** (PD-353), and check what the free
-   tier actually permits rather than assuming it is configurable. This is the highest-consequence
-   of the PostHog settings and the easiest to leave at a default: unmasked video of riders'
-   screens, sitting for however long the plan defaults to. Nothing in the repo can see or set it.
-7c-ii. **Tell the pilot riders** (PD-353). They are people who can be told, which the issue calls
-   "a stronger answer than masking", and it costs a sentence. `/legal/privacy` carries the written
-   version; this is saying it to the group directly, which the written page cannot substitute for
-   while the recording is unmasked.
+   vitals on, session replay **off** — and put `NEXT_PUBLIC_POSTHOG_KEY` on **Production only**.
+   The code cannot see the dashboard half, and a mismatch is silent.
+7c-i. **Find out whether the pilot recorded anything, then delete it** (PD-456). Recording is off
+   in the code as of 2026-09-18, which stops new ones and un-collects nothing. **How much exists
+   is unknown from here and should not be guessed**: the key is live in Production only,
+   `opt_out_capturing_by_default` is `true` so only riders who turned usage data on were ever
+   eligible, and 7c's project-side replay toggle was never confirmed. `/legal/privacy` is written
+   to match that uncertainty — it says the app *was configured to* record and that riders may ask
+   for anything that exists. Signing in to PostHog is the only way to answer it.
+7c-ii. ~~**Tell the pilot riders**~~ — **retired by PD-456.** It existed because the recording was
+   unmasked and telling people was "a stronger answer than masking". There is no recording to
+   disclose in advance any more; what is owed instead is 7c-i, which is about what was already
+   captured rather than what will be.
 7c-iii. **Set Sentry's alert rule to real-time** (PD-315). Not the alert→ticket automation, which
    `observability.md` §Not in PD-315 carves out as its own deliverable — this is the project's own
    notification rule. A crash spike on a fresh release has to be known in minutes, and a project
    created with defaults will not do that.
 7d. **Decide what happens to PostHog's records when a rider deletes their account** (PD-353,
    open). `delete-account` does not reach PostHog, so a rider who erases their account leaves
-   their events and their unmasked recordings behind — `029`'s "the row goes" contract is
-   silently false for the one processor holding video of them. `identify()` uses `auth.uid()`
+   their events behind — and, until 7c-i is done, the pilot's recordings of them too, so
+   `029`'s "the row goes" contract is silently false for that processor. `identify()` uses `auth.uid()`
    so the handle exists; wiring the erasure needs a PostHog private API key in the function's
    secret store, which is a new secret and arguably its own story. Until then
    `/legal/privacy` and `/legal/account-deletion` both say plainly that deletion does not reach

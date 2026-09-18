@@ -444,9 +444,13 @@ export function PlaceSearchField({
   }
 
   return (
-    /* `NO_CAPTURE_CLASS` is the ONE narrowing of PD-353's unmasked session
-       replay, and it sits HERE — on the wrapper — rather than on the input, for
-       two reasons that each defeat the obvious placement on their own.
+    /* `NO_CAPTURE_CLASS` was the ONE narrowing of PD-353's unmasked session
+       replay. **Replay is off as of PD-456, so this blocks nothing today** — it
+       is kept, with its tests, because the two reasons below are what a masked
+       re-enablement would otherwise have to rediscover, and this repo shipped
+       the wrong version of them once. It sits HERE — on the wrapper — rather
+       than on the input, for two reasons that each defeat the obvious
+       placement on their own.
 
        rrweb takes an input's value from `maskInputOptions` alone and never
        consults a text-mask class, so a class on the `<input>` records the

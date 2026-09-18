@@ -87,8 +87,7 @@ export default function AccountDeletionPage() {
           Named here rather than left to the privacy page because THIS is the
           page a rider reads when they are deciding to leave. */}
       <p className="text-muted">
-        One thing is not removed automatically: the usage records and screen replays described
-        in our{' '}
+        One thing is not removed automatically: the usage records described in our{' '}
         <Link href="/legal/privacy" className="underline">
           Privacy Statement
         </Link>

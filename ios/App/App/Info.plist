@@ -26,8 +26,12 @@
 	<string>public.app-category.social-networking</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>LetsRide uses the camera when you take a photo for a postcard, a club or your profile. Photos are only taken when you choose to.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>LetsRide uses your location to sort rides and clubs by how far they are from you. It is only used while the app is open.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>LetsRide opens your photo library when you pick a photo for a postcard, a club or your profile. Nothing is read until you choose one.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -53,7 +57,7 @@
 	<string>Main</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
