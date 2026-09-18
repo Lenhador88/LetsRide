@@ -16,7 +16,7 @@ src/
 │   │   └── profile/        # /profile (your own), /profile/detail (another rider's — view-rider-profile)
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
 │   ├── onboarding/         # /onboarding/terms, /onboarding/username — see decision #5. `location/` went with 075 (PD-286)
-│   ├── legal/              # /legal/terms, /legal/privacy, /legal/account-deletion — public, decision #1
+│   ├── legal/              # /legal/terms, /legal/privacy, /legal/account-deletion, /legal/attributions — the four public pages, decision #1
 │   ├── layout.tsx          # Root layout (Poppins, v2 light theme) — mounts <RouteGuard>
 │   ├── page.tsx            # / — splash resolver: redirects by session (see decision #7)
 │   └── globals.css         # Tailwind import + CSS vars + the safe-area / fixed-bar spacing utilities
@@ -57,6 +57,8 @@ src/
 │   ├── location/           # rider-location.ts (where the rider is — device, then profile city; never prompts), distance.ts (haversine + NEARBY_RADIUS_KM, PD-259), near-label.ts (what to CALL that place — never the profile city beside a device fix)
 │   ├── rides/              # seed-ride-id.ts, audience.ts (narrowsToNobody — the edit guard is about the TRANSITION, PD-338), create-ride-header-title.ts, bottom-slot.ts (which control owns the ride detail's sticky slot, and therefore which entrance to the composer the rider gets — PD-401). `nearby.ts` went with the near-you filter on 2026-08-27 — `/rides/explore` sections on `isNearby(distance_km)` from `lib/location/distance`, which is where that predicate now lives for both tabs
 │   ├── clubs/              # seed-club-id.ts — the default club every rider joins on completing onboarding (058)
+│   ├── legal/              # terms.ts — the operator disclosure and TERMS_VERSION. OPERATOR is NULLABLE on purpose: a placeholder string renders, and the first cut published `[full legal name — PD-459]` to riders inside the art. 3:15d BW identity clause. TERMS_VERSION is pinned to `private.current_terms_version()` (`030`) by its test, because the page's version and the one stamped onto profiles.terms_version are the same claim (PD-459)
+│   ├── support.ts          # SUPPORT_EMAIL — the one published address, rendered by three legal pages rather than copied into them (PD-300)
 │   ├── countries.ts        # ISO 3166-1 list; names via Intl.DisplayNames, flags via regional indicators
 │   └── utils.ts            # cn(), APP_TIME_ZONE, wallClockToUtc(), googleMapsDirectionsUrl(), formatPostcardDate(), formatRideDate/DateLong/Time(), formatChatMessageDay(), rideZoneDayKey(), formatRelativeTime(), formatNotificationStamp(), notificationSection(), getInitials()
 └── types/

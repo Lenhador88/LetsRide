@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { SUPPORT_EMAIL } from '@/lib/support'
 
 /**
- * Static copy, and one of the three pages a rider can reach without a session
+ * Static copy, and one of the four pages a rider can reach without a session
  * (decision #1's deliberate exception, and `/legal/*` in the guard's public
  * denylist). It reads nothing, so there is no query here and no loading state —
  * the directive is here only because the client-rendered shell has no server to
@@ -23,19 +23,30 @@ export default function PrivacyPage() {
     <>
       <h1 className="text-xl font-semibold">Privacy Statement</h1>
       <p className="text-muted">
-        Placeholder. The signup flow links here because a rider must be able to read this
-        before accepting it; the binding copy is a legal deliverable and has not been written
-        yet.
-      </p>
-      <p className="text-muted">
-        Do not treat this page as a privacy notice. It exists so the signup checkbox has a
-        real destination, and must be replaced before the app accepts real users.
+        This describes what LetsRide collects about you, who else it reaches, and what you can
+        do about it. It is written from what the app actually does rather than from a template,
+        and we keep it that way — if something here stops being true, the page changes.
       </p>
 
       <h2 className="text-base font-semibold pt-4">Who processes your data today</h2>
+      {/* This paragraph replaced a dangling one. The page used to open on "Do not
+          treat this page as a privacy notice", and PD-459 deleted that line —
+          correctly, because 212 lines of accurate, measured notice sat under it
+          and the App Store listing points here. But the sentence below it read
+          "Not a substitute for THE NOTICE ABOVE", whose referent went with it,
+          and it then contradicted the new opening two paragraphs later.
+
+          Deleting a disclaimer is bigger than it looks: it turns an honest
+          incomplete page into a complete-sounding incomplete page. What the
+          disclaimer was carrying, and what is said here instead, is the art. 13
+          GDPR core this page still does not have — legal bases, retention,
+          rights, the supervisory authority. Name what is missing; do not go
+          back to denying that the page is what it plainly is. */}
       <p className="text-muted">
-        Not a substitute for the notice above — the binding copy still has to be written. This is
-        a plain list of who currently handles your data, so the gap is at least an honest one.
+        A plain list of who currently handles your data. What this page does not set out yet is
+        the legal basis for each use, how long we keep things, and how to exercise your rights
+        under the GDPR — including your right to complain to the Autoriteit Persoonsgegevens.
+        Until those are here, ask us at the address at the end of this page and we will answer.
       </p>
       <ul className="text-muted list-disc pl-5 space-y-2">
         <li>
@@ -158,8 +169,8 @@ export default function PrivacyPage() {
         nothing to check. PD-297 built the read path behind it; this section is where a rider
         finds out it exists.
 
-        The address is `SUPPORT_EMAIL`, never a literal — see that file, which still carries
-        an owner question about the mailbox itself.
+        The address is `SUPPORT_EMAIL`, never a literal. PD-300 settled which mailbox it is;
+        that file records the measurement and the one thing DNS cannot answer.
 
         THE PHOTO CLAUSE IS THE ONE TO GET RIGHT, and its first version was wrong in a way that
         reads as measured. It said the photo "stops being viewable immediately — no account can
