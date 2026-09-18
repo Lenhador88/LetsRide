@@ -59,8 +59,18 @@ describe('the options we hand PostHog', () => {
     expect(options.capture_performance).toEqual({ web_vitals: true, network_timing: false })
   })
 
-  it('records the session, unmasked except for the place search', () => {
-    expect(options.disable_session_recording).toBe(false)
+  it('records no session at all', () => {
+    // PD-456, product owner 2026-09-18. The assertion that matters is this one
+    // line: unmasked replay filmed other riders' names and photos off the
+    // viewer's screen, and the store's privacy declaration had to say so.
+    expect(options.disable_session_recording).toBe(true)
+  })
+
+  it('keeps the place-search block wired for a masked re-enablement', () => {
+    // These two settings do nothing while recording is off, and they are kept
+    // on purpose — see the config's own comment. `maskAllInputs` stays at its
+    // pilot value rather than being flipped to `true`, because flipping it here
+    // would read as "masked replay ships", which is a decision nobody has made.
     expect(options.session_recording.maskAllInputs).toBe(false)
     // The one narrowing. **`blockClass` and not `maskTextClass`**, and the
     // distinction is the whole mechanism rather than a naming preference:

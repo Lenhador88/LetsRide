@@ -226,15 +226,27 @@ export function buildPostHogOptions() {
     // which is the `?id=` problem again by another route.
     capture_performance: { web_vitals: true, network_timing: false },
 
-    // The pilot posture. `maskAllInputs: false` is what "unmasked" means;
-    // password inputs are masked regardless by rrweb, and `MASK_CLASS` is the
-    // one narrowing — see its own comment.
-    disable_session_recording: false,
+    // OFF, product owner 2026-09-18 (PD-456). The pilot posture was unmasked
+    // replay, and what "unmasked" recorded was not only the viewer's own screen
+    // — it was every other rider's name, face and postcard on it, linked to the
+    // viewer's identity. Declaring that honestly on Apple's Data Collection
+    // questionnaire and Play's Data safety form is a large answer on a
+    // user-generated-content app; with recording off the declaration is crash
+    // diagnostics plus product analytics, which is what `/legal/privacy` now
+    // says. Events are untouched — PD-353's four moments still fire.
+    disable_session_recording: true,
+
+    // **Kept deliberately although nothing records today.** `blockClass` is not
+    // the obvious setting and this repo got it wrong once: rrweb takes an
+    // input's value from `maskInputOptions` alone and never consults a
+    // text-mask class, so the first version of this shipped a block that
+    // recorded the meeting point verbatim. That mechanism, and the structural
+    // tests that pin `NO_CAPTURE_CLASS` to the wrapper rather than the input,
+    // are what a masked re-enablement would otherwise have to rediscover.
+    // Delete this only together with `NO_CAPTURE_CLASS` and its two tests, and
+    // only once replay is decided against for good rather than switched off.
     session_recording: {
       maskAllInputs: false,
-      // Explicit even though it is rrweb's default, so the one narrowing above
-      // is a line a test can read rather than an inherited default that a
-      // future config edit could silently drop.
       blockClass: NO_CAPTURE_CLASS,
     },
 
