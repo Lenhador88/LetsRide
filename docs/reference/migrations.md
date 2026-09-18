@@ -329,10 +329,14 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**117 files, DEV at 121 rows, PROD at 116 — measured 2026-09-18, and no two of those numbers are
-meant to match.** DEV runs **five** ahead of its files: the three long-standing hand-applied rows,
-plus `117` and `118`, each applied migration-first ahead of its own merge. **PROD's count is
-exact**, which is the direction that matters — nothing is applied there without a file behind it.
+**117 files on this branch, DEV at 121 rows, PROD at 116 — measured 2026-09-18, and no two of
+those numbers are meant to match.** The arithmetic, because it is easy to state wrongly and an
+earlier draft of this paragraph did (it said five): 121 − 117 = **4**, and those four are the three
+long-standing hand-applied rows plus `117`, whose file is on an unmerged branch. `118` is not one
+of them — its file is in this branch, which is what makes the baseline 117 rather than
+`development`'s 116. **Against `development` the gap reads five**, and that is the same fact
+counted from the other side rather than a second measurement. **PROD's count is exact**, which is
+the direction that matters — nothing is applied there without a file behind it.
 
 **There is no `117` file on `development` yet, and that is the trap this section exists for.**
 `117_the_welcome_club_hands_back_its_flag` was applied to DEV on 2026-09-18 from a branch that has

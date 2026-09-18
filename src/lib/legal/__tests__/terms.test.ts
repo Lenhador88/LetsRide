@@ -121,7 +121,11 @@ describe('the operator disclosure', () => {
     // half can be edited on its own and left green — including the edit that
     // sets the operator back to `null`, which is a live possibility while the
     // published address is under review.
-    expect(OPERATOR === null).toBe(TERMS_VERSION === PRE_RELEASE_TERMS_VERSION)
+    // `as string` rather than a widened export: the constant's literal type is
+    // worth keeping for every consumer, and this is the one place that needs
+    // it gone — the comparison is provably false TODAY and must survive the
+    // edit that makes it true again.
+    expect(OPERATOR === null).toBe((TERMS_VERSION as string) === PRE_RELEASE_TERMS_VERSION)
   })
 
   it('has no placeholder string to leak, which is why the constant is nullable', () => {

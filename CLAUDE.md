@@ -332,10 +332,10 @@ rather than claiming it**: `npm run db:drift` compares migration *names*.
 is the resting state between a merge and its promotion; promote everything the gap contains, in
 filename order, per `docs/ENVIRONMENTS.md` §Migrations, and record each file's ordering in
 `docs/reference/migrations.md` §Applied state. Count rather than trust it — `list_migrations`
-against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV records THREE rows with
-no file and PROD none** — the long-standing hand-applied ones; DEV's other two are `117` and `118`,
-applied migration-first ahead of their merges. **`117`'s file is on an unmerged branch, so `ls`
-skips `116` → `118`** — take the next number off `list_migrations`, never off the tree.
+against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV answers 121 rows to 117 files
+here, and FOUR of that gap have no file** — the three long-standing hand-applied ones plus `117`,
+whose file is on an unmerged branch; PROD has none. **So `ls` skips `116` → `118`** — take the next
+number off `list_migrations`, never off the tree.
 **`113` then `114` was a required order on the PROD promotion and must not be collapsed** if it is
 ever replayed: `114` refuses a NULL country, so applied ahead of the bundle that writes one it
 strands every new signup in a wizard with no skip. PROD's last four rows are `home_country`,

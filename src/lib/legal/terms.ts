@@ -72,18 +72,19 @@ export const OPERATOR: { readonly name: string; readonly address: string } | nul
  * alone. §11 of the page is written to that reality rather than promising past
  * it.
  */
-export const TERMS_VERSION: string = '1.0'
+export const TERMS_VERSION = '1.0'
 
 /**
  * What `TERMS_VERSION` reads while no operator can be named — `030`'s original
- * value, and the only string in this file with a meaning rather than a number.
+ * value, and the only string in this file that means something rather than
+ * numbering something.
  *
- * Exported so the interlock test can name it instead of quoting it, and **this
- * is why `TERMS_VERSION` above carries an explicit `: string`**: without it
- * TypeScript narrows the constant to the literal `'1.0'` and then rejects the
- * comparison against this one as provably false. That is the compiler being
- * right about today and wrong about the test's job, which is to hold across the
- * edit that sets one of the two back.
+ * Exported so the interlock test can name it rather than quote it. The test
+ * widens `TERMS_VERSION` at the comparison instead of this module widening the
+ * export: TypeScript narrows the constant above to its literal and then rejects
+ * the comparison as provably false, which is the compiler being right about
+ * today and wrong about the test's job — and annotating the export to satisfy
+ * it would cost every consumer the literal type for a reason none of them has.
  */
 export const PRE_RELEASE_TERMS_VERSION = '0-placeholder'
 

@@ -14,23 +14,53 @@
 -- column, the grants or `accept_terms()` moves.
 --
 -- ---------------------------------------------------------------------------
--- Sequencing: MIGRATION FIRST, and the two directions are not symmetric
+-- Sequencing: DEPLOY FIRST, and an earlier draft of this header said the opposite
 -- ---------------------------------------------------------------------------
 -- Neither side of the pipe reads the other at runtime — the page renders
 -- `TERMS_VERSION` from `src/lib/legal/terms.ts` and the database stamps this
--- function — so the window between them writes a consent row whose version and
--- whose text disagree. Which way round decides how bad that row is:
+-- function — so while they disagree, every consent row names a version the
+-- rider did not read. The two directions are not equally bad:
 --
---   migration first → the row says `1.0` for a rider who saw the older page.
---                     Under-claims: a text that says less than `1.0` does.
---   deploy first    → the row says `0-placeholder` for a rider who saw and
---                     accepted the real agreement. The consent is unreadable
---                     as evidence, which is the failure `030` exists to avoid.
+--   the DB is AHEAD of the page → the row says `1.0` for a rider who saw a page
+--                                 that names nobody. It asserts they agreed to
+--                                 the binding text. They did not. That is the
+--                                 fabricated evidence record `030` refused to
+--                                 create by backfill, arrived at the other way.
+--   the DB is BEHIND the page   → the row says `0-placeholder` for a rider who
+--                                 saw the real agreement. It under-claims: the
+--                                 rider agreed to more than the row records,
+--                                 which is the harmless side of a wrong row.
 --
--- So this applies to DEV ahead of the merge, and reaches PROD **with the
--- promotion that carries the page**, never before it: PROD serves `main`, whose
--- `/legal/terms` is still the disclaimer, and stamping `1.0` against that text
--- is precisely the fabricated evidence record `030` refused to backfill.
+-- **So this file must not be applied to a project until that project's bundle is
+-- serving the page that names `1.0`** — `READY` on the merge sha with
+-- `aliasError` null, not "after the merge". For PROD that is the promotion
+-- carrying `src/app/legal/terms/page.tsx`; `main` today has no
+-- `src/lib/legal/terms.ts` at all and its `/legal/terms` still reads "Do not
+-- treat this page as an agreement", so `118` on PROD ahead of it writes exactly
+-- the bad row above.
+--
+-- **An earlier draft of this header had the table upside down** and called
+-- migration-first the safe direction, reasoning that an under-claim was the
+-- worse half. It is not: an under-claim understates a real agreement, and an
+-- over-claim manufactures one. The draft is named rather than quietly replaced
+-- because it was applied on that reasoning — see below — and because a session
+-- replaying this for PROD reads this paragraph and not the git history.
+--
+-- **It WAS applied to DEV ahead of the deploy, on that wrong reasoning, at
+-- 20260918203612.** The window was open for the time between that and the merge
+-- of PD-459's second PR. Nothing was mis-stamped: `count(*) where
+-- terms_version = '1.0'` was **0** on DEV when it was found and 0 when the
+-- deploy landed, because the only writer is a rider completing consent and no
+-- rider did. `npm run walk` mints one, so the window was real rather than
+-- theoretical. Left applied rather than reverted and re-applied: reverting is a
+-- second `create or replace` recorded under a number that then disagrees with
+-- its own file, and merging closes the window in one move instead of three.
+--
+-- **The window does not actually end at the deploy, and no ordering fixes
+-- that.** The bundle is client-rendered with `TERMS_VERSION` inlined at build
+-- time, while `accept_terms()` reads this function live, so a tab loaded before
+-- the deploy keeps the old constant until it reloads. Ordering decides which
+-- direction the skew starts in, not how long it lasts.
 --
 -- ---------------------------------------------------------------------------
 -- No backfill, again, and for the third time the same reason

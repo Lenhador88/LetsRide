@@ -433,6 +433,20 @@ export const claims = [
     // neither number reveals it. That belongs in the prose beside the sentence
     // rather than in this pattern, exactly as the 2026-09-06 note ruled for the
     // deliberately-unapplied `109`, and it is there. Two edits, one commit.
+    //
+    // ** The DEV-AHEAD shape is blind in the direction the LEVEL shape was not,
+    // and this is the first time that is written down. ** Both level numbers are
+    // non-capturing `\d+`, so `DEV at \`999\` and PROD at \`999\`` matches and
+    // passes. The LEVEL shape went red the moment the two diverged, which is how
+    // this entry caught twelve of its thirteen flips; the DEV-AHEAD shape does
+    // NOT go red when they converge, because the sentence still matches with
+    // stale numbers in it. So the promotion that levels the projects leaves
+    // `PROD at \`116\`` false here and in `docs/reference/migrations.md` with
+    // nothing to catch it. Capturing and comparing them is not the fix — this
+    // entry's `cmd` counts files and cannot see either level, which is the same
+    // blind spot the 2026-09-08 note recorded from the other side. The fix is to
+    // re-read this sentence on every promotion, which is what the promotion
+    // checklist in `docs/ENVIRONMENTS.md` §Migrations is for.
     pattern: /\*\*Applied state: (\d+) files, DEV at `\d+` and PROD at `\d+` — measured/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
