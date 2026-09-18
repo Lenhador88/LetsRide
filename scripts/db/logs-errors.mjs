@@ -85,40 +85,37 @@
  * only evidence the shape worked at all; a filter that silently matches nothing
  * looks identical to a quiet day, which is exactly how the 300s went unseen.
  *
- * The HTTP transport here is still NOT verified, and NO SESSION CAN VERIFY IT,
- * which is the reason not to spend an afternoon on it. `api.supabase.com:443` is a
- * policy denial at the agent proxy: the gateway answers 403 to CONNECT, so
- * `fetch` reports the uninformative "fetch failed" and curl reports status 000.
- * Re-derive rather than trusting this line, because a network policy is exactly
- * the kind of thing that changes without telling anyone:
+ * THE TRANSPORT WAS WRONG IN ONE PATH SEGMENT, AND PD-421 IS THAT SEGMENT.
+ * Runs 1–14 (2026-08-31 to 09-06, both projects, scheduled and dispatched
+ * alike) all reached the API with a valid token and all got a 200 carrying
+ * `{"error": "Backend error! Retry your query. …"}`. The cause was
+ * `analytics/endpoints/logs.all` — the Logflare/BigQuery endpoint — being sent
+ * ClickHouse SQL. `buildLogsUrl` above carries the endpoint that matches the
+ * dialect, and the reasoning for why the wrong one reads as right.
+ *
+ * THE OTHER TWO SUSPECTS ARE EXCLUDED BY MEASUREMENT, not by the fix working.
+ * Both were tested on 2026-09-18 through `mcp__Supabase__query_logs` against
+ * `fpmrimzxadewsaiwpsel`, which poses the same GET with the same three query
+ * parameters:
+ *
+ *   - the `sql` parameter carrying a multi-line query WITH its comment block,
+ *     verbatim from the constant above — accepted, `{"result":[]}`;
+ *   - a window of EXACTLY 24h with millisecond precision
+ *     (`2026-09-17T15:44:58.938Z` → `2026-09-18T15:44:58.938Z`) — accepted.
+ *     The cap is `> 24h`, not `>=`, so `end - 24h` was never over it.
+ *
+ * So neither the comment nor the window needs trimming, and trimming either
+ * would have looked like a fix while leaving the endpoint wrong.
+ *
+ * STILL UNVERIFIED END TO END FROM A SESSION, and it cannot be otherwise:
+ * `api.supabase.com:443` is a policy denial at the agent proxy (403 to
+ * CONNECT), so no build container can run this file's `fetch`. A GitHub
+ * Actions runner has no such restriction, which is why
+ * `.github/workflows/log-digest.yml` is the only environment that executes it
+ * — scheduled at 06:00 and 18:00 UTC, or on `workflow_dispatch`. Re-derive the
+ * proxy half rather than trusting this line:
  *
  *     curl -sS "$HTTPS_PROXY/__agentproxy/status"   # recentRelayFailures
- *
- * A GitHub Actions runner has no such restriction, so
- * `.github/workflows/log-digest.yml` is not merely the schedule — it is the
- * only environment that can execute this file at all. Its first run is the
- * transport test, and `workflow_dispatch` exists so that run can be triggered
- * deliberately rather than waited for.
- *
- * THAT TEST ALREADY RAN — RUN 1, 2026-08-31, AND IT REACHED THE API. Every run
- * since (14 as of 2026-09-06, both projects, scheduled and dispatched alike)
- * fails identically: the token is present and masked in the job's env block,
- * the API answers **200**, and the body carries `{"error": "Backend error!
- * Retry your query. Please contact support if this continues."}`, so
- * `parseRows` throws and the run exits 2. Invariant across seven days and two
- * projects is deterministic, not the retry the message invites.
- *
- * SO THE TRANSPORT IS HALF-VERIFIED, AND SAYING "it has never completed a live
- * call" IS NOW WRONG IN THE DIRECTION THAT COSTS A BISECT. It completes:
- * DNS, TLS, the proxy, the bearer token and the route all work, which removes
- * auth and reachability from the suspect list. The SQL above is exonerated too
- * — that exact constant, run through `query_logs` against
- * `fpmrimzxadewsaiwpsel`, returns rows. What is refused is the query as THIS
- * FILE poses it: the `logs.all` endpoint, the `sql` parameter carrying a
- * multi-line query with a comment in it, and the two `iso_timestamp_*` values,
- * one of which is a full 24h before `new Date()` against an API that caps the
- * window at exactly 24h. PD-421 carries the three suspects. Bisect with a
- * `workflow_dispatch` on a branch; nothing here can reach the API.
  *
  * What the envelope sighting DID settle is `result` as the key and `error` as
  * its sibling, which is why `parseRows` reads exactly those and throws on
@@ -179,6 +176,38 @@ group by status, path
 order by (status >= 500 or status = 404 or status = 300) desc, n desc
 limit 50
 `.trim()
+
+/**
+ * The analytics endpoint, and the segment this used to carry is the whole of
+ * PD-421.
+ *
+ * `analytics/endpoints/logs` is the CLICKHOUSE stream — one `logs` table, a
+ * `source` column, nested fields through `log_attributes['<key>']`, which is
+ * the flavour the `SQL` above is written in. `analytics/endpoints/logs.all` is
+ * the older Logflare/BigQuery one, where each service is its own table and
+ * nested fields come out of `cross join unnest(metadata)`. Both take the same
+ * three query parameters and both answer 200, so the mismatch is invisible at
+ * transport level: `logs.all` accepts the request, fails to parse the query as
+ * BigQuery SQL, and returns `{"error": "Backend error! Retry your query."}` —
+ * the generic sentence that cost 14 runs and a week.
+ *
+ * `.all` IS THE ONE A CAREFUL PERSON WRITES FIRST, which is why this says so
+ * rather than reading as a typo: it is the endpoint in Supabase's own API
+ * reference and the obvious spelling of "all the logs". The discriminator is
+ * not the name, it is the DIALECT the query is written in. Measured
+ * 2026-09-18, `@supabase/mcp-server-supabase@0.13.0`: `queryLogs` sends this
+ * exact path with `logsDialect: 'clickhouse'`, and the same `SQL` constant
+ * through that tool returns rows.
+ */
+export function buildLogsUrl(ref, start, end) {
+  const url = new URL(
+    `https://api.supabase.com/v1/projects/${ref}/analytics/endpoints/logs`,
+  )
+  url.searchParams.set('sql', SQL)
+  url.searchParams.set('iso_timestamp_start', start.toISOString())
+  url.searchParams.set('iso_timestamp_end', end.toISOString())
+  return url
+}
 
 // PostgREST serves every table read and write the app makes, and TWO statuses
 // there mean the deployed bundle and the schema disagree.
@@ -408,12 +437,7 @@ async function main() {
   const end = new Date()
   const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
 
-  const url = new URL(
-    `https://api.supabase.com/v1/projects/${project.ref}/analytics/endpoints/logs.all`,
-  )
-  url.searchParams.set('sql', SQL)
-  url.searchParams.set('iso_timestamp_start', start.toISOString())
-  url.searchParams.set('iso_timestamp_end', end.toISOString())
+  const url = buildLogsUrl(project.ref, start, end)
 
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
