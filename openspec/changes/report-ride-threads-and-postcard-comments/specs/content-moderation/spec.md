@@ -130,8 +130,19 @@ either party that a report exists.
 - **WHEN** a rider blocks an author and then attempts to report that author's thread or comment
 - **THEN** the report SHALL be refused
 - **AND** the rider's remaining remedies SHALL be the block itself, hiding the postcard, and
-  leaving the crew — and on a comment, the postcard's own author SHALL still be able to remove it
-  through the existing moderation function, which resolves a row the caller cannot read
+  leaving the crew
+
+#### Scenario: The photo owner's fallback survives in SQL and not in the app, and SHALL be stated as such
+- **WHEN** the author of a postcard has blocked a rider who commented on it
+- **THEN** the existing `security definer` moderation function SHALL still accept that comment's id
+  from them, the privilege being keyed on the postcard's author and not on readability
+- **AND** no screen SHALL be able to supply that id, because the comment list resolves under the
+  caller's own row security and the block removes the row from it
+- **AND** the consequence SHALL be stated rather than implied: the comment stays visible to every
+  other viewer while the photo's owner can neither see, report nor remove it through any control
+  the app draws
+- **AND** this change SHALL NOT redesign that path, it being pre-existing, and SHALL NOT claim the
+  block costs the photo's owner nothing
 
 #### Scenario: A block does not unmake an earlier report
 - **WHEN** a rider reports a subject and afterwards blocks its author, or is blocked by them

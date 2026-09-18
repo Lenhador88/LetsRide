@@ -15,7 +15,7 @@ this change moves or depends on:
 
 | Reading | Value |
 |---|---|
-| Migration files on disk / applied on both projects | 116 |
+| Migration files on disk / applied on both projects | 116 — and DEV took `117` at 20:15Z the same day, which is why every claim below is a **delta** |
 | `enforce_participation_gate` triggers | 22 |
 | `public` `security definer` functions executable by `authenticated` | 38 |
 | `public` tables | 33, of which 3 have `service_role` revoked (`club_thread_reports`, `postcard_reports`, `push_devices`) |
@@ -94,10 +94,16 @@ orders by. `094` §3 departed from `011` for this reason and this change follows
 `security invoker`.**
 Three barriers, none of them alone: no USAGE on `private` for `anon`/`authenticated`, an explicit
 revoke naming `service_role` (which *does* hold USAGE since `031`), and PostgREST routing only to
-`public`. Not `security definer`, because the only caller is the owner and marking it definer would
-add an `authenticated_security_definer_function_executable` finding for a function no session can
-call. *Alternative:* a `public` RPC behind an `is_admin` claim. Rejected — that is the admin role
-this project has declined three times, and it would put a bypass path on the API surface.
+`public`. **Not `security definer`, and the reason is that there is nothing to escalate to** — the
+only caller is the owner, who already holds `BYPASSRLS`, so the definer marking would buy a function
+exactly nothing while adding a second thing about it that has to be explained. *The advisor is NOT
+the reason, and an earlier revision of this line said it was:* `authenticated_security_definer_function_executable`
+fires per `public` definer function **executable by `authenticated`**, and a `private` function with
+its EXECUTE revoked is executable by nobody, so marking it definer would add no finding. The
+precedent is read rather than reasoned — `private.remove_reported_postcard` (`076`) and
+`private.remove_reported_thread` (`094`) are both `prosecdef = false`. *Alternative:* a `public` RPC
+behind an `is_admin` claim. Rejected — that is the admin role this project has declined three times,
+and it would put a bypass path on the API surface.
 
 **D5 — Nobody in the app reads a report, and that answer is reapplied rather than re-asked.**
 The product owner decided it for club threads on 2026-08-31 (*"a report reaches NOBODY in the
@@ -162,10 +168,29 @@ reportable on the surface that already carries it.
 ## Risks / Trade-offs
 
 - **Block-then-report is unreachable, and a rider may read that as the button not working** →
-  Stated in the specs as a designed consequence with its remedies named. On the comment surface the
-  postcard's author retains `public.moderate_comment`, which resolves a row they cannot read. No
-  policy fix is attempted, because every one is worse (a definer RPC that must answer about
-  invisible rows, or a block-arm exemption that becomes an existence probe).
+  Stated in the specs as a designed consequence with its remedies named. No policy fix is attempted,
+  because every one is worse (a definer RPC that must answer about invisible rows, or a block-arm
+  exemption that becomes an existence probe).
+- **On the comment surface the photo owner has no reachable remedy at all, and this change does not
+  give them one** → `public.moderate_comment` (`011` §1b) keeps the *privilege* across a block — it
+  is `security definer` keyed on the postcard's author — but `postcard_comments` SELECT removes the
+  row from their list, so no screen can supply the id. The comment stays visible to every other
+  viewer. **Pre-existing and out of scope here**: the fix is a comment list on your own postcard
+  that the block does not filter, which is a new read path with its own audience question. Recorded
+  in N12 rather than left for the build to discover, and §5.11 requires the RLS assertion to say in
+  a comment that its green half is unreachable from the app.
+- **The thread take-down is thread-granular, so the only operator remedy for one abusive message is
+  destroying the whole conversation** → `private.remove_reported_ride_thread` deletes the
+  `ride_threads` row and the cascade takes every message, every read watermark and every report with
+  it, so acting on one line in a 200-message crew conversation costs the whole crew the thread.
+  **Inherited from `094` rather than introduced here** — the club's take-down has the identical
+  granularity, and the asymmetry with the comment surface (where the subject *is* the message) is
+  the same one §What Does NOT Change defends. Not mitigated in this change, and mitigating it means
+  either a per-message report table or a message-granular removal, both of which are their own
+  product decision. What this change owes is that the operator can **see** the proportionality
+  before acting: the queue carries `message_count` and the take-down returns up to 200 messages with
+  `messages_total` beside them, so nobody destroys a long conversation without the size of it in
+  front of them.
 - **Four queues is four things for an operator to remember** → The `§Operating it` footer in each
   file carries the union query, and each file's runbook is the same three lines as `076`'s.
 - **`reason` carries no signal while every client sends `other`** → A design gap, logged, not

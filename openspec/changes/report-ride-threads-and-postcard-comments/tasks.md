@@ -163,7 +163,11 @@ editing that file** — it is in the same slot's territory.
 - [ ] 5.3 A pending invitee is refused (N2); a rider who left the crew is refused (N3).
 - [ ] 5.4 A rider outside the postcard's private club, one who has **hidden** it, and one blocked by
   its author are each refused a comment report (N4) — three separate assertions, one per inherited
-  conjunct.
+  conjunct. **Each names a comment the rider did NOT write.** `postcard_comments` SELECT carries
+  `author_id = auth.uid()` at top level, so the same assertion written against the rider's own
+  comment **passes the insert** and fails the test: a rider who hid a postcard still reads, and may
+  still self-report, a comment they wrote on it. Add that as its own positive assertion beside the
+  three, so the exception is pinned rather than discovered.
 - [ ] 5.5 Reporting as somebody else is refused (N5).
 - [ ] 5.6 A second report by the same rider on the same subject raises `23505` (N6), for both
   tables.
@@ -175,9 +179,15 @@ editing that file** — it is in the same slot's territory.
   subject with the **identical** message, asserted by string equality (N9).
 - [ ] 5.10 A self-report succeeds and is inert (N10) — the policy's behaviour, asserted so the
   client-side absence is known to be a display decision.
-- [ ] 5.11 Block-then-report is refused in **both** directions, for both subjects (N11); and the
-  postcard's author can still remove a blocked commenter's comment through `public.moderate_comment`
-  (N12).
+- [ ] 5.11 Block-then-report is refused in **both** directions, for both subjects (N11). Then N12,
+  and **write it as the two halves it actually has**, because a single assertion here would be true
+  and misleading: (a) `public.moderate_comment` called by the postcard's author **succeeds** against
+  a blocked commenter's comment — the privilege survives, keyed on `p.author_id = auth.uid()`; and
+  (b) that same author, reading `postcard_comments` as `authenticated`, sees **zero rows** for it.
+  **Half (a) passes at the SQL level while no screen can reach it**, the suite handing the function
+  an id the app can never obtain, so the assertion must carry a comment saying so — otherwise a
+  green suite reads as "the photo's owner has a remedy", which is exactly the claim N12 now
+  withdraws.
 - [ ] 5.12 A report filed before a block survives the block and stays readable to its reporter
   (N13).
 - [ ] 5.13 Zero rows for: the thread's author, the ride's organiser, the commenter, the postcard's
@@ -221,9 +231,21 @@ editing that file** — it is in the same slot's territory.
   who is **not** the author, using `ReportIcon` from `@/components/icons/generated`. One tap, a
   banner, no navigation, no confirm — `PostcardMenu.onReport`'s shape. Update the header: the
   deferral it records is closed, and say what replaced it.
-- [ ] 6.5 `src/app/(app)/rides/detail/thread/page.tsx`: drop `canRemoveRideThread` from the **mount**
-  gate, keeping the data gate, and keep the expression as the delete row's predicate. Replace the
-  comment explaining the gate with one explaining why it is gone (D11).
+- [ ] 6.5 **Thread the delete predicate into the rows BEFORE the mount gate goes — these are one
+  task and doing the second alone ships a control that always fails.** `RideThreadOptionsRows`
+  takes `{ pending, onDeleteClick }` today and renders `Delete thread` **unconditionally**; the only
+  thing keeping it off a plain crew member's screen is the caller's mount gate. So:
+  (a) `RideThreadOptionsRows` gains a `canRemove` boolean (or `isAuthor`/`isOrganizer`, composed
+  through the existing `canRemoveRideThread`) and renders the delete row only when it is true, with
+  the report row rendered for every non-author;
+  (b) `RideThreadOptions` passes it down from the props it already holds;
+  (c) **only then** `src/app/(app)/rides/detail/thread/page.tsx` drops `canRemoveRideThread` from
+  the **mount** gate, keeping the data gate, and its comment is replaced by one saying why the gate
+  is gone (D11).
+  Reversed, a crew member who is neither author nor organiser opens a thread, sees `Delete thread`,
+  taps it, and `moderate_ride_thread` refuses — not a leak, the RPC re-checks both arms, but exactly
+  the "control that always fails" that component's own header names as the thing to avoid. §8.2's
+  row-set cases are what stop it shipping.
 - [ ] 6.6 `src/components/postcards/CommentItem.tsx`: add the inline `Report` control for comments
   the viewer did not write, on the same 44px floor and negative-margin pattern as `Delete` (D10).
   `src/components/postcards/CommentList.tsx` passes a `canReport` computed the same defensive way
@@ -237,8 +259,19 @@ editing that file** — it is in the same slot's territory.
 - [ ] 7.2 **Both migrations apply before the client bundle ships.** The client writes tables that do
   not exist yet; the reverse ordering answers `PGRST205` behind "Could not send that report."
 - [ ] 7.3 Neither file adds a second PostgREST relationship to an embed any shipped bundle uses, so
-  there is no deploy-first side to weigh. Confirm by reading each new FK: both point **into** the
-  new tables, which no bundle embeds.
+  there is no deploy-first side to weigh. **Confirm against the repo's measured criterion, not
+  against "no bundle embeds these tables"** — that looser reading is recorded as **false** in
+  `src/lib/data/columns.ts` §Embed hints, PD-363 being the worked example. A table becomes a
+  junction, and adds a relationship between the two tables it points at, when it carries two foreign
+  keys **and a primary key that is exactly the union of their columns**. §1.2 and §4.2 give both
+  tables a single-column `id` primary key with `unique (reporter_id, <subject>_id)` as a separate
+  constraint — identical to `club_thread_reports`, which added no relationship — so neither
+  qualifies. **A future report table given a composite primary key instead would silently become a
+  junction and break every unhinted `profiles` embed on the tables it points at.** Run the
+  junction query in `columns.ts` §Embed hints against DEV after applying, and:
+  ```bash
+  npx vitest run src/lib/data/__tests__/embed-hints.test.ts
+  ```
 - [ ] 7.4 `036`'s hand-exercise gate does **not** fire — record why in the PR (no trigger on a
   shipped write path, no function replaced). Do not skip it silently.
 

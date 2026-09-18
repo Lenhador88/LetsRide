@@ -178,9 +178,14 @@ assertion in `supabase/tests/rls_test.sql`.
    visibility and never thread visibility, so they read the ride and none of its conversation.
 3. A rider who has **left the crew** SHALL NOT report a thread they could have reported yesterday,
    and SHALL NOT be told that is why.
-4. A rider who **cannot see the postcard** SHALL NOT report its comments — a private club they are
-   not in, an author who blocked them, or a postcard **they themselves hid**, all three arriving
-   through the same `postcards` EXISTS.
+4. A rider who **cannot see the postcard** SHALL NOT report **another rider's** comments on it — a
+   private club they are not in, an author who blocked them, or a postcard **they themselves hid**,
+   all three arriving through the same `postcards` EXISTS. **The exception is their own comment, and
+   it is not a leak:** `postcard_comments` SELECT carries `author_id = auth.uid()` at **top level**
+   (quoted in `design.md` §Context, and D9 depends on it), so a rider still reads — and may
+   therefore self-report, inertly — a comment they wrote on a postcard that has since left their
+   view. An assertion written against the rider's own comment would fail; §5.4 names somebody
+   else's.
 5. A rider SHALL NOT report **as somebody else**: `reporter_id = auth.uid()` is a policy conjunct,
    not a client convention.
 6. A rider SHALL NOT report the **same subject twice**. `unique (reporter_id, <subject>_id)` is the
@@ -212,12 +217,22 @@ is directional):
     would step past the block to confirm the subject exists and then have to decide what to tell a
     caller about a row they cannot see, and a block-arm exemption would let a rider probe for the
     existence of content by riders who blocked them.
-12. **The remedy is ordering in the UI, and on the comment surface there is a better one.** The
-    postcard's author who has blocked a commenter cannot *report* that comment — they cannot see
-    it — but they CAN still remove it, through `public.moderate_comment` (`011` §1b), which exists
-    for exactly this measured reason. So the trap costs a rider nothing on the surface where they
-    have a stake in the photo. On a ride thread it costs them the report and leaves blocking and
-    leaving the crew, which is the position `retire-ride-chat-for-ride-threads` Q4 already accepted.
+12. **The remedy is ordering in the UI, and on the comment surface the fallback is real in SQL and
+    unreachable from the app.** The postcard's author who has blocked a commenter cannot *report*
+    that comment — they cannot see it. `public.moderate_comment` (`011` §1b) is `security definer`
+    and keyed on `p.author_id = auth.uid()`, so **the privilege genuinely survives the block** and
+    that function exists for exactly this measured reason. **What does not survive is the id.**
+    `postcard_comments` SELECT hides the blocked rider's comment from the photo's owner, so the
+    list never renders it and no screen can hand `moderate_comment` a target. The honest statement
+    of the cost: a comment by a rider the photo's owner has blocked stays visible to **every other
+    viewer**, while its owner can neither see it, report it, nor remove it through any control this
+    app draws. **That is pre-existing (`011`) rather than introduced here, and this change does not
+    redesign it** — the affordance a photo owner would need is a list of comments on their own
+    postcard that the block does not filter, which is a new read path with its own audience
+    question. An earlier revision of this line claimed the trap "costs a rider nothing" on this
+    surface; it was the one assertion in N11/N12 that did not hold. On a ride thread the cost is the
+    report, leaving blocking and leaving the crew, which is the position
+    `retire-ride-chat-for-ride-threads` Q4 already accepted.
 13. A block SHALL NOT **retract** a report already filed, in either direction. A statement made
     while both parties could see each other is not unmade by a later block.
 14. A block SHALL NOT let the blocked party **discover** that a report exists. There is no
