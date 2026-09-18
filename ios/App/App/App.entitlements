@@ -21,8 +21,18 @@
 <!--
   The Associated Domains capability, PD-205. Without this entitlement iOS never
   fetches `https://app.letsride.social/.well-known/apple-app-site-association`,
-  so every link the app hands out — the signup confirmation, a shared ride, a
-  shared postcard — opens Safari and leaves the installed app where it was.
+  so the signup confirmation link, a shared ride and a shared postcard all open
+  Safari and leave the installed app where it was.
+
+  **Those three, and NOT password recovery — iOS does not hand off on a
+  redirect.** A universal link fires only for a tap on a URL whose host is the
+  associated domain; a 302 that arrives at that host does not count.
+  `supabase/templates/confirm-signup.html` uses
+  `{{ .SiteURL }}/auth/confirm?token_hash=…`, a direct `app.letsride.social`
+  URL, which is why confirmation works. `reset-password.html` still uses
+  `{{ .ConfirmationURL }}`, which is a `…supabase.co/auth/v1/verify` link that
+  redirects to our host — so recovery keeps opening the browser until that
+  template is changed, and no entitlement here can alter it.
 
   `applinks:` and nothing else. The other prefixes this key accepts are for
   capabilities this app does not have: `webcredentials:` is shared-password

@@ -2,6 +2,7 @@ import { App } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 import { canonicalOrigin } from '@/lib/origin'
 import { legacyRouteTarget } from '@/lib/legacy-routes'
+import { safeNext } from '@/lib/auth/recovery'
 
 /**
  * A universal link, arriving in the running shell — PD-205.
@@ -79,9 +80,21 @@ export function deepLinkTarget(url: string, origin: string): string | null {
   if (parsed.origin !== origin) return null
 
   const legacy = legacyRouteTarget(parsed.pathname, parsed.search)
-  if (legacy) return legacy
+  const target = legacy ?? `${parsed.pathname}${parsed.search}${parsed.hash}`
 
-  return `${parsed.pathname}${parsed.search}${parsed.hash}`
+  // **The origin matching is not enough, and this is the case that proves it.**
+  // `https://app.letsride.social//evil.com/x` has our origin exactly — it is a
+  // link on the trusted host — and a pathname of `//evil.com/x`. Handed to
+  // `router.replace`, Next reads a protocol-relative path as an EXTERNAL url
+  // and calls `location.replace('https://evil.com/x')`: the webview leaves the
+  // app, with no address bar to show where it went. `/\evil.com` is the same
+  // case, since WHATWG parsing turns the backslash into the second slash.
+  //
+  // `safeNext` is the repo's existing answer to exactly this shape — it is what
+  // guards the `next` parameter on `/auth/confirm` and `/auth/callback` — so it
+  // is reused rather than re-spelled. Same rule, one definition, one set of
+  // tests: a fix to either flows to both.
+  return safeNext(target)
 }
 
 /**
@@ -92,12 +105,27 @@ export function deepLinkTarget(url: string, origin: string): string | null {
  * page state, which this app has no use for, and the `appUrlOpen` event cannot
  * fire there at all.
  *
- * **This handles the app being ALREADY RUNNING, and only that.** A cold start
- * at a deep link never reaches an event: iOS hands the activity to the scene
- * before any JavaScript exists, Capacitor answers the extensionless path with
- * the root document, and `src/lib/native/boot-restore.ts` is what notices and
- * corrects it. The two are halves of one behaviour and neither covers the
- * other's case.
+ * **This covers a cold start too, and the obvious reading — that it cannot —
+ * is wrong in a way worth writing down.** Capacitor 8.5.0 does not drop the
+ * launch activity: `CAPSceneDelegateProxy.swift` defers
+ * `connectionOptions.userActivities` to `capacitorViewDidAppear` precisely
+ * because plugins have not loaded yet at `willConnectTo`, and `AppPlugin.swift`
+ * posts it with `retainUntilConsumed: true`. So the event is held until the
+ * first JS listener exists and is then delivered to it.
+ *
+ * **`boot-restore.ts` is NOT the cold-start half of this**, which is the other
+ * direction of the same mistake. A cold-started webview boots at the
+ * *configured start URL*, so `window.location.pathname` is `/` and
+ * `bootRestoreTarget` answers `null`; it exists for a webview **process
+ * restore**, where the URL really is the deep one and the served document is
+ * the root's. The two modules answer different questions and neither is a
+ * fallback for the other.
+ *
+ * **One consequence of `retainUntilConsumed`, dev-only but confusing by hand:**
+ * the first `addListener` consumes the retained event, so a React strict-mode
+ * double-mount consumes it on the subscription that is about to be torn down
+ * and the surviving one receives nothing. A cold-start deep link can therefore
+ * look flaky in development and be correct in a release build.
  */
 export async function subscribeToDeepLinks(
   onTarget: (target: string) => void

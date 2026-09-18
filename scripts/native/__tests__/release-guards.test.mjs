@@ -296,7 +296,9 @@ describe('platformCopyProblems', () => {
   })
 
   it('catches a copy that predates a file the build now emits', () => {
-    const { 'postcards/detail.txt': _dropped, ...withoutOneFile } = RELEASE
+    const withoutOneFile = Object.fromEntries(
+      Object.entries(RELEASE).filter(([name]) => name !== 'postcards/detail.txt')
+    )
     const root = repo(RELEASE, withoutOneFile)
     const problems = sized(platformCopyProblems(root, outNames, IOS))
     expect(problems).toHaveLength(1)

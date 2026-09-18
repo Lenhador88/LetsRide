@@ -396,9 +396,17 @@ the obvious filter reports 3-against-4 on a correct tree and sends the next sess
 needless `cap sync` or file a phantom finding. Exclude it, and check the filter both ways:
 
 ```bash
-grep -c '\.package(name:' ios/App/CapApp-SPM/Package.swift        # one per plugin — 3
+grep -c '\.package(name:' ios/App/CapApp-SPM/Package.swift        # one per plugin — 4
 node -p "Object.keys(require('./package.json').dependencies).filter(d=>/^@capacitor\/|^@aparajita\/|^@sentry\/capacitor/.test(d) && d !== '@capacitor/core').join('\n')"
 ```
+
+**That staleness is not hypothetical — it happened on 2026-09-18.** PD-205 added `@capacitor/app`
+to `package.json` and the committed `Package.swift` still listed three, so an Xcode build from the
+committed project would not have linked `AppPlugin`: the entitlement and the association file
+would both work, the link would open the app, and `appUrlOpen` would never fire — a silent no-op
+on the one device run meant to verify the story. Caught by `reviewer`, fixed by `npx cap sync ios`
+in this container. **Adding a native plugin is two commits' worth of work in one: the dependency,
+and the sync.**
 
 What a session CAN now do, all of it exercised on 2026-08-25:
 

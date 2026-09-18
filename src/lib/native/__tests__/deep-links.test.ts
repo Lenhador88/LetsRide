@@ -57,6 +57,32 @@ describe('deepLinkTarget', () => {
     expect(deepLinkTarget('social.letsride.app://rides/detail', ORIGIN)).toBeNull()
   })
 
+  /**
+   * **The origin check alone is not enough, and this is the case that proves
+   * it** — found by `reviewer` on this branch, not by the cases above.
+   *
+   * `https://app.letsride.social//evil.com/x` has our origin *exactly*: it is a
+   * genuine link on the trusted host, so every assertion above passes it. Its
+   * pathname is `//evil.com/x`, and Next reads a protocol-relative path as an
+   * EXTERNAL url — `router.replace` becomes
+   * `location.replace('https://evil.com/x')` and the webview leaves the app,
+   * with no address bar to show the rider where they went.
+   *
+   * `safeNext` is what refuses it, which is why this function ends by asking it
+   * rather than returning the path it built.
+   */
+  it('refuses a protocol-relative path, which has our origin and is not ours', () => {
+    expect(deepLinkTarget(`${ORIGIN}//evil.com/x`, ORIGIN)).toBeNull()
+    expect(deepLinkTarget(`${ORIGIN}//evil.com`, ORIGIN)).toBeNull()
+    // The backslash form is the same case: WHATWG parsing turns `/\` into `//`,
+    // so a check that only looked for a literal `//` in the input would miss it.
+    expect(deepLinkTarget(`${ORIGIN}/\\evil.com/x`, ORIGIN)).toBeNull()
+    // And the guard is verified the other way: an ordinary path still passes.
+    expect(deepLinkTarget(`${ORIGIN}/rides/detail?id=${ID}`, ORIGIN)).toBe(
+      `/rides/detail?id=${ID}`
+    )
+  })
+
   it('ignores a URL it cannot parse rather than throwing', () => {
     expect(deepLinkTarget('', ORIGIN)).toBeNull()
     expect(deepLinkTarget('not a url', ORIGIN)).toBeNull()

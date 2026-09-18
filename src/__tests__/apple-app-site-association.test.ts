@@ -95,3 +95,57 @@ describe('apple-app-site-association', () => {
     expect(() => read(path.join('android', 'app', 'build.gradle'))).toThrow()
   })
 })
+
+/**
+ * **A native plugin is two things, and adding only the first is silent.**
+ *
+ * PD-205 added `@capacitor/app` to `package.json` and left the committed
+ * `ios/App/CapApp-SPM/Package.swift` listing three plugins. `cap sync` writes
+ * that file and no CI job regenerates it, so an Xcode build from the committed
+ * project would not have linked `AppPlugin`: the entitlement and the
+ * association file would both work, the universal link would open the app, and
+ * `appUrlOpen` would never fire. A silent no-op on the exact device run meant
+ * to verify the story — caught by `reviewer`, not by any gate, which is why
+ * this test now exists.
+ *
+ * `docs/reference/native-shell.md` §The shell documents the same comparison as
+ * a command a session should run. A test is strictly better: nobody has to
+ * remember to run it, and the failure names the fix.
+ */
+describe('the SPM manifest lists every Capacitor plugin', () => {
+  /**
+   * `@capacitor/core` is the runtime rather than a plugin and never appears in
+   * `Package.swift`, so the obvious filter reports one too many on a correct
+   * tree — the trap the reference doc calls out by name.
+   */
+  const PLUGIN_PACKAGES = /^(@capacitor\/|@aparajita\/|@sentry\/capacitor)/
+
+  const plugins = Object.keys(
+    (JSON.parse(read('package.json')) as { dependencies: Record<string, string> }).dependencies
+  ).filter((name) => PLUGIN_PACKAGES.test(name) && name !== '@capacitor/core')
+
+  const manifest = read(path.join('ios', 'App', 'CapApp-SPM', 'Package.swift'))
+
+  it('has one .package(name:) entry per plugin dependency', () => {
+    const entries = [...manifest.matchAll(/\.package\(name: "([^"]+)"/g)].map((m) => m[1])
+    expect(entries).toHaveLength(plugins.length)
+  })
+
+  it('names each plugin by its node_modules path, so a rename cannot pass on count alone', () => {
+    // Counting alone would accept a manifest that still carried a REMOVED
+    // plugin beside a missing new one. The path is what ties each entry to a
+    // dependency that is actually installed.
+    for (const plugin of plugins) {
+      expect(manifest).toContain(`node_modules/${plugin}`)
+    }
+  })
+
+  it('and the detector catches a manifest that is one plugin short', () => {
+    // Verified both ways: the assertion above reads 0 differences whether the
+    // rule holds or the regex stopped matching, and this is what tells them
+    // apart. The fixture is the real manifest with one entry removed.
+    const short = manifest.replace(/\n\s*\.package\(name: "[^"]+", path: "[^"]+"\),/, '')
+    const entries = [...short.matchAll(/\.package\(name: "([^"]+)"/g)].map((m) => m[1])
+    expect(entries.length).toBe(plugins.length - 1)
+  })
+})

@@ -30,12 +30,16 @@
  * and `scripts/native/export-guards.mjs` asserts it against what Next actually
  * compiled rather than against this file.
  *
- * ## No import may be added to this file
+ * ## This file imports NOTHING, and that is the constraint
  *
  * `next.config.ts` imports it with a **relative** specifier, for the reason its
  * header gives about `--experimental-next-config-strip-types`: Node's native
- * type stripping does no path mapping. An `@/` import added here would be
- * loaded through that same stripper and would not resolve.
+ * type stripping does no path mapping, so an `@/` import here would not
+ * resolve. **The real rule is stronger than "no `@/` imports", which is why it
+ * is stated this way:** anything this file imports becomes a dependency of the
+ * *build configuration*, loaded before the app is compiled, under a loader that
+ * does no resolution of its own. Keep it at zero and the question never arises.
+ * A violation reds `next build`, which CI runs, so this needs no tripwire test.
  */
 
 /** The id shape every legacy detail URL carried. */
@@ -85,9 +89,10 @@ export const RETIRED_CHAT_ROUTES = {
  * ordinary route" — the overwhelmingly common answer, and the one that must not
  * rewrite anything.
  *
- * `search` is taken so the retired-chat case can carry its own query through:
- * `/rides/detail/chat?id=<uuid>` has the id in the query already, exactly as
- * Next's redirect appends an unspecified incoming query to the destination.
+ * `search` is carried through on every arm, because Next appends an unspecified
+ * incoming query to a redirect destination and the two readers must agree. It
+ * is load-bearing for the retired-chat case, where `/rides/detail/chat?id=<uuid>`
+ * has the id in the query already and nowhere else.
  */
 export function legacyRouteTarget(pathname: string, search = ''): string | null {
   const uuid = new RegExp(`^(${LEGACY_UUID_PATTERN})$`)
@@ -106,14 +111,20 @@ export function legacyRouteTarget(pathname: string, search = ''): string | null 
     const rest = pathname.slice(prefix.length)
     const id = tail === '' ? rest : rest.endsWith(tail) ? rest.slice(0, -tail.length) : null
     if (id === null || !uuid.test(id)) continue
-    return `${base}/detail${tail}?id=${id}`
+    // The incoming query rides along, because Next forwards unspecified query
+    // params to a redirect destination and the two readers have to agree. Drop
+    // it here and `/postcards/<uuid>?utm=x` keeps its `utm` on the web and
+    // loses it in the shell — the exact divergence this shared table exists to
+    // prevent. `id` is written first, so it wins `searchParams.get('id')` even
+    // if the incoming query carries one of its own.
+    return `${base}/detail${tail}?id=${id}${search.replace(/^\?/, '&')}`
   }
 
   const chatPrefix = `${RETIRED_CHAT_ROUTES.withId}/`
   const chatSuffix = '/chat'
   if (pathname.startsWith(chatPrefix) && pathname.endsWith(chatSuffix)) {
     const id = pathname.slice(chatPrefix.length, -chatSuffix.length)
-    if (uuid.test(id)) return `/rides/detail?id=${id}`
+    if (uuid.test(id)) return `/rides/detail?id=${id}${search.replace(/^\?/, '&')}`
   }
 
   return null

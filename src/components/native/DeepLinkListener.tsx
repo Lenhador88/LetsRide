@@ -45,13 +45,23 @@ export function DeepLinkListener() {
     let cancelled = false
     let unsubscribe: (() => void) | undefined
 
-    void subscribeToDeepLinks((target) => router.replace(target)).then((off) => {
-      if (cancelled) {
-        off()
-        return
-      }
-      unsubscribe = off
-    })
+    subscribeToDeepLinks((target) => router.replace(target))
+      .then((off) => {
+        if (cancelled) {
+          off()
+          return
+        }
+        unsubscribe = off
+      })
+      // Swallowed on purpose, and the module's own doctrine is the argument:
+      // a deep link that does not work is not an error to report, because
+      // there is no rider waiting on an answer and the app is already on a
+      // valid screen. The realistic rejection is the plugin not being
+      // registered in the native project, which is a build-time mistake that
+      // `npx cap sync` fixes and that no amount of runtime reporting would —
+      // and without this, it arrives in Sentry as a bare unhandled rejection
+      // with no context at all.
+      .catch(() => {})
 
     return () => {
       cancelled = true

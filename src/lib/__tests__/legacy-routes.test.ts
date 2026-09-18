@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { LEGACY_DETAIL_ROUTES, legacyRouteTarget } from '@/lib/legacy-routes'
+// The SAME cases `assert-web-build.mjs` runs against the compiled
+// `routes-manifest.json`, imported rather than hand-copied. The table is shared
+// between the two readers; a parallel list of *cases* would let one reader gain
+// a row the other never exercises, which is the drift the extraction exists to
+// close.
+import { REDIRECTED, UNTOUCHED } from '../../../scripts/native/export-guards.mjs'
 
 /**
  * The table had one reader — `next.config.ts`'s `redirects()` — and
@@ -26,6 +32,27 @@ describe('legacyRouteTarget', () => {
   it('covers every pair in the table, so a pair added later is not silently untested', () => {
     for (const [base, tail] of LEGACY_DETAIL_ROUTES) {
       expect(legacyRouteTarget(`${base}/${ID}${tail}`)).toBe(`${base}/detail${tail}?id=${ID}`)
+    }
+  })
+
+  /**
+   * **The two readers are checked against ONE list of cases.** `REDIRECTED` and
+   * `UNTOUCHED` are what `assert-web-build.mjs` runs against Next's compiled
+   * `routes-manifest.json`; running them through the in-shell resolver as well
+   * is what makes "the two readers agree" a tested claim rather than a stated
+   * one. A row added for either reader now exercises both.
+   */
+  it('agrees with the web redirects, case for case', () => {
+    for (const [from, to] of REDIRECTED) {
+      // `/rides/detail/chat` carries no id, and on the web Next appends the
+      // incoming query; with none supplied both readers answer the bare path.
+      expect(legacyRouteTarget(from)).toBe(to)
+    }
+  })
+
+  it('and leaves alone every path the web redirects must not swallow', () => {
+    for (const pathname of UNTOUCHED) {
+      expect(legacyRouteTarget(pathname)).toBeNull()
     }
   })
 
@@ -77,6 +104,29 @@ describe('legacyRouteTarget', () => {
     expect(legacyRouteTarget(`/profile/${ID}`)).toBeNull()
     // A tail that is not one of the table's.
     expect(legacyRouteTarget(`/clubs/${ID}/treasurer`)).toBeNull()
+  })
+
+  /**
+   * Next forwards an unspecified incoming query to a redirect destination, so
+   * the web keeps `utm` and anything else a link was tagged with. Dropping it
+   * here would make the two readers disagree on a real URL — a shared campaign
+   * link is exactly the shape that carries extra params.
+   */
+  it('carries the incoming query through, as the web redirect does', () => {
+    expect(legacyRouteTarget(`/postcards/${ID}`, '?utm=x')).toBe(
+      `/postcards/detail?id=${ID}&utm=x`
+    )
+    expect(legacyRouteTarget(`/clubs/${ID}/members`, '?from=feed')).toBe(
+      `/clubs/detail/members?id=${ID}&from=feed`
+    )
+    expect(legacyRouteTarget(`/rides/${ID}/chat`, '?utm=x')).toBe(
+      `/rides/detail?id=${ID}&utm=x`
+    )
+    // The path's own id is written FIRST, so it wins `searchParams.get('id')`
+    // even against an incoming one.
+    expect(legacyRouteTarget(`/rides/${ID}`, '?id=other')).toBe(
+      `/rides/detail?id=${ID}&id=other`
+    )
   })
 
   it('does not match a UUID buried deeper in the path', () => {
