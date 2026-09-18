@@ -875,7 +875,8 @@ that looks right. The apex still has to go through it when `PD-34` lands, which 
 keeps the list as procedure rather than a record.
 
 Then, in a session: apply the chain to DEV, run `npm run db:drift` to prove the three agree,
-seed it, and move the two `@letsride.test` fixtures off production.
+and seed it. The two `@letsride.test` fixtures were moved off production on 2026-09-18, so that
+step is done rather than pending.
 
 ## Where the split stands
 

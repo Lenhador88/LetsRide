@@ -100,7 +100,8 @@ where email like '%@letsride.dev' and id::text like '5c0f1a00-%';`
 
 Three things the files themselves argue and this row only points at: it is **additive** and owns
 five fixed uuids, so it deletes nothing it did not create; its guard is a POSITIVE DEV marker
-(at least one `@letsride.dev` account) plus PROD's own (`@letsride.test`), because the reset
+(at least one `@letsride.dev` account) plus a `@letsride.test` arm that PROD's own deletion on
+2026-09-18 has retired, because the reset
 seed's guard is false on DEV; and the images are **drawn, not photographed** — `--photos <dir>`
 with `--replace` swaps in real ones the day the owner has some.
 

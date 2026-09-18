@@ -51,8 +51,6 @@ history.
 
 - **`Queued (AI)` holds the store-submission run** and `Needs help` is empty — read the column
   rather than this line; the Routine takes highest priority, then oldest.
-- **`Development (AI)`:** PD-447 in `slot-1` and PD-448 in `slot-2`, both with their PR merged or
-  merging; PD-421 carries no slot label, so it occupies no slot — deliberate rather than a gap.
 - **Nothing in this app opens a sheet by itself** (PD-447, reversing PD-419). The Explore question
   is `LocationQuestionRow`, on the two Explore screens only. **`profiles.location` has TWO
   writers** — `setRiderTown` and `setHomeTown` — so anything keyed to "the rider stored a town"
@@ -83,8 +81,7 @@ it done except someone re-measuring. The ones that unblock a **gate**, in order:
    that renders a screen never runs in CI.
 2. **Branch protection on `main` and `development`** (PD-185) — until then a red PR can merge.
 3. **Make the walk a required check** once it has been green for a few PRs (PD-370).
-4. **Supabase Pro** (PD-87) — the free tier auto-pauses after ~7 idle days with no alert, and an
-   App Review queue is exactly that window.
+4. **Supabase Pro** (PD-87) — the free tier auto-pauses after ~7 idle days with no alert.
 
 Everything else in those columns is store readiness, email, or a product decision, and each issue
 body carries its own steps.
@@ -142,8 +139,8 @@ curl -s --noproxy '*' -X POST 'http://localhost:3001/auth/v1/token?grant_type=pa
 
 **Replacing one** is `docs/reference/running-locally.md` §Replacing a fixture.
 
-**`screenshot-account.sql`'s guard reads the two rows below**, so deleting them leaves it on one
-arm. **PROD carries no `@letsride.test` account** — both were deleted 2026-09-18, each holding
-zero rows of everything, so nothing of anyone else's went with them. Count rather than trust it:
+**`screenshot-account.sql`'s guard stands on its DEV arm alone** — PROD carries no
+`@letsride.test` account, so the arm that looked for one can no longer fire. Count rather than
+trust it, against `zwprydcyryvudhurbnye`:
 `select count(*) from auth.users where email like '%@letsride.test';` → 0. The history is
 `docs/reference/journal.md` §Test accounts — the full record.
