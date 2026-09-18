@@ -329,7 +329,10 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**116 files, and BOTH projects are at `116` — measured 2026-09-08, after the promotion.** `113`
+**117 files. DEV is at `117` and PROD at `116` — measured 2026-09-18.** DEV-ahead is the resting
+state between a merge and its promotion: `117` (PD-398) is applied to DEV and awaits the
+`development` → `main` promotion, which is the only thing that should carry it to PROD. Before
+that: `116` was the state on 2026-09-08, with BOTH projects level after the promotion. `113`
 was applied to DEV migration-first, ahead of #428; the merge is what landed its file, so the
 row that read as file-less until then is an ordinary applied migration. DEV's row count reads
 **three** high — the three long-standing hand-applied rows — and **PROD's is exact**, which is the
@@ -424,6 +427,51 @@ identical before and after, and the 38 is the number that could have moved.
 and position on it — so a bundle serving ahead of the migration answers `42703` on every club and
 ride detail. Applied ahead of the bundle it is a column nothing reads. The PROD promotion carries
 the same order and needs no coordination with `113`/`114`.
+
+**`117_the_welcome_club_hands_back_its_flag` (PD-398), applied to DEV 2026-09-18T20:15Z as
+`20260918201500`.** Closes the follow-up `107` §4b filed against itself. `private.transfer_owned_clubs`
+loses `not club.is_default` from its keep arm, so the welcome club's third-party postcards survive
+its last member's erasure like any other club's — and the keep arm's single UPDATE now also sets
+`is_default = false`, so the club hands the flag back as it goes ownerless. Adds
+`private.system_alerts`, an incident record with a two-value CHECK on `alert_key`, written by both
+no-successor arms when the club they disposed of carried the flag.
+
+**The unflagging is the security half, not a tidy-up.** Deleting the exclusion alone converts a
+data-LOSS bug into a data-EXPOSURE one: `complete_onboarding` is `security definer`, so
+`club_members`' INSERT policy (`107` §2b) does not apply to it, and an ownerless club still
+carrying the flag would be force-joined by every signup — publishing every preserved postcard in
+it. `114` carries `107` §4b's `and c.owner_id is not null` on that insert and remains the second
+lock; **`117` does not touch `complete_onboarding`, and `114` is still its newest definition.**
+Clearing the flag also frees `clubs_one_default_club`, the partial unique index, so a replacement
+welcome club can be flagged at all — measured: with the unflagging reverted, the suite's `117.5`
+fails `23505` on that index.
+
+**Advisors: +1 INFO and nothing else.** `rls_enabled_no_policy` 3 → **4**, the new finding being
+`private.system_alerts` — chosen, and the same shape as `push_devices` and `club_removals`: RLS on,
+no policy, no grant to any client role. `anon_security_definer_function_executable` unchanged at 1,
+`authenticated_security_definer_function_executable` unchanged at **38**, and the `service_role`
+census in `public` is untouched at 30 kept / 3 revoked — the new table is in `private`, where
+Supabase grants no defaults, so there is nothing there to revoke and it is outside that census.
+**`service_role` DOES hold USAGE on `private` and bypasses RLS**, which is the sentence it is easy
+to get wrong: what stops it reading this table is the absent table grant alone.
+
+**Either order is safe, and it is the rare file where that is true rather than assumed.** Nothing
+in `public` moves — no column, no policy, no grant, no function signature — so no bundle can
+observe it. The only caller is account deletion, through `public.transfer_owned_clubs_for_deletion`.
+
+**Hand-exercised on DEV before and after applying**, as the owner, in rolled-back transactions
+against the LIVE welcome club, per `CLAUDE.md`'s rule for a change to an already-shipped write
+path: baseline (club deleted, third party's postcard destroyed), keep arm (club kept, ownerless,
+unflagged, postcard preserved, one `welcome_club_kept_ownerless` row), delete arm
+(`welcome_club_deleted`), successor arm (flag kept, no alert). The migration's §3 carries the
+numbers. **The recorded statement does NOT equal the file's md5, and here the reason is known
+rather than structural.** The first apply (`20260918201115`) was rolled back by hand — table
+dropped, row deleted — because two header claims about `service_role` and about `prosrc` proved
+false when measured; the corrected file was re-applied as `20260918201500`, and a third correction
+afterwards touched only the §3 comment block, outside every object. So the recorded statement is
+`b875e12c7f725473f4f455351fc170e2` and the file's is not. **The objects are what agree**, and all
+four were compared by md5: function body `abf785b20ab0753042cdeb388f7ec611`, plus the table, column
+and function comments.
 
 **A deleted message does not un-bump its thread**, decided rather than overlooked: recomputing on
 DELETE costs a scan per moderation action, and the activity did happen. **The announcement
@@ -1553,7 +1601,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 116 — DEV at 116, PROD at 112 (113, 114, 115, 116 await promotion; 113 then 114 in that order)
+ls supabase/migrations/*.sql | wc -l     # 117 — DEV at 117, PROD at 116 (117 awaits promotion)
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```
