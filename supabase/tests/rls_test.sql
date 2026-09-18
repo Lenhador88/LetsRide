@@ -37083,6 +37083,35 @@ select assert_eq(
     where conrelid = 'private.system_alerts'::regclass and contype = 'f'),
   0, '117.8: ... and no foreign key, deliberately: the row must outlive the club it names, which is the deletion that raised it');
 
+-- 117.9  THE alert_key CHECK IS THE SEAM, so it is pinned rather than described.
+-- The migration header and the table comment both call the closed key set the
+-- thing that keeps this table from becoming a free-text log — and until now
+-- nothing measured it, so dropping the constraint left the whole suite green.
+-- Pinned two ways, because neither alone bites: the constraint must EXIST under
+-- its name, and it must REFUSE a key outside the set. Existence alone passes if
+-- someone widens the predicate to `true`; a refusal alone passes if a different
+-- constraint happens to reject the row.
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where conrelid = 'private.system_alerts'::regclass and contype = 'c'
+      and conname = 'system_alerts_alert_key_known'),
+  1, '117.9: the closed alert_key set is a named CHECK on the table, not a convention the writer happens to follow');
+do $$
+declare v_club uuid;
+begin
+  select id into v_club from public.clubs limit 1;
+  begin
+    insert into private.system_alerts (alert_key, subject_id) values ('something_new', v_club);
+    raise exception '117.9 FAILED: private.system_alerts accepted an alert_key outside the closed set, so a new kind of alert no longer needs a migration';
+  exception
+    when check_violation then
+      raise notice 'ok - 117.9: ** and it BITES ** — an unknown alert_key is refused with 23514, which is what makes a new alert kind a deliberate migration rather than a new string in a writer';
+  end;
+  raise exception 'rollback 117.9';
+exception when others then
+  if sqlerrm not like 'rollback 117.9%' then raise; end if;
+end $$;
+
 reset role;
 select set_config('test.uid', '', false);
 rollback to savepoint welcome_club_117;

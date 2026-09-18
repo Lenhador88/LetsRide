@@ -25,10 +25,9 @@ history.
 - **`development` is the default branch and deploys to DEV** (`app-dev.letsride.social`);
   `main` is production (`app.letsride.social`). `development` is normally ahead of `main`, and
   that is the steady state.
-- **Migrations: 117 files; DEV is at `117`, PROD at `116`** — `117` (PD-398) applied to DEV on
-  2026-09-18 and is the next promotion's. `list_migrations`
-  against both refs is the check; DEV answers 120 rows because **three are hand-applied with no
-  file** and PROD records none of them. `115` grants `anon` EXECUTE on one function — the first
+- **Migrations: 117 files; DEV at `118`, PROD at `116`** — `117` is PD-398's; `118` came from
+  another branch, applied but unmerged, so **take the next number from `list_migrations`, never
+  from the file count**. DEV answers 121 rows: three hand-applied with no file, PROD none. `115` grants `anon` EXECUTE on one function — the first
   exception to decision #1 — so its advisor class
   (`anon_security_definer_function_executable`) is now on both projects rather than DEV alone.
   `docs/reference/migrations.md` §Applied state has the per-file log.

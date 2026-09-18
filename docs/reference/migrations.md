@@ -329,7 +329,7 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**117 files. DEV is at `117` and PROD at `116` — measured 2026-09-18.** DEV-ahead is the resting
+**117 files. DEV is at `118` and PROD at `116` — measured 2026-09-18.** DEV-ahead is the resting
 state between a merge and its promotion: `117` (PD-398) is applied to DEV and awaits the
 `development` → `main` promotion, which is the only thing that should carry it to PROD. Before
 that: `116` was the state on 2026-09-08, with BOTH projects level after the promotion. `113`
@@ -1601,7 +1601,9 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 117 — DEV at 117, PROD at 116 (117 awaits promotion)
+ls supabase/migrations/*.sql | wc -l     # 117 — DEV at 118, PROD at 116. The DEV ref is AHEAD
+                                         # of this count: 118 reached DEV from an unmerged branch,
+                                         # so never infer the next free number from wc -l.
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```
