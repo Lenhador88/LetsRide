@@ -424,7 +424,9 @@ export const claims = [
     // refs because there is no direction to infer, and the day they diverge
     // again the sentence has to name them and this pattern has to move with it.
     // Two edits, one commit. Still never a relaxed regex.
-    pattern: /\*\*Applied state: (\d+) files, and BOTH projects are at `\d+` — measured/,
+    // 2026-09-18: `117` (PD-398) applied to DEV alone and this went red on cue for
+    // the TENTH time. Pinned to DEV AHEAD, naming both refs.
+    pattern: /\*\*Applied state: (\d+) files; DEV is at `\d+` and PROD at `\d+` — measured/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
