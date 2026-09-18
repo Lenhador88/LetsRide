@@ -80,7 +80,12 @@ export function deepLinkTarget(url: string, origin: string): string | null {
   if (parsed.origin !== origin) return null
 
   const legacy = legacyRouteTarget(parsed.pathname, parsed.search)
-  const target = legacy ?? `${parsed.pathname}${parsed.search}${parsed.hash}`
+  // The fragment rides along on BOTH arms. A browser carries it across a 307,
+  // so the web keeps `#x` on a legacy link and the shell has to as well — the
+  // same two-reader divergence `legacyRouteTarget` normalises the query for,
+  // one field over. It is appended before `safeNext` rather than after, so the
+  // guard still sees the whole string.
+  const target = legacy ? `${legacy}${parsed.hash}` : `${parsed.pathname}${parsed.search}${parsed.hash}`
 
   // **The origin matching is not enough, and this is the case that proves it.**
   // `https://app.letsride.social//evil.com/x` has our origin exactly — it is a

@@ -3,9 +3,7 @@
  *
  * ## NOT a cold-start deep link — the neighbouring case, and they are different
  *
- * This header said "a cold start at a non-root URL" and named a deep link among
- * the launches it handles. Both are wrong, and the mistake is worth keeping
- * written down because it is the intuitive reading:
+ * The two are easy to confuse and only one of them reaches this file:
  *
  * - **A cold start never arrives here.** The webview boots at the *configured
  *   start URL*, so `window.location.pathname` is `/` and `bootRestoreTarget`

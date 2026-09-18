@@ -125,13 +125,14 @@ describe('the SPM manifest lists every Capacitor plugin', () => {
   const plugins = Object.keys(
     (JSON.parse(read('package.json')) as { dependencies: Record<string, string> }).dependencies
   ).filter((name) => {
-    let manifestJson: { capacitor?: { ios?: unknown } }
-    try {
-      manifestJson = JSON.parse(read(path.join('node_modules', name, 'package.json')))
-    } catch {
-      return false
-    }
-    return manifestJson.capacitor?.ios !== undefined
+    // **Not `catch { return false }`.** Swallowing the read drops a dependency
+    // that IS a plugin but is not installed — declared in `package.json`, never
+    // `npm install`ed, never synced — from both sides of the comparison, and
+    // the suite goes green on exactly the silent no-op this block exists to
+    // catch. Unreachable under `npm ci`; reachable on a local tree, which is
+    // where somebody adds a plugin.
+    const json = read(path.join('node_modules', name, 'package.json'))
+    return (JSON.parse(json) as { capacitor?: { ios?: unknown } }).capacitor?.ios !== undefined
   })
 
   const manifest = read(path.join('ios', 'App', 'CapApp-SPM', 'Package.swift'))
@@ -158,7 +159,12 @@ describe('the SPM manifest lists every Capacitor plugin', () => {
    * further down the file.
    */
   it('links every plugin into the App target, not just declares it', () => {
-    const target = manifest.slice(manifest.indexOf('targets:'))
+    // `lastIndexOf`, not `indexOf`: Capacitor generates a `products:` block
+    // above `dependencies:` whose `.library(…)` carries its own `targets:`, so
+    // the first match slices from there and the "App target" is the whole file.
+    // Inert today — `.product(` appears nowhere in the dependencies block — and
+    // wrong the moment it is not.
+    const target = manifest.slice(manifest.lastIndexOf('targets:'))
     const linked = [...target.matchAll(/\.product\(name: "([^"]+)", package: "([^"]+)"\)/g)]
     const declared = [...manifest.matchAll(/\.package\(name: "([^"]+)"/g)].map((m) => m[1])
 

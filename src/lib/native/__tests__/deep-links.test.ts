@@ -74,8 +74,10 @@ describe('deepLinkTarget', () => {
     expect(deepLinkTarget(`${ORIGIN}//evil.com`, ORIGIN)).toBeNull()
     // The backslash form is the same case, and it is caught by the same `//`
     // check rather than by the control-character one: WHATWG path parsing folds
-    // `\` to `/` for a special scheme, so `/\evil.com/x` becomes
-    // `///evil.com/x` before the guard ever sees it.
+    // `\` to `/` for a special scheme, so `/\evil.com/x` has become
+    // `//evil.com/x` by the time the guard sees it — there is no backslash left
+    // to reject. Measured:
+    // `new URL('https://app.letsride.social/\evil.com/x').pathname` → `//evil.com/x`.
     expect(deepLinkTarget(`${ORIGIN}/\\evil.com/x`, ORIGIN)).toBeNull()
     // And the guard is verified the other way: an ordinary path still passes.
     expect(deepLinkTarget(`${ORIGIN}/rides/detail?id=${ID}`, ORIGIN)).toBe(
@@ -106,6 +108,15 @@ describe('deepLinkTarget', () => {
       `/clubs/detail/members?id=${ID}`
     )
     expect(deepLinkTarget(`${ORIGIN}/rides/${ID}/chat`, ORIGIN)).toBe(`/rides/detail?id=${ID}`)
+  })
+
+  it('keeps the fragment on a legacy link too, as the web does across a 307', () => {
+    expect(deepLinkTarget(`${ORIGIN}/postcards/${ID}#photo-2`, ORIGIN)).toBe(
+      `/postcards/detail?id=${ID}#photo-2`
+    )
+    expect(deepLinkTarget(`${ORIGIN}/postcards/${ID}?utm=x#photo-2`, ORIGIN)).toBe(
+      `/postcards/detail?id=${ID}&utm=x#photo-2`
+    )
   })
 
   it('does not rewrite a live route that resembles a legacy one', () => {
