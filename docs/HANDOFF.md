@@ -68,7 +68,7 @@ history.
   capability, an owner action. **Child C (PD-303) is the sender**, blocked on the
   APNs `.p8` and the FCM service account. PD-291 stays open until C lands.
 - **PD-454's proposal is merged, not its build** — the change stays under `openspec/changes/`;
-  `118`/`119` and both client surfaces follow in their own PR.
+  its migrations (not `118` — taken) and both surfaces are their own PR.
 - **PD-385 is open on purpose**: 9 DEV rides carry a coordinate and no tile, repairable only by
   their own organizers.
 
