@@ -33,9 +33,10 @@
  * PostHog property lands in a third-party store with its own retention and its
  * own audience; the database is where content belongs, and it already has it.
  *
- * It also keeps this honest under the pilot's replay posture: a rider can opt
- * out, and a rider who does must leave no trail — which is far easier to
- * guarantee when the trail was never richer than a handful of booleans.
+ * It also keeps this honest: a rider can opt out, and a rider who does must
+ * leave no trail — which is far easier to guarantee when the trail was never
+ * richer than a handful of booleans. That mattered most under the pilot's
+ * replay posture, which PD-456 retired; the argument outlives it.
  *
  * **`onboarding_step` never carries the username that was rejected**, only
  * that one was. That is the same rule and the one most tempting to break, since

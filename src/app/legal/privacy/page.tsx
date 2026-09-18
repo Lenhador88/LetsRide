@@ -132,10 +132,11 @@ export default function PrivacyPage() {
           the name of the screen and the action, not a picture of it and not what you type.
         </li>
         <li className="list-none pl-0 pt-2">
-          <span className="font-medium">We used to record screens, and stopped.</span> Until
-          September 2026 this app also sent PostHog a video replay of your own screen. That is
-          switched off and no longer happens to anybody. It does not un-collect the replays
-          made while it was on — to have those deleted, email{' '}
+          <span className="font-medium">We used to be set up to record screens, and
+          stopped.</span> Until September 2026 this app was configured to send PostHog a video
+          replay of your own screen. That is switched off and no longer happens to anybody.
+          Whether any recording of you was ever actually made depends on whether you had turned
+          usage data on at the time — if you want any that exist deleted, email{' '}
           <a href={`mailto:${SUPPORT_EMAIL}`} className="underline">
             {SUPPORT_EMAIL}
           </a>{' '}

@@ -834,12 +834,13 @@ Nobody in a session can do these.
 7c. **Confirm the four PostHog dashboard toggles** (PD-353) — autocapture off, heatmaps off, web
    vitals on, session replay **off** — and put `NEXT_PUBLIC_POSTHOG_KEY` on **Production only**.
    The code cannot see the dashboard half, and a mismatch is silent.
-7c-i. **Delete the replay recordings the pilot already made** (PD-456). Recording is off in the
-   code as of 2026-09-18, which stops new ones and un-collects nothing: whatever the unmasked
-   pilot captured is still in PostHog, and `/legal/privacy` now tells riders in writing that they
-   can ask for it to be deleted. Retention settings are no longer the lever they were — the
-   recordings are a finite set with an end date, so removing them is a one-off rather than a
-   policy. Nothing in the repo can see or do it.
+7c-i. **Find out whether the pilot recorded anything, then delete it** (PD-456). Recording is off
+   in the code as of 2026-09-18, which stops new ones and un-collects nothing. **How much exists
+   is unknown from here and should not be guessed**: the key is live in Production only,
+   `opt_out_capturing_by_default` is `true` so only riders who turned usage data on were ever
+   eligible, and 7c's project-side replay toggle was never confirmed. `/legal/privacy` is written
+   to match that uncertainty — it says the app *was configured to* record and that riders may ask
+   for anything that exists. Signing in to PostHog is the only way to answer it.
 7c-ii. ~~**Tell the pilot riders**~~ — **retired by PD-456.** It existed because the recording was
    unmasked and telling people was "a stronger answer than masking". There is no recording to
    disclose in advance any more; what is owed instead is 7c-i, which is about what was already

@@ -97,17 +97,25 @@ afterEach(() => {
 const html = () => document.body.innerHTML
 
 describe('PrivacySheet', () => {
-  it('names the screen recording before the rider consents', () => {
-    // The wording may be reworded; that a replay of the rider's OWN screen is
-    // named is the thing that may not go. Matched on the two words that carry
-    // it rather than on the whole sentence, so a rewrite is free and a deletion
-    // is not.
-    expect(html()).toContain('replay of your own screen')
+  it('does not claim a screen recording that no longer happens', () => {
+    // INVERTED by PD-456. This case used to pin the opposite — that "a replay
+    // of your own screen" was named before the rider consented — and it was
+    // right to, while the app recorded one. Recording is off, so the same
+    // assertion now pins a false promise into the one surface a rider reads
+    // BEFORE deciding. The disclosure rule behind it is unchanged: this sheet
+    // must describe what is collected, and it must not describe what is not.
+    const markup = html()
+    expect(markup).not.toContain('replay of your own screen')
+    // And says so positively, so a future trim that simply deletes the sentence
+    // leaves the sheet silent about recording rather than reassuring about it.
+    expect(markup).toContain('do not record your screen')
   })
 
-  it('puts the recording disclosure above the toggle, not under it', () => {
+  it('puts the collection disclosure above the toggle, not under it', () => {
+    // Anchored on the surviving first category rather than on the replay clause
+    // PD-456 removed. The rule is the ordering, not which sentence carries it.
     const markup = html()
-    const disclosure = markup.indexOf('replay of your own screen')
+    const disclosure = markup.indexOf('screens you open')
     const checkbox = markup.indexOf('Share usage data')
 
     expect(disclosure).toBeGreaterThan(-1)
@@ -148,11 +156,15 @@ describe('PrivacySheet', () => {
   it('keeps both claims about the rider’s data that the opt-out must not overstate', () => {
     const markup = html()
 
-    // Trimming this paragraph is in scope (PD-405); deleting either of these is
-    // not, because each is a claim about the rider's data rather than a
-    // description of a feature. `/legal/privacy` says both in full.
+    // Trimming this paragraph is in scope (PD-405); deleting the surviving
+    // claim is not, because it is a claim about the rider's data rather than a
+    // description of a feature. `/legal/privacy` says it in full.
     expect(markup).toContain('does not delete what has already')
-    expect(markup).toContain('another rider')
+    // The second claim — that opting out cannot reach another rider's replay —
+    // went with the replay itself (PD-456). It is asserted ABSENT rather than
+    // dropped from this file, because the sentence only made sense while a
+    // recording existed to appear in, and re-adding it would re-imply one.
+    expect(markup).not.toContain('another rider')
   })
 
   it('no longer explains the mechanism at a rider who came to flip one switch', () => {

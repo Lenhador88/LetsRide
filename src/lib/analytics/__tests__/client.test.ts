@@ -254,7 +254,7 @@ describe('what the source must and must not contain', () => {
     // posthog-js persists consent to localStorage, so a stored opt-IN from an
     // earlier visit wins over it. A rider who was recorded on this device and
     // later opted out on another one would come back opted in and be recorded
-    // on `/auth/login` — under an unmasked pilot posture, the screen showing
+    // on `/auth/login` — under the unmasked pilot posture, the screen showing
     // their email being typed — because the preference cannot be read at all
     // before a session exists.
     //
@@ -291,11 +291,16 @@ describe('what the source must and must not contain', () => {
 
 describe('the recorder still masks passwords, whatever maskAllInputs says', () => {
   it('normalises maskAllInputs: false to { password: true }', () => {
-    // A claim about a DEPENDENCY, checked against the dependency, and the most
-    // important assertion in this file. The pilot posture is UNMASKED replay,
-    // which is only defensible because rrweb masks `input[type=password]`
-    // unconditionally — an SDK bump that changed that would put every rider's
-    // password into a recording, with nothing anywhere going red.
+    // A claim about a DEPENDENCY, checked against the dependency. It was the
+    // most important assertion in this file while replay ran: the unmasked
+    // posture was only defensible because rrweb masks `input[type=password]`
+    // unconditionally, and an SDK bump that changed that would have put every
+    // rider's password into a recording with nothing going red.
+    //
+    // **Kept although PD-456 turned recording off**, and deliberately not
+    // deleted: it is the precondition any masked re-enablement rests on, and
+    // the cost of keeping it is one file read. If replay is ever decided
+    // against for good, this goes with `NO_CAPTURE_CLASS` and not before.
     //
     // A moved file layout fails this too, and that is correct rather than
     // flaky: the assumption is exactly what needs re-checking on an upgrade.
@@ -306,9 +311,10 @@ describe('the recorder still masks passwords, whatever maskAllInputs says', () =
       contents = readFileSync(recorder, 'utf8')
     } catch {
       throw new Error(
-        `posthog-js's replay recorder is no longer at ${recorder}. Session replay is ON ` +
-          'and UNMASKED for the pilot, so re-verify BY HAND that password inputs are still ' +
-          'masked unconditionally before pointing this test at the new path.'
+        `posthog-js's replay recorder is no longer at ${recorder}. Recording is OFF ` +
+          '(PD-456), so this is not urgent — but re-verify BY HAND that password inputs are ' +
+          'still masked unconditionally before pointing this test at the new path, because ' +
+          'that fact is the precondition any masked re-enablement would rest on.'
       )
     }
 
