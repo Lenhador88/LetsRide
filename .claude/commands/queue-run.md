@@ -62,7 +62,7 @@ on the `PD` team (created 2026-08-18) — check rather than trust that, because 
 rests on it:
 
 ```
-mcp__Linear__list_issue_labels  team=Pedro & Dave     # slot-1 and slot-2 must both be there
+mcp__Linear__list_issue_labels  team=7388c68e-ef17-4998-a9b7-d8ad8ce66038   # slot-1 and slot-2 must both be there
 ```
 
 **A `list_issues label=slot-1` returning nothing does NOT establish they exist** — the empty
@@ -82,9 +82,10 @@ write and the label write leaves the same state; the accepted cost is one extra 
 against a freeze on every hand move.
 
 Read `CLAUDE.md` fully before acting — it is auto-loaded, and it is the contract. Workspace
-`lets-ride`, team **Pedro & Dave** (`PD`), project **Let's ride (AI)**
-(`88f3f224-ecf0-46f0-a032-c86b7a12f81c`). Note the curly apostrophe in that name; pass the id,
-never the name.
+`lets-ride`, team `PD` (`7388c68e-ef17-4998-a9b7-d8ad8ce66038`), project **Let's ride (AI)**
+(`88f3f224-ecf0-46f0-a032-c86b7a12f81c`). **Pass both ids, never the display names** — the project
+name holds a curly apostrophe, and the team's name has already been changed once under a procedure
+that filtered by it.
 
 ---
 
@@ -188,7 +189,7 @@ untouched until STEP 5, so a stalled firing holds nothing.
 
 ## STEP 1 — Read the board, once
 
-**Never type a status name from memory** — `list_issue_statuses team=Pedro & Dave` first, and use
+**Never type a status name from memory** — `list_issue_statuses team=7388c68e-ef17-4998-a9b7-d8ad8ce66038` first, and use
 the names it returns. Names have moved twice with nothing in the repo noticing, and a `save_issue`
 naming a status that no longer exists comes back looking successful with the field silently
 dropped. `queue-pickup.md` §The status names carries the live table and the two traps in its

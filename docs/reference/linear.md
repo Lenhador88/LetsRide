@@ -3,11 +3,19 @@
 
 ## The roadmap lives in Linear
 
-Workspace **`lets-ride`**, team **Pedro & Dave (`PD`)**, project **Let's ride (AI)**. **Pass the
-project id — `88f3f224-ecf0-46f0-a032-c86b7a12f81c`** — never the name: it contains a curly
-apostrophe, and the straight-quote version silently fuzzy-matches the *deprecated* `Let's Ride`
-project or drops the field entirely. `save_issue` returns a successful-looking payload either
-way, so **read the field you set back off the response**.
+Workspace **`lets-ride`**, team **`PD`**, project **Let's ride (AI)**. **Pass the ids, never the
+display names** — team `7388c68e-ef17-4998-a9b7-d8ad8ce66038`, project
+`88f3f224-ecf0-46f0-a032-c86b7a12f81c`. The project name contains a curly apostrophe, and the
+straight-quote version silently fuzzy-matches the *deprecated* `Let's Ride` project or drops the
+field entirely. `save_issue` returns a successful-looking payload either way, so **read the field
+you set back off the response**.
+
+**A team filter is the same trap one level up, and it has already fired.** The team was displayed
+as `Pedro & Dave` until 2026-09-18 and is `Let's ride` now — one rename, nothing in the repo able
+to see it. A stale team name does not error everywhere: `list_issue_statuses` answers `[]` and
+`list_issue_labels` errors, and a procedure that reads *no status came back* as *stop and say so*
+takes the queue down silently. `list_teams` is the one call that recovers it; the id above does
+not move.
 
 **There is a second project called `Let's Ride` and it is deprecated** — 27 issues from 2024–2025
 describing a Thunkable/Firebase build that no longer exists. Not a source of truth; no work is
@@ -35,7 +43,7 @@ silently dropped**. `.claude/commands/queue-pickup.md` §The status names carrie
 and the two traps in its `Type` column; run this before the first status write of a session:
 
 ```
-# via the Linear MCP: list_issue_statuses team=Pedro & Dave
+# via the Linear MCP: list_issue_statuses team=7388c68e-ef17-4998-a9b7-d8ad8ce66038
 ```
 
 Three rules that outlive any rename:
