@@ -26,7 +26,7 @@ history.
   `main` is production (`app.letsride.social`). `development` is normally ahead of `main`, and
   that is the steady state.
 - **Migrations: 117 files; DEV is at `117`, PROD at `116`** — `117` (PD-398) applied to DEV on
-  2026-09-18 and is what the next promotion carries. `list_migrations`
+  2026-09-18 and is the next promotion's. `list_migrations`
   against both refs is the check; DEV answers 120 rows because **three are hand-applied with no
   file** and PROD records none of them. `115` grants `anon` EXECUTE on one function — the first
   exception to decision #1 — so its advisor class
@@ -42,7 +42,7 @@ history.
   secrets name PROD and `WALK_CI` is unset (see §Blocked on the owner).
 - **The Linear team is `Let's ride`, not `Pedro & Dave`** — the old name errors,
   `list_issue_statuses` included. Pass the id `7388c68e-ef17-4998-a9b7-d8ad8ce66038`.
-- **OpenSpec has 33 open changes and 22 archived**
+- **OpenSpec has 34 open changes and 22 archived**
   (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`).
   **Archiving one is not two commands**: a stale `## MODIFIED Requirements` block drops scenarios
   wholesale, so diff scenario names per requirement first, and re-point any pointer **into** the
@@ -53,24 +53,25 @@ history.
 
 - **Nothing in this app opens a sheet by itself** (PD-447, reversing PD-419). The Explore question
   is `LocationQuestionRow`, on the two Explore screens only. **`profiles.location` has TWO
-  writers** — `setRiderTown` and `setHomeTown` — so anything keyed to "the rider stored a town"
-  goes in both.
+  writers** — `setRiderTown` and `setHomeTown` — so anything keyed to a stored town goes in both.
 - **Onboarding's terminal step is `/onboarding/town`** (PD-445), behind `setHomeTown`; the
   guard's `isOnboarding` catch-all is what makes `/onboarding/country` safe. **A town is answered
   by a THIRD PARTY at the app's most critical gate** — `search-places` has an application-wide
   ceiling (2000/24h across all riders) — so a lookup failure reveals a country select on its own
-  and the rider finishes with no town. **The 2026-09-08 walk hit exactly that**: no suggestions for
-  `Amsterdam`, and the minted rider took the escape. Every walk run spends two credits.
+  and the rider finishes with no town — the 2026-09-08 walk hit that on `Amsterdam`.
+  Every walk run spends two credits.
 - **Universal links are built and UNVERIFIED** (PD-205) — Apple fetches the association file onto
-  a real device, so a simulator settles nothing. `docs/reference/native-shell.md` §Universal links
-  has the device checks and the owner action. **PD-205 stays open**: the Android half needs a
+  a device, so a simulator settles nothing. `docs/reference/native-shell.md` §Universal links has
+  the device checks and the owner action. **PD-205 stays open**: the Android half needs a
   signing fingerprint that cannot exist until `android/` does.
-- **Push, `openspec/changes/deliver-push-notifications`:** child B is complete in the repository
-  (#438, #446) and **unverified on a device** — tasks 2.15–2.19a wait on a provisioning profile
-  carrying the Push capability, an owner action. **Child C (PD-303) is the sender**, blocked on the
+- **Push, `openspec/changes/deliver-push-notifications`:** child B is complete (#438, #446) and
+  **unverified on a device** — tasks 2.15–2.19a wait on a provisioning profile with the Push
+  capability, an owner action. **Child C (PD-303) is the sender**, blocked on the
   APNs `.p8` and the FCM service account. PD-291 stays open until C lands.
+- **PD-454's proposal is merged, not its build** — the change stays under `openspec/changes/`;
+  `118`/`119` and both client surfaces follow in their own PR.
 - **PD-385 is open on purpose**: 9 DEV rides carry a coordinate and no tile, repairable only by
-  each ride's own organizer.
+  their own organizers.
 
 Re-derive rather than trust the list: `list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`
 filtered by status, and `list_pull_requests state=open`.
