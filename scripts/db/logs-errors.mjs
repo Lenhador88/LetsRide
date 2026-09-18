@@ -109,13 +109,25 @@
  * So neither the comment nor the window needs trimming, and trimming either
  * would have looked like a fix while leaving the endpoint wrong.
  *
- * STILL UNVERIFIED END TO END FROM A SESSION, and it cannot be otherwise:
- * `api.supabase.com:443` is a policy denial at the agent proxy (403 to
- * CONNECT), so no build container can run this file's `fetch`. A GitHub
- * Actions runner has no such restriction, which is why
- * `.github/workflows/log-digest.yml` is the only environment that executes it
- * — scheduled at 06:00 and 18:00 UTC, or on `workflow_dispatch`. Re-derive the
- * proxy half rather than trusting this line:
+ * VERIFIED END TO END, run 38, 2026-09-18T16:11Z, dispatched against
+ * `development` at `ebc8931`: exit 0 on BOTH projects, the first non-red run
+ * in 38. Runs 1-14 threw here; this one read a well-formed `{"result": []}`,
+ * which is the discriminator that matters — `parseRows` throws on any other
+ * envelope, so an empty result is a real answer rather than a fail-open.
+ *
+ * EXIT 0 AND NOT 1 BECAUSE BOTH WINDOWS WERE GENUINELY EMPTY, which is worth
+ * saying because "no rows" is also what a silently-broken filter looks like.
+ * Corroborated independently the same hour: through `query_logs`, this exact
+ * SQL returns `{"result":[]}` on DEV, and a bare
+ * `select count(*) from logs where source = 'edge_logs'` over the same 24h
+ * returns 0. The projects are quiet; the reader is not blind.
+ *
+ * NO SESSION CAN RE-RUN THIS LOCALLY — `api.supabase.com:443` is a policy
+ * denial at the agent proxy (403 to CONNECT), so no build container runs this
+ * file's `fetch`. A GitHub Actions runner has no such restriction, which is
+ * why `.github/workflows/log-digest.yml` is the only environment that executes
+ * it — scheduled at 06:00 and 18:00 UTC, or on `workflow_dispatch`. Re-derive
+ * the proxy half rather than trusting this line:
  *
  *     curl -sS "$HTTPS_PROXY/__agentproxy/status"   # recentRelayFailures
  *
