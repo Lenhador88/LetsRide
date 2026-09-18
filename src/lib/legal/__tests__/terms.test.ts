@@ -29,28 +29,63 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.
 const MIGRATIONS = path.join(ROOT, 'supabase/migrations')
 
 /**
- * The value the LAST migration to define `current_terms_version()` returns.
+ * The value the LAST migration to touch `current_terms_version()` returns.
  *
  * Walked newest-first rather than reading `030` by name, because replacing the
  * string is explicitly a *new* migration (`030`'s own header says so, and
  * `CLAUDE.md` forbids editing an applied file). Reading `030` would pin this
  * test to a value the database stopped using.
+ *
+ * **Two steps, not one, and that split is the whole point.** The first cut did
+ * both at once — it scanned every file for one exact body shape and *fell
+ * through* to the next file when it did not match. So a redefinition written in
+ * any other shape was indistinguishable from a file that never mentions the
+ * function, and the walk quietly landed back on `030`: measured, 5 of 7
+ * plausible forms (uppercase DDL, `drop` + `create` with no `or replace`, a
+ * named dollar tag, a `plpgsql` `return` body, quoted identifiers) returned
+ * `0-placeholder` while the database said something else — with the operator
+ * still unnamed, both tests in this file stayed green through it.
+ *
+ * Now: find the newest file that *touches* the function, then insist on reading
+ * a value out of THAT file. Unparseable throws, naming it. Erring loud is the
+ * point — a future file that only grants or revokes would trip this, and being
+ * told to look is the correct outcome for a value consent records depend on.
  */
 function currentTermsVersionInSql(): string {
+  // `CLAUDE.md`'s comment trap, and it is live here: `030` names this function
+  // in prose three times, twice before it ever defines it. A directive is only
+  // a directive outside a comment, so whole-line `--` comments go first.
+  const stripSqlComments = (sql: string) =>
+    sql
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith('--'))
+      .join('\n')
+
+  const TOUCHES =
+    /(?:create|drop)\s+(?:or\s+replace\s+)?function\s+(?:if\s+exists\s+)?private\.current_terms_version\s*\(/i
+
   const files = readdirSync(MIGRATIONS)
     .filter((f) => f.endsWith('.sql'))
     .sort()
     .reverse()
 
   for (const file of files) {
-    const sql = readFileSync(path.join(MIGRATIONS, file), 'utf8')
-    // The body, not a comment mentioning the function: anchored on the `select`
-    // that returns it. `CLAUDE.md`'s comment trap is live here — `030` names
-    // the string in prose twice, and a looser match reads its own docstring.
+    const sql = stripSqlComments(readFileSync(path.join(MIGRATIONS, file), 'utf8'))
+    if (!TOUCHES.test(sql)) continue
+
+    // Deliberately loose about the shape and strict about the file: any dollar
+    // tag, `select` or a plpgsql `return`, either case.
     const body = sql.match(
-      /create or replace function private\.current_terms_version\(\)[\s\S]*?\$\$\s*select\s+'([^']+)'/
+      /function\s+private\.current_terms_version\s*\(\s*\)[\s\S]*?\$[A-Za-z_]*\$\s*(?:begin\s+)?(?:select|return)\s+'([^']+)'/i
     )
     if (body) return body[1]
+
+    throw new Error(
+      `${file} is the newest migration touching private.current_terms_version() and this ` +
+        'test cannot read a version out of it. Do not loosen the match until you know which ' +
+        'value the database returns: TERMS_VERSION in src/lib/legal/terms.ts is what riders ' +
+        'are shown, and profiles.terms_version is what their consent records.'
+    )
   }
 
   throw new Error(
@@ -67,21 +102,31 @@ describe('the terms version the page shows', () => {
 })
 
 describe('the operator disclosure', () => {
-  const stillPlaceholder = OPERATOR.name.includes('[') || OPERATOR.address.includes('[')
-
   it('moves to a real name and address and the version together, never one alone', () => {
     // Dutch law (art. 3:15d BW) wants the person behind the service named and
-    // reachable, so a bracketed placeholder is not a cosmetic gap — it is the
+    // reachable, so an unnamed operator is not a cosmetic gap — it is the
     // reason the text is not yet binding. The two directions:
     //
-    //   placeholder operator + placeholder version  → fine, today's state
-    //   real operator        + real version         → fine, the release
-    //   real operator        + placeholder version  → consents stamped unreadably
-    //   placeholder operator + real version         → a "binding" text naming nobody
+    //   no operator + placeholder version  → fine, today's state
+    //   an operator + real version         → fine, the release
+    //   an operator + placeholder version  → consents stamped unreadably
+    //   no operator + real version         → a "binding" text naming nobody
     //
     // Asserted as an equivalence rather than as two separate cases, so neither
     // half can be edited on its own and left green.
-    expect(stillPlaceholder).toBe(TERMS_VERSION === '0-placeholder')
+    expect(OPERATOR === null).toBe(TERMS_VERSION === '0-placeholder')
+  })
+
+  it('has no placeholder string to leak, which is why the constant is nullable', () => {
+    // The interlock above is about the RELEASE. This is about today: an unnamed
+    // operator used to be `'[full legal name — PD-459]'`, and a value renders —
+    // the live page published that bracket to every rider. `null` cannot.
+    // `src/app/legal/terms/__tests__/page.test.tsx` asserts the other end, on
+    // the markup.
+    if (OPERATOR !== null) {
+      expect(OPERATOR.name).not.toMatch(/[[\]]/)
+      expect(OPERATOR.address).not.toMatch(/[[\]]/)
+    }
   })
 
   it('is rendered by the page rather than restated in it', () => {
@@ -94,6 +139,11 @@ describe('the operator disclosure', () => {
     expect(page).toContain('OPERATOR')
     expect(page).toContain('TERMS_VERSION')
     expect(page).toContain('SUPPORT_EMAIL')
+
+    // And it has to handle the null arm rather than assert past it: `OPERATOR!`
+    // or a `?? ''` would type-check, render an empty name, and satisfy every
+    // other assertion in this file.
+    expect(page).toContain('{OPERATOR ? (')
   })
 })
 

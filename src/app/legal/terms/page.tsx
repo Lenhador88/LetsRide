@@ -35,12 +35,37 @@ import { OPERATOR, TERMS_LAST_UPDATED, TERMS_VERSION } from '@/lib/legal/terms'
  * large improvement on a page that disclaimed being an agreement while riders
  * accepted it; it is not a substitute for counsel before launch.
  *
+ * **§1 BRANCHES because `OPERATOR` can be `null`, and that is not defensive
+ * coding.** The identity clause is the one art. 3:15d BW actually asks for, and
+ * the first cut of this page rendered `[full legal name — PD-459]` straight
+ * into it — a live page telling every rider it is an agreement while naming
+ * nobody, and quoting an internal issue id at them. The constant has no
+ * placeholder string to render now, so the branch is the only way to compile,
+ * and the empty arm says plainly what is missing and how to ask for it.
+ *
  * **Two clauses are promises the product keeps, and the rest are promises about
  * conduct.** §4 (rides are not ours) and §7 (reporting) are the two a reviewer
  * checks against the app, and both are true today: nothing here organises or
  * vets a ride, and report/block/hide are built. Do not add a clause describing
  * a mechanism this app does not have — that is the failure mode the placeholder
  * at least avoided by saying nothing.
+ *
+ * **§11 says nothing about re-accepting, deliberately.** Its first draft
+ * promised "we will ask you to accept the new version", and three things refuse
+ * that: `accept_terms()` (`030`) is `where terms_accepted_at is null`, so a
+ * second call returns the old stamp and leaves the old version;
+ * `my_onboarding_state()` (`021`) returns no version, so the client cannot tell
+ * which text a rider agreed to; and `guard.ts` branches on the timestamp alone.
+ * Delivering that sentence is a migration, not a screen. It now claims only
+ * what is true — the version is recorded and does not move.
+ *
+ * **§5's invite-link paragraph is decision #1's named exception, written for a
+ * rider.** `public.ride_invite_link_public_preview` (`115`) hands any holder of
+ * the link a ride's title, start time, meeting point and organiser username
+ * with no account, which is wider than the "everyone signed in" the rest of §5
+ * describes — and the privacy page calls a meeting point a home address. A
+ * rider deciding who to send a link to needs that in the text they are agreeing
+ * to.
  *
  * **The version string is `lib/legal/terms.ts`'s and the database's, and they
  * must agree.** `private.current_terms_version()` (`030`) stamps
@@ -63,9 +88,25 @@ export default function TermsPage() {
       </p>
 
       <h2 className="text-base font-semibold pt-4">1. Who we are</h2>
+      {OPERATOR ? (
+        <p className="text-muted">
+          LetsRide is run by {OPERATOR.name}, a private individual established in the
+          Netherlands, at {OPERATOR.address}. We are not a company.
+        </p>
+      ) : (
+        <p className="text-muted">
+          LetsRide is run by a private individual established in the Netherlands, not by a
+          company.{' '}
+          <span className="font-medium">
+            That person&rsquo;s full name and postal address belong in this paragraph and are
+            not published yet.
+          </span>{' '}
+          Dutch law entitles you to both, so until they appear here, ask at the address below
+          and we will send them to you.
+        </p>
+      )}
       <p className="text-muted">
-        LetsRide is run by {OPERATOR.name}, a private individual established in the
-        Netherlands, at {OPERATOR.address}. We are not a company. You can reach us at{' '}
+        You can reach us at{' '}
         <a href={`mailto:${SUPPORT_EMAIL}`} className="underline">
           {SUPPORT_EMAIL}
         </a>
@@ -109,6 +150,13 @@ export default function TermsPage() {
         store them and to show them to the riders you chose to show them to — a club, a ride,
         or everyone signed in — so the app can work. That permission ends when you delete the
         content or your account, except for copies in ordinary backups.
+      </p>
+      <p className="text-muted">
+        <span className="font-medium">One thing reaches further than the rest.</span> If you
+        share a ride&rsquo;s invite link, anyone holding that link can see that ride&rsquo;s
+        title, start time, meeting point and the organiser&rsquo;s username without signing in
+        or having an account at all — that is what makes the link work. Nothing else in the app
+        is visible without an account. Send it to the people you mean to ride with.
       </p>
       <p className="text-muted">
         Post only what you have the right to post. If a photo is not yours, or shows someone
@@ -180,8 +228,9 @@ export default function TermsPage() {
       <h2 className="text-base font-semibold pt-4">11. Changes to these terms</h2>
       <p className="text-muted">
         We may update these terms. The version and date at the top tell you which text you are
-        reading, and we record which version you accepted. If a change matters to you, we will
-        ask you to accept the new version before you carry on using the app.
+        reading, and we record which version you accepted — that record stays as it was when
+        the text changes, so it always says what you actually agreed to. Check this page if you
+        want to know whether it has moved since then.
       </p>
 
       <h2 className="text-base font-semibold pt-4">12. Which law applies</h2>
