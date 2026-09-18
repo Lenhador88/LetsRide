@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
+  LOG_WINDOW_MS,
   SQL,
   buildLogsUrl,
   classify,
@@ -340,12 +341,26 @@ describe('the analytics endpoint', () => {
     expect(url.searchParams.get('iso_timestamp_end')).toBe('2026-09-18T15:44:58.938Z')
   })
 
+  it('encodes the query the way the only working shape does', () => {
+    // NOT assertable through `searchParams.get`, which decodes `+` and `%20`
+    // to the same string — so the case above cannot see this and a reviewer
+    // caught it. `URLSearchParams` writes a space as `+`; `encodeURIComponent`
+    // writes `%20`, and `openapi-fetch` 0.13.5 — the path the MCP client's
+    // working call goes through — uses the latter. 139 bytes of this query are
+    // spaces, and a strict RFC-3986 reader of `+` answers with the same
+    // generic "Backend error!" PD-421 spent 14 runs on.
+    const raw = buildLogsUrl('fpmrimzxadewsaiwpsel', start, end).search
+    expect(raw).toContain('%20')
+    expect(raw.split('&')[0]).not.toContain('+')
+  })
+
   it('keeps the window at exactly 24h, which the API accepts', () => {
-    // Measured 2026-09-18 through `query_logs`, which poses the same GET: a
-    // window of exactly 86_400_000ms is accepted. The cap is `> 24h`, not
-    // `>=`, so trimming to 23h55m would be a fix for a bug that is not there —
-    // and would quietly narrow the overlap the twice-daily schedule depends on.
-    expect(end.getTime() - start.getTime()).toBe(24 * 60 * 60 * 1000)
+    // Asserts the constant `main()` actually uses. An earlier version of this
+    // case compared two `Date` literals declared in this file and called
+    // nothing from the module — it stayed green with the real window widened
+    // to 48h, which is this repo's vacuous-assertion trap in its purest form.
+    expect(LOG_WINDOW_MS).toBe(24 * 60 * 60 * 1000)
+    expect(end.getTime() - start.getTime()).toBe(LOG_WINDOW_MS)
   })
 })
 

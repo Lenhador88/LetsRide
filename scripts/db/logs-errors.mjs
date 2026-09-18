@@ -90,7 +90,7 @@
  * alike) all reached the API with a valid token and all got a 200 carrying
  * `{"error": "Backend error! Retry your query. …"}`. The cause was
  * `analytics/endpoints/logs.all` — the Logflare/BigQuery endpoint — being sent
- * ClickHouse SQL. `buildLogsUrl` above carries the endpoint that matches the
+ * ClickHouse SQL. `buildLogsUrl` below carries the endpoint that matches the
  * dialect, and the reasoning for why the wrong one reads as right.
  *
  * THE OTHER TWO SUSPECTS ARE EXCLUDED BY MEASUREMENT, not by the fix working.
@@ -102,7 +102,9 @@
  *     verbatim from the constant above — accepted, `{"result":[]}`;
  *   - a window of EXACTLY 24h with millisecond precision
  *     (`2026-09-17T15:44:58.938Z` → `2026-09-18T15:44:58.938Z`) — accepted.
- *     The cap is `> 24h`, not `>=`, so `end - 24h` was never over it.
+ *     One accepted call, plus the MCP client's own guard being `> 24h` rather
+ *     than `>=`. Neither is a reading of the API's cap, which nothing in a
+ *     container can see — but `end - 24h` is accepted, which is the claim.
  *
  * So neither the comment nor the window needs trimming, and trimming either
  * would have looked like a fix while leaving the endpoint wrong.
@@ -178,6 +180,18 @@ limit 50
 `.trim()
 
 /**
+ * The window each run reads, exported so a test can pin the value `main()`
+ * actually uses.
+ *
+ * Twice-daily runs read 24h each, so consecutive runs overlap by 12 hours and
+ * a skipped or dropped run loses nothing — which is the whole reason the
+ * schedule is twice daily. Narrowing this silently narrows that overlap, and
+ * "trim the window" was PD-421's cheapest-looking wrong answer: exactly 24h is
+ * accepted, measured 2026-09-18.
+ */
+export const LOG_WINDOW_MS = 24 * 60 * 60 * 1000
+
+/**
  * The analytics endpoint, and the segment this used to carry is the whole of
  * PD-421.
  *
@@ -192,9 +206,9 @@ limit 50
  * the generic sentence that cost 14 runs and a week.
  *
  * `.all` IS THE ONE A CAREFUL PERSON WRITES FIRST, which is why this says so
- * rather than reading as a typo: it is the endpoint in Supabase's own API
- * reference and the obvious spelling of "all the logs". The discriminator is
- * not the name, it is the DIALECT the query is written in. Measured
+ * rather than reading as a typo: it is the obvious spelling of "all the logs",
+ * and it is what this file carried for 14 runs. The discriminator is not the
+ * name, it is the DIALECT the query is written in. Measured
  * 2026-09-18, `@supabase/mcp-server-supabase@0.13.0`: `queryLogs` sends this
  * exact path with `logsDialect: 'clickhouse'`, and the same `SQL` constant
  * through that tool returns rows.
@@ -203,9 +217,20 @@ export function buildLogsUrl(ref, start, end) {
   const url = new URL(
     `https://api.supabase.com/v1/projects/${ref}/analytics/endpoints/logs`,
   )
-  url.searchParams.set('sql', SQL)
-  url.searchParams.set('iso_timestamp_start', start.toISOString())
-  url.searchParams.set('iso_timestamp_end', end.toISOString())
+  // `encodeURIComponent` rather than `url.searchParams.set`, and the difference
+  // is 139 bytes of this query. `URLSearchParams` serialises a space as `+`
+  // (`application/x-www-form-urlencoded`); `encodeURIComponent` gives `%20`.
+  // Only one of those shapes has ever been observed to work — `openapi-fetch`
+  // 0.13.5, which is what the MCP client goes through, calls
+  // `encodeURIComponent` and never constructs a `URLSearchParams` — and a
+  // strict RFC-3986 reader of `+` answers with the same generic "Backend
+  // error!" this file spent 14 runs on. Matching the working shape costs
+  // nothing and removes the variable; `searchParams.get()` decodes both
+  // identically, so a test asserting through it cannot see the difference.
+  url.search =
+    `sql=${encodeURIComponent(SQL)}` +
+    `&iso_timestamp_start=${encodeURIComponent(start.toISOString())}` +
+    `&iso_timestamp_end=${encodeURIComponent(end.toISOString())}`
   return url
 }
 
@@ -435,7 +460,7 @@ async function main() {
   const project = process.argv.includes('--prod') ? PROJECTS.prod : PROJECTS.dev
 
   const end = new Date()
-  const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
+  const start = new Date(end.getTime() - LOG_WINDOW_MS)
 
   const url = buildLogsUrl(project.ref, start, end)
 

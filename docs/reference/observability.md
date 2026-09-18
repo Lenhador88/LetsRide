@@ -81,15 +81,17 @@ one `logs` table, a `source` column, `log_attributes['<key>']` — at
 fields come out of `cross join unnest(metadata)`. The ClickHouse endpoint is the
 same path **without `.all`**, and it takes the same `sql`, `iso_timestamp_start`
 and `iso_timestamp_end`. Both answer 200, so the mismatch is invisible at
-transport level. `.all` is the spelling in Supabase's own API reference and the
-obvious reading of "all the logs", so the discriminator is the *dialect the
-query is written in*, never the name.
+transport level. `.all` is the obvious reading of "all the logs" and is what the
+script carried for 14 runs, so the discriminator is the *dialect the query is
+written in*, never the name.
 
 The other two suspects were excluded by measurement rather than by the fix
 working — both tested 2026-09-18 through `mcp__Supabase__query_logs`, which
 poses the same GET: the multi-line `SQL` **with** its comment block is accepted,
-and a window of **exactly** 24h with millisecond precision is accepted (the cap
-is `> 24h`, not `>=`). Trimming either would have looked like a fix.
+and a window of **exactly** 24h with millisecond precision is accepted. (That
+is one accepted call plus the MCP client's own guard, which is `> 24h` rather
+than `>=` — not a reading of the API's cap, which nothing here can see.)
+Trimming either would have looked like a fix.
 
 **No session can confirm the fix end to end** — `api.supabase.com:443` is a
 policy denial at the agent proxy (403 to CONNECT) — so the first green run of
@@ -138,11 +140,12 @@ SUPABASE_ACCESS_TOKEN=sbp_... npm run logs:errors -- --prod  # PRODUCTION
 ```
 
 `scripts/db/logs-errors.mjs` carries the query and the credential rules. **Its
-SQL is verified against both projects; its HTTP call reaches the API and is
-refused there, 14 runs out of 14** (above). **No session can exercise it** —
+SQL is verified against both projects; its HTTP call was refused 14 runs out of
+14 until PD-421 corrected the endpoint** (above), and the first green run is what
+confirms the correction. **No session can exercise it** —
 `api.supabase.com:443` is a policy denial at the agent proxy, which answers 403
 to CONNECT, so `fetch` reports only "fetch failed" and curl reports status 000 —
-so a fix is tested through `workflow_dispatch` on a branch, not from here.
+so a fix is tested through the workflow, not from here.
 Re-derive rather than trusting it, since a network policy changes without
 announcement:
 
