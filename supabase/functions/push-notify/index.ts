@@ -74,13 +74,28 @@
  * table, it wants an RPC instead.
  *
  * ---------------------------------------------------------------------------
- * What it does NOT decide
+ * What it does NOT decide, and the shape that follows from it
  * ---------------------------------------------------------------------------
  * **What may leave the database is decided in SQL, by `push_payload_for`, per
- * COLUMN.** By the time a row arrives here the gate has run and the copy is
- * rendered; this file sees strings and a token. It never resolves an id, never
- * re-reads a subject, and has no way to widen what it was given. That is the
- * whole reason the claim returns rendered text rather than references.
+ * COLUMN.** This file never asks for a subject; it asks for a notification's
+ * payload and is either given one or not. A gate refusal is an EMPTY RESULT
+ * rather than an error, which is why the sweep below reads zero rows as
+ * `suppressed` and not as a failure — and why it can never widen what it was
+ * given, because there is no argument here that would widen anything.
+ *
+ * **Two calls, not one, and the second is per notification.** `claim_push_batch`
+ * returns the outbox row crossed with every device it fans out to; the copy
+ * comes from `push_payload_for`, once per notification however many phones the
+ * rider has. So the loop is over DELIVERIES and the inner fan-out is over
+ * devices — which is also the unit `complete_push_delivery` takes, since it
+ * records one verdict per outbox row and a list of the installations that
+ * actually took the push.
+ *
+ * **The retry bound is the SQL's.** `complete_push_delivery` counts attempts
+ * and turns `retry` into `failed` after five. An earlier draft of this function
+ * carried its own attempt counter and backoff table — two bounds that can
+ * disagree, deleted. This file reports an outcome; the row's next state is not
+ * its business.
  */
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
@@ -91,13 +106,15 @@ import {
   classifyApnsOutcome,
   classifyFcmOutcome,
   fcmErrorNamesToken,
-  groupByPlatform,
+  groupByDelivery,
   mapWithConcurrency,
-  nextDeliveryState,
+  resolveDeliveryOutcome,
   toApnsPayload,
   toFcmMessage,
-  type PushClaim,
+  type PushClaimRow,
+  type PushDelivery,
   type PushOutcome,
+  type PushPayload,
 } from './shape.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
@@ -234,18 +251,24 @@ async function mintApnsToken(): Promise<string> {
   return `${signingInput}.${base64url(new Uint8Array(signature))}`
 }
 
-async function sendApns(claim: PushClaim, providerToken: string): Promise<PushOutcome> {
+async function sendApns(
+  device: PushClaimRow,
+  payload: PushPayload,
+  providerToken: string,
+): Promise<PushOutcome> {
   try {
-    const response = await fetch(`https://${APNS_HOST}/3/device/${claim.token}`, {
+    const response = await fetch(`https://${APNS_HOST}/3/device/${device.token}`, {
       method: 'POST',
       headers: {
         authorization: `bearer ${providerToken}`,
         'apns-topic': APNS_BUNDLE_ID,
         'apns-push-type': 'alert',
         'apns-priority': '10',
-        'apns-collapse-id': claim.notificationId.slice(0, 64),
+        // A retry of the same notification replaces the earlier attempt rather
+        // than stacking a duplicate on the lock screen.
+        'apns-collapse-id': device.notification_id.slice(0, 64),
       },
-      body: JSON.stringify(toApnsPayload(claim)),
+      body: JSON.stringify(toApnsPayload(payload)),
     })
 
     if (response.status === 200) return classifyApnsOutcome(200)
@@ -330,7 +353,8 @@ async function mintFcmAccessToken(account: ServiceAccount): Promise<string> {
 }
 
 async function sendFcm(
-  claim: PushClaim,
+  device: PushClaimRow,
+  payload: PushPayload,
   accessToken: string,
   projectId: string,
 ): Promise<PushOutcome> {
@@ -343,7 +367,7 @@ async function sendFcm(
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(toFcmMessage(claim)),
+        body: JSON.stringify(toFcmMessage(payload, device.token)),
       },
     )
 
@@ -372,6 +396,7 @@ async function sendFcm(
 // The sweep
 // ---------------------------------------------------------------------------
 
+
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return jsonResponse({ error: 'method_not_allowed' }, 405)
 
@@ -390,86 +415,141 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'claim_failed', detail: claimError.message }, 500)
   }
 
-  const claims = (claimed ?? []) as PushClaim[]
-  // A rider with zero tokens, or an empty outbox, completes rather than fails
-  // (task 3.10h). There is nothing to report and nothing went wrong.
-  if (claims.length === 0) return jsonResponse({ claimed: 0, sent: 0 }, 200)
+  const rows = (claimed ?? []) as PushClaimRow[]
+  // An empty outbox is the ordinary case on most ticks. Nothing to report and
+  // nothing went wrong.
+  if (rows.length === 0) return jsonResponse({ deliveries: 0 }, 200)
 
-  const { ios, android } = groupByPlatform(claims)
+  const deliveries = groupByDelivery(rows)
 
   /**
    * Mint each provider credential at most once, and only when that platform
-   * actually has rows.
+   * actually appears in the batch.
    *
-   * A failure to mint is a `transport` outcome for that platform's whole group,
-   * never a device failure — this is the outage case that would otherwise
-   * unsubscribe every rider on the platform at once, and it is the reason the
-   * mint is outside the per-claim loop where its failure could be mistaken for
-   * a per-device one.
+   * **The placement is the point.** A mint failure is the outage case — a bad
+   * `.p8`, an expired service account, Google's OAuth endpoint down — and it
+   * affects every device on that platform at once. Inside the per-device loop
+   * its failure is indistinguishable from a per-device one, which is precisely
+   * how a platform outage would unsubscribe every rider on it. Out here it can
+   * only ever produce `transport`, which never deletes a token.
    */
+  const platforms = new Set(rows.map((row) => row.platform))
+
   let apnsToken: string | null = null
-  let apnsBroken = false
-  if (ios.length > 0) {
+  if (platforms.has('ios')) {
     try {
       apnsToken = await mintApnsToken()
     } catch {
-      apnsBroken = true
+      apnsToken = null
     }
   }
 
   let fcmToken: string | null = null
   let fcmProjectId = ''
-  let fcmBroken = false
-  if (android.length > 0) {
+  if (platforms.has('android')) {
     try {
       const account = readServiceAccount()
       fcmProjectId = account.project_id
       fcmToken = await mintFcmAccessToken(account)
     } catch {
-      fcmBroken = true
+      fcmToken = null
     }
   }
 
-  const counts = { delivered: 0, device_gone: 0, transport: 0 }
+  async function sendToDevice(
+    device: PushClaimRow,
+    payload: PushPayload,
+  ): Promise<PushOutcome> {
+    if (device.platform === 'ios') {
+      return apnsToken ? await sendApns(device, payload, apnsToken) : 'transport'
+    }
+    if (device.platform === 'android') {
+      return fcmToken ? await sendFcm(device, payload, fcmToken, fcmProjectId) : 'transport'
+    }
+    // An unknown platform is a registration bug, not a dead device. `transport`
+    // retries it harmlessly rather than deleting a row nobody has diagnosed.
+    return 'transport'
+  }
+
+  const counts = { sent: 0, suppressed: 0, retry: 0, failed: 0, devicesInvalidated: 0 }
 
   /**
-   * `mapWithConcurrency` abandons a lane if its worker throws, so this one
-   * never does — every failure path below resolves to a `PushOutcome`. A
-   * `Promise.all` that rejects would drop the rest of the batch and read as a
-   * quiet success in the counts.
+   * `mapWithConcurrency` abandons a lane whose worker throws, and a rejected
+   * `Promise.all` would drop the rest of the batch while the counts still read
+   * as success. So this worker never throws: every path resolves.
    */
-  await mapWithConcurrency(claims, SEND_CONCURRENCY, async (claim) => {
-    let outcome: PushOutcome
-    if (claim.platform === 'ios') {
-      outcome = apnsBroken || !apnsToken ? 'transport' : await sendApns(claim, apnsToken)
-    } else {
-      outcome =
-        fcmBroken || !fcmToken ? 'transport' : await sendFcm(claim, fcmToken, fcmProjectId)
-    }
-    counts[outcome]++
-
-    const next = nextDeliveryState(outcome, claim.attempts)
-
-    // The device row goes first. If this call succeeds and the one below fails,
-    // the outbox row is reclaimed and retried against a device that no longer
-    // exists, which is a no-op. The other order would leave a dead token
-    // receiving nothing for ever while the row reads `sent`.
+  await mapWithConcurrency(deliveries, SEND_CONCURRENCY, async (delivery: PushDelivery) => {
     try {
-      if (next.invalidateDevice) {
-        // By installation, never by token — see `PushClaim.installationId`.
-        await db.rpc('invalidate_push_device', { p_installation_id: claim.installationId })
-      }
-      await db.rpc('complete_push_delivery', {
-        p_delivery_id: claim.deliveryId,
-        p_state: next.state,
-        p_retry_in_ms: next.retryInMs,
+      const { data: payloadRows, error: payloadError } = await db.rpc('push_payload_for', {
+        notification_id: delivery.notificationId,
       })
+
+      // An error is not a refusal. A refusal is zero rows; an error means we do
+      // not know, so retry rather than suppress — suppressing is terminal and
+      // would silently drop a notification the rider was entitled to.
+      if (payloadError) {
+        await db.rpc('complete_push_delivery', {
+          delivery_id: delivery.deliveryId,
+          outcome: 'retry',
+          delivered_installations: [],
+        })
+        counts.retry++
+        return
+      }
+
+      const payload = ((payloadRows ?? []) as PushPayload[])[0] ?? null
+
+      /**
+       * The gate refused, so there is nothing to send and never will be —
+       * `suppressed`, which `complete_push_delivery` never retries. This is the
+       * block, the left club, the deleted postcard: the recipient is no longer
+       * entitled to the content, and the in-app row is gone too.
+       */
+      if (!payload) {
+        await db.rpc('complete_push_delivery', {
+          delivery_id: delivery.deliveryId,
+          outcome: 'suppressed',
+          delivered_installations: [],
+        })
+        counts.suppressed++
+        return
+      }
+
+      const results: { installation_id: string; outcome: PushOutcome }[] = []
+      for (const device of delivery.devices) {
+        results.push({
+          installation_id: device.installation_id,
+          outcome: await sendToDevice(device, payload),
+        })
+      }
+
+      const verdict = resolveDeliveryOutcome(results)
+
+      /**
+       * Dead devices go first. If this succeeds and the completion below fails,
+       * the row is reclaimed and retried against a device that no longer
+       * exists — a no-op. The other order leaves a dead token receiving nothing
+       * for ever while the row reads `sent`.
+       */
+      for (const installationId of verdict.deadInstallations) {
+        await db.rpc('invalidate_push_device', { installation_id: installationId })
+        counts.devicesInvalidated++
+      }
+
+      await db.rpc('complete_push_delivery', {
+        delivery_id: delivery.deliveryId,
+        outcome: verdict.outcome,
+        delivered_installations: verdict.deliveredInstallations,
+      })
+      counts[verdict.outcome]++
     } catch {
-      // Leaving the row `claimed` is the safe failure: the reclaim window puts
-      // it back in a later sweep. Throwing here would take the rest of this
-      // lane's claims with it.
+      /**
+       * Leaving the row `claimed` is the safe failure: `claim_push_batch`'s
+       * reclaim window puts it back in a later sweep. Throwing here would take
+       * the rest of this lane's deliveries with it.
+       */
     }
   })
 
-  return jsonResponse({ claimed: claims.length, ...counts }, 200)
+  return jsonResponse({ deliveries: deliveries.length, devices: rows.length, ...counts }, 200)
 })
