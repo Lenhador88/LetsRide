@@ -792,6 +792,41 @@ line. Three things follow:
 - **Secrets are per project.** A DEV push key that reaches a test device and a PROD one that
   reaches every rider. Getting these backwards sends test notifications to real people.
 
+### `send-moderation-digest`'s secrets, and the one no test can protect
+
+`send-moderation-digest` (PD-457) is the app's first mail sender. It holds four secrets, per
+project, and one of them is an address rather than a credential — which is why it gets its own
+heading rather than a line in the list above.
+
+| Secret | What it is | Absent means |
+|---|---|---|
+| `SERVICE_ROLE_KEY` | shared with `delete-account` and `push-notify` | the function 500s and says which secret is missing |
+| `MAIL_PROVIDER_API_KEY` | the provider's key. `design.md` D7 recommends Resend; the provider is one file (`mail.ts`) | no send, and the batch is left **unsent** rather than marked |
+| `DIGEST_SENDER` | the envelope sender. A provider's own onboarding sender works before any DNS exists; a verified domain replaces it later with no deploy | as above |
+| `DIGEST_RECIPIENT` | **the product owner's private mailbox** | as above |
+
+**`DIGEST_RECIPIENT` is not `SUPPORT_EMAIL`, and this is the sharp edge.** `SUPPORT_EMAIL`
+(`hello@letsride.social`) is *published* — the App Store listing, `/legal/support`, the terms and
+the privacy page all carry it, and a rider or a store reviewer is invited to write to it.
+`DIGEST_RECIPIENT` receives moderation reports and rider feedback: who reported what, and free text
+a rider typed. Setting it to the published address routes rider-authored content into whatever
+forwarding chain that alias sits behind; PD-457 names the reverse mistake too — it would put a
+private inbox in the App Store listing.
+
+**`src/__tests__/moderation-digest-secrets.test.ts` covers the half that lives in the repo** — no
+address literal in the function directory, no reference to `SUPPORT_EMAIL`, and no fallback
+address, so an absent secret is a refusal to send rather than a send to a placeholder. **It cannot
+cover this one.** No test reaches a secret store, so the only thing standing between the digest and
+the published address is whoever types the value. That is why it is written here, beside the
+secret, rather than only in a task list.
+
+**None of these has a default, deliberately.** A deployed function with no provider key does not
+mail anything, and that is the designed behaviour: it burns an attempt against each entry it
+claimed and leaves them unsent, recoverable, with the source rows still sitting in the
+`private.*_report_queue` views. So **the secrets land before the schedule starts** — not a
+preference, since a schedule running against an unconfigured function spends the attempt cap on
+real reports.
+
 ### Scheduled jobs — the footgun to design against before writing one
 
 Ride reminders need a schedule. **If that is written as `pg_cron`, it lives in a migration, and
@@ -804,6 +839,18 @@ Neither extension is installed today (`list_extensions` — both present, both
 chain *cannot* replicate: gate the job on a per-project value in Vault, which is already
 installed, or schedule it outside the chain entirely. **Decide which before the first
 scheduled job is written, not after it has fired from the wrong database.**
+
+**It was decided, and the answer is the Vault gate.** `121_push_delivery.sql` §10 is the first
+instance and `124`'s digest tick is the second, so this is now a pattern rather than a choice:
+three per-project Vault secrets, two of which must agree, all of it inside dynamic SQL behind a
+catalogue check so the file applies cleanly on a database with neither extension — which the RLS
+suite requires, since plain Postgres 17 has no `supabase_vault` either. A third scheduled job
+copies `121` §10 rather than re-arguing this.
+
+**Each job still owes a second, independent guard**, because the Vault gate is one mechanism and
+one mechanism is one mistake away. For push it is the DEV function's own `APNS_HOST`; for the
+digest it is that DEV holds its own `MAIL_PROVIDER_API_KEY` and `DIGEST_RECIPIENT`, so two things
+must be wrong before DEV mails anybody.
 
 ---
 

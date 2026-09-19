@@ -157,6 +157,37 @@ const GOOGLE_SERVICE_ACCOUNT_TYPE = /"type"\s*:\s*"service_account"/
 const GOOGLE_SERVICE_ACCOUNT_KEY = /"private_key"\s*:/
 
 /**
+ * PD-457's format: a mail provider's API key.
+ *
+ * `send-moderation-digest` is the app's first mail sender and it holds a
+ * provider key on the same terms as every other secret here — the function's
+ * own store, and nowhere this repository can reach. The key is the least
+ * dangerous of the four formats in this file by blast radius (it can send mail
+ * as us; it cannot read the database) and the **most** likely to be pasted
+ * somewhere while debugging, because it arrives as a short dashboard string
+ * rather than as a downloaded file.
+ *
+ * **Three formats, because the provider is an assumption rather than a
+ * decision.** `design.md` D7 recommends Resend and names Brevo as the pick if
+ * EU residency must hold from the first mail, and both are one `fetch` behind
+ * `mail.ts`. SendGrid is here because it is the most-guessed alternative, not
+ * because anything proposes it. Each prefix is distinctive enough to need no
+ * second condition.
+ *
+ * **Postmark is deliberately absent and that is a real gap**: its server token
+ * is a bare UUID, which is indistinguishable from the several hundred uuids in
+ * this repository's tests and fixtures. A pattern matching it would fire on
+ * every one of them, and a detector that has to be suppressed everywhere is a
+ * detector nobody keeps. If Postmark is ever chosen, the honest move is to
+ * match its variable *name* rather than its value.
+ */
+const MAIL_PROVIDER_KEYS: Array<[RegExp, string]> = [
+  [/\bre_[A-Za-z0-9]{20,}\b/, 'a Resend API key literal'],
+  [/\bxkeysib-[A-Za-z0-9]{20,}/, 'a Brevo API key literal'],
+  [/\bSG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/, 'a SendGrid API key literal'],
+]
+
+/**
  * Every way a service-role credential shows up, checked against real code
  * rather than imagined:
  *
@@ -191,6 +222,11 @@ function findViolations(source: string): string[] {
   if (PEM_PRIVATE_KEY.test(code)) found.push('a PEM private key block')
   if (GOOGLE_SERVICE_ACCOUNT_TYPE.test(code) && GOOGLE_SERVICE_ACCOUNT_KEY.test(code)) {
     found.push('a Google service-account credential')
+  }
+
+  // PD-457's format. See MAIL_PROVIDER_KEYS.
+  for (const [pattern, label] of MAIL_PROVIDER_KEYS) {
+    if (pattern.test(code)) found.push(label)
   }
 
   return found
@@ -271,6 +307,69 @@ describe('the service-role key never reaches the app', () => {
     // And the filter reads the other way: the pattern does match when it is
     // there, so a zero above is a clean file rather than a broken regex.
     expect(/\.from\(/.test("db.from('push_devices')")).toBe(true)
+  })
+
+  /**
+   * PD-457. The digest sender holds four secrets — the service-role key plus a
+   * provider key, a recipient and a sender — across two files, because the
+   * provider doorway (`mail.ts`) deliberately holds the three mail ones and
+   * `index.ts` holds none of them.
+   *
+   * **The `.from()` rule binds harder here than it did for `push-notify`.** Four
+   * of this function's five sources have `service_role`'s grants revoked
+   * (`076` §3b), so a `.from()` would answer `42501` rather than leaking — and
+   * the reading that matters is not *grant it back for the digest* but *the
+   * reach is a list of RPC names*. A future change wanting a table wants an RPC.
+   */
+  it('the digest sender reads its four secrets from the environment and inlines none', () => {
+    const dir = path.join(repoRoot, 'supabase/functions/send-moderation-digest')
+    const entry = readFileSync(path.join(dir, 'index.ts'), 'utf8')
+    const doorway = readFileSync(path.join(dir, 'mail.ts'), 'utf8')
+
+    expect(entry).toMatch(/Deno\.env\.get\('SERVICE_ROLE_KEY'\)/)
+    expect(doorway).toMatch(/Deno\.env\.get\('MAIL_PROVIDER_API_KEY'\)/)
+    expect(doorway).toMatch(/Deno\.env\.get\('DIGEST_RECIPIENT'\)/)
+    expect(doorway).toMatch(/Deno\.env\.get\('DIGEST_SENDER'\)/)
+
+    // The provider key lives in `mail.ts` alone. `index.ts` never sees it, which
+    // is what makes swapping provider a one-file diff (D7).
+    expect(stripCommentLines(entry)).not.toMatch(/MAIL_PROVIDER_API_KEY/)
+
+    for (const source of [entry, doorway]) {
+      const code = stripCommentLines(source)
+      expect(findViolations(code).filter((v) => v !== 'the identifier service_role')).toEqual([])
+      expect((code.match(JWT) ?? []).length).toBe(0)
+    }
+  })
+
+  it('the digest sender issues no .from(), in either of its files', () => {
+    const dir = path.join(repoRoot, 'supabase/functions/send-moderation-digest')
+    for (const file of ['index.ts', 'mail.ts', 'shape.ts']) {
+      const code = stripCommentLines(readFileSync(path.join(dir, file), 'utf8'))
+      expect(code, file).not.toMatch(/\.from\(/)
+    }
+
+    // Both ways. `CLAUDE.md`'s `:[0-9]+:` comment filter is for `grep -rn` over
+    // a tree; `grep -n` on a single file prints no path, so the natural command
+    // silently reports the unfiltered number. This assertion is the anchor that
+    // does not depend on getting that right.
+    expect(/\.from\(/.test("db.from('postcard_reports')")).toBe(true)
+  })
+
+  it('the digest sender takes no request body, so there is no recipient to redirect', () => {
+    const code = stripCommentLines(
+      readFileSync(
+        path.join(repoRoot, 'supabase/functions/send-moderation-digest/index.ts'),
+        'utf8',
+      ),
+    )
+    // N3. No body, no query string, no recipient parameter — the address is read
+    // inside `mail.ts` and never passed in, so a caller who somehow got past the
+    // service-role check still cannot say where a digest goes.
+    expect(code).not.toMatch(/req\.json\(/)
+    expect(code).not.toMatch(/req\.text\(/)
+    expect(code).not.toMatch(/new URL\(req\.url\)/)
+    expect(code).not.toMatch(/searchParams/)
   })
 
   it('the push sender takes no id from the request, because it takes no request body at all', () => {
@@ -376,9 +475,31 @@ describe('the service-role key never reaches the app', () => {
     // somebody would weaken the detector to shut it up.
     expect(findViolations('the file has "type": "service_account" at the top')).toEqual([])
 
+    // PD-457, format 4: a mail provider API key, in each of the three shapes
+    // `MAIL_PROVIDER_KEYS` claims to match.
+    expect(findViolations("const k = 're_AbCdEf0123456789GhIjKl'")).toContain(
+      'a Resend API key literal',
+    )
+    expect(findViolations("const k = 'xkeysib-0123456789abcdef0123-AbCdEfGhIj'")).toContain(
+      'a Brevo API key literal',
+    )
+    expect(
+      findViolations("const k = 'SG.AbCdEf0123456789GhIjKl.MnOpQr0123456789StUvWx'"),
+    ).toContain('a SendGrid API key literal')
+
+    /**
+     * And the Resend pattern does **not** fire on an ordinary identifier, which
+     * is the false positive that would get it deleted. `re_` is three
+     * characters; what makes the pattern specific is the twenty-plus mixed
+     * alphanumerics after it with no underscore, which no readable name has.
+     */
+    expect(findViolations('const re_render = 1')).toEqual([])
+    expect(findViolations('const re_exported_component_from_the_design_system = 1')).toEqual([])
+
     // And the comment strip works: the same key in a comment is not a finding.
     expect(findViolations("// never put an sb_secret_AbCdEf0123456789 here")).toEqual([])
     expect(findViolations('// -----BEGIN PRIVATE KEY----- goes in the secret store')).toEqual([])
+    expect(findViolations("// the provider key looks like re_AbCdEf0123456789GhIjKl")).toEqual([])
     expect(findViolations('const ok = "publishable"')).toEqual([])
   })
 })
