@@ -25,15 +25,15 @@ history.
 - **`development` is the default branch and deploys to DEV** (`app-dev.letsride.social`);
   `main` is production (`app.letsride.social`). `development` is normally ahead of `main`, and
   that is the steady state.
-- **Migrations: 120 files; DEV at `121`, PROD at `116`** — `118` is applied to DEV from a branch
+- **Migrations: 122 files; DEV at `123`, PROD at `116`** — `118` is applied to DEV from a branch
   that never merged, so **take the next number from `list_migrations`, never from the file
-  count**. DEV answers 124 rows, three hand-applied with no file; PROD none.
+  count**. DEV answers 126 rows, three hand-applied with no file; PROD none.
   `docs/reference/migrations.md` §Applied state has the per-file log and §Security advisors the
   advisor counts.
-- **Edge Functions: the three deployed ones AGREE across both projects** — identical
-  `ezbr_sha256` (measured 2026-09-19); equality is not currency, and **`push-notify` is on
-  neither**. Read the `deploy` job's conclusion, never the run's: without the token the job
-  skips and the run is still green.
+- **Edge Functions: the older three AGREE across both projects** — identical `ezbr_sha256`
+  (2026-09-19); equality is not currency. **`push-notify` is on DEV only** — `v1`, deployed by
+  `deploy-functions.yml` off PD-303's merge. Read the `deploy` *job's* conclusion, never the
+  run's: without the token the job skips and the run is still green.
 - **The walk is green on DEV** as both fixture accounts (2026-09-06 baselines in
   `docs/reference/running-locally.md` §The walk). In CI it is still **skipped** — the Actions
   secrets name PROD and `WALK_CI` is unset (see §Blocked on the owner).
@@ -62,13 +62,12 @@ history.
   the device checks and the owner action. **It stays open**: the Android half needs a signing
   fingerprint that cannot exist until `android/` does.
 - **Push (`openspec/changes/deliver-push-notifications`): child C (PD-303) is built and delivers
-  nothing yet** — `121` + `push-notify/` are merged and **inert** until four owner steps run in
-  `121`'s stated order (`pg_cron`+`pg_net`, the two provider secrets, deploy, *then* schedule);
-  the job is Vault-gated per project, so it no-ops on both today. Child B (#438, #446) is
+  nothing yet** — `121` + `push-notify/` are merged, the function is deployed to DEV, and it is
+  **inert** until the rest run in `121`'s order: `pg_cron`+`pg_net`, the two provider secrets,
+  the Vault trio, one `curl` proving the gateway forwards a non-JWT bearer, *then* the schedule.
+  The job is Vault-gated per project, so it no-ops on both today. Child B (#438, #446) is
   unverified on a device — 2.15–2.19a want a Push-capable provisioning profile. PD-291 stays
   open until a phone has received one.
-- **PD-454's proposal is merged, not its build** — the change stays under `openspec/changes/`;
-  its migrations and both surfaces are their own PR.
 - **PD-385 is open on purpose**: 9 DEV rides carry a coordinate and no tile, repairable only by
   their own organizers.
 

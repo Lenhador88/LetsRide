@@ -145,9 +145,13 @@ the four tables most obviously covered. Each carries two policies and an
 mistakes and re-granted `service_role` — re-opening the reporter-identity exposure `076` exists to
 close, which is worse than the error it was written to fix.
 
-**`rls_enabled_no_policy` is a CANDIDATE SET worth checking, never the criterion.** Its three
-members are `push_devices`, `password_reset_grants` and `club_removals`, and checking them found
-**two that are not revoked and should be** — each because its migration named client roles and
+**`rls_enabled_no_policy` is a CANDIDATE SET worth checking, never the criterion.** It has **six**
+members, measured on DEV 2026-09-19: `push_devices`, `push_deliveries` (`121`),
+`password_reset_grants`, `club_removals`, and `private.consent_records` and `private.system_alerts`
+(`120`, `117`) — **and the two in `private` are outside the rule rather than unexamined**, having no
+client reach to revoke. It read *three* until `117`/`120`/`121` landed, which is the direction this
+paragraph warns about: the set grows by ordinary work, so re-run it. Checking the four in `public`
+found **two that are not revoked and should be** — each because its migration named client roles and
 stopped, leaving Supabase's default in place: `026:189` (`anon, authenticated`) and `111:83`
 (`public, anon, authenticated` — and revoking from `PUBLIC` does not touch `service_role`'s own
 direct grant, which is *why* the default survived). Their readership argument is `076` §3b's, made
