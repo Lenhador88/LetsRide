@@ -510,17 +510,15 @@ Then the feature list, drawn only from the claimable table above.
 
 Both are submission blockers and neither is copy:
 
-**Both now have an answer, and only the first still needs anything built.**
+**Both now have an answer, and neither needs anything built.**
 
-- **Support URL is required by App Store Connect, and there is still no support page.** The
-  public routes are `/legal/privacy`, `/legal/terms`, `/legal/attributions` and
-  `/legal/account-deletion` — check rather than trust: `ls src/app/legal/`. The privacy policy
-  URL is covered; the support URL is not, and the apex that would normally host it is
-  unattached (`PD-34`, `docs/ENVIRONMENTS.md` §Domains). **The proposed answer is one static
-  page at `/legal/support`** — public already, because the guard's denylist carries `/legal/*`,
-  so it is one file and no routing change. `docs/reference/app-store-listing.md` §The Support
-  URL, which is the one open question in this file has the contents, Apple's exact requirement,
-  and the two worse answers to fall back on.
+- **Support URL is `https://app.letsride.social/legal/support`, and the page is live** (PD-467).
+  The public routes are `/legal/privacy`, `/legal/terms`, `/legal/attributions`,
+  `/legal/account-deletion` and `/legal/support` — check rather than trust: `ls src/app/legal/`.
+  It sits under the app's own domain because the apex that would normally host it is unattached
+  (`PD-34`, `docs/ENVIRONMENTS.md` §Domains), and needs no guard change because the denylist
+  carries `/legal/*`. `docs/reference/app-store-listing.md` §The Support URL has Apple's exact
+  requirement and the three claims on the page that are published elsewhere too.
 - **The App Privacy label is answered.** `ios/App/App/PrivacyInfo.xcprivacy` carries the
   measured list — **eleven** collected data types, each Linked, none Tracking — and
   `docs/reference/app-store-listing.md` §App Privacy transcribes it into the questionnaire's own

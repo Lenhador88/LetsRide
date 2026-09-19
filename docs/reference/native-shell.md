@@ -80,6 +80,15 @@ simulator build settled several of them and left the device-only ones untouched,
   above are what the WebView's own permission request reads — so this stays on the web API and
   the runtime dependency count stays at nine. Revisit only if a feature needs background
   tracking, which the plugin would not give either.
+- **`ITSAppUsesNonExemptEncryption` is `false` in `Info.plist`, and that is a declaration rather
+  than a setting.** Without the key, App Store Connect holds every uploaded build behind the
+  export-compliance question and nobody can submit until it is answered by hand; with it, the
+  answer travels in the bundle. `false` is the exempt case — the app's only cryptography is
+  HTTPS to Supabase and the platform keychain, both Apple's own. **It stops being true the day
+  the app implements or bundles its own encryption** (a custom cipher, a bundled crypto library,
+  end-to-end message encryption), and then the key has to change along with an annual
+  self-classification report. Read it back rather than trusting this line:
+  `python3 -c "import plistlib;print(plistlib.load(open('ios/App/App/Info.plist','rb'))['ITSAppUsesNonExemptEncryption'])"` — `False`.
 - Two plugin defaults overridden, both security-relevant: keychain access
   `afterFirstUnlockThisDeviceOnly` (the default `whenUnlocked` blocks background token refresh
   after a reboot **and** migrates the token to a replacement device through an encrypted

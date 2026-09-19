@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -38,7 +38,20 @@ describe('the /legal segment is not indexable', () => {
     )
     expect(layout).toContain('export const metadata')
 
-    const pages = ['terms', 'privacy', 'account-deletion', 'attributions']
+    // Read off the directory rather than a literal list: a hand-written list
+    // stops covering the segment the day somebody adds a page to it, which is
+    // the exact failure this case exists to prevent. `/legal/support` (PD-467)
+    // was the fifth and was added to the directory, not to a list.
+    const SEGMENT = fileURLToPath(new URL('..', import.meta.url))
+    const pages = readdirSync(SEGMENT, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && entry.name !== '__tests__')
+      .map((entry) => entry.name)
+
+    // Both ways: a derivation that silently returns nothing passes every
+    // assertion below and looks exactly like a clean segment.
+    expect(pages.length).toBeGreaterThanOrEqual(5)
+    expect(pages).toContain('support')
+
     for (const page of pages) {
       const source = readFileSync(
         path.resolve(fileURLToPath(new URL(`../${page}/page.tsx`, import.meta.url))),
