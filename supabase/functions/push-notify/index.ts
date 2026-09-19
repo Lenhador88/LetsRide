@@ -87,10 +87,12 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 import {
   BATCH_SIZE,
+  SEND_CONCURRENCY,
   classifyApnsOutcome,
   classifyFcmOutcome,
   fcmErrorNamesToken,
   groupByPlatform,
+  mapWithConcurrency,
   nextDeliveryState,
   toApnsPayload,
   toFcmMessage,
@@ -430,7 +432,13 @@ Deno.serve(async (req: Request) => {
 
   const counts = { delivered: 0, device_gone: 0, transport: 0 }
 
-  for (const claim of claims) {
+  /**
+   * `mapWithConcurrency` abandons a lane if its worker throws, so this one
+   * never does — every failure path below resolves to a `PushOutcome`. A
+   * `Promise.all` that rejects would drop the rest of the batch and read as a
+   * quiet success in the counts.
+   */
+  await mapWithConcurrency(claims, SEND_CONCURRENCY, async (claim) => {
     let outcome: PushOutcome
     if (claim.platform === 'ios') {
       outcome = apnsBroken || !apnsToken ? 'transport' : await sendApns(claim, apnsToken)
@@ -446,17 +454,22 @@ Deno.serve(async (req: Request) => {
     // the outbox row is reclaimed and retried against a device that no longer
     // exists, which is a no-op. The other order would leave a dead token
     // receiving nothing for ever while the row reads `sent`.
-    if (next.invalidateDevice) {
-      // By installation, never by token — see `PushClaim.installationId`.
-      await db.rpc('invalidate_push_device', { p_installation_id: claim.installationId })
+    try {
+      if (next.invalidateDevice) {
+        // By installation, never by token — see `PushClaim.installationId`.
+        await db.rpc('invalidate_push_device', { p_installation_id: claim.installationId })
+      }
+      await db.rpc('complete_push_delivery', {
+        p_delivery_id: claim.deliveryId,
+        p_state: next.state,
+        p_retry_in_ms: next.retryInMs,
+      })
+    } catch {
+      // Leaving the row `claimed` is the safe failure: the reclaim window puts
+      // it back in a later sweep. Throwing here would take the rest of this
+      // lane's claims with it.
     }
-
-    await db.rpc('complete_push_delivery', {
-      p_delivery_id: claim.deliveryId,
-      p_state: next.state,
-      p_retry_in_ms: next.retryInMs,
-    })
-  }
+  })
 
   return jsonResponse({ claimed: claims.length, ...counts }, 200)
 })

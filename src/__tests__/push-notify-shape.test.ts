@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest'
 import {
   BATCH_SIZE,
   MAX_ATTEMPTS,
+  SEND_CONCURRENCY,
   backoffMs,
+  mapWithConcurrency,
   classifyApnsOutcome,
   classifyFcmOutcome,
   fcmErrorNamesToken,
@@ -271,6 +273,44 @@ describe('the provider payloads', () => {
     // re-derived from an id here would be a second, ungated read path.
     const serialised = JSON.stringify(toApnsPayload(claim()))
     expect(serialised).not.toMatch(/club_id|ride_id|postcard_id|user_id/)
+  })
+})
+
+describe('mapWithConcurrency', () => {
+  it('visits every item exactly once', async () => {
+    const seen: number[] = []
+    await mapWithConcurrency([1, 2, 3, 4, 5, 6, 7], 3, async (n) => {
+      seen.push(n)
+    })
+    expect(seen.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7])
+  })
+
+  it('never exceeds the limit in flight', async () => {
+    let inFlight = 0
+    let peak = 0
+    await mapWithConcurrency(Array.from({ length: 30 }, (_, i) => i), 4, async () => {
+      inFlight++
+      peak = Math.max(peak, inFlight)
+      await new Promise((resolve) => setTimeout(resolve, 1))
+      inFlight--
+    })
+    expect(peak).toBeLessThanOrEqual(4)
+    expect(peak).toBeGreaterThan(1)
+  })
+
+  it('handles an empty list and a silly limit without hanging', async () => {
+    await expect(mapWithConcurrency([], 10, async () => {})).resolves.toBeUndefined()
+    const seen: number[] = []
+    await mapWithConcurrency([1, 2], 0, async (n) => {
+      seen.push(n)
+    })
+    expect(seen).toEqual([1, 2])
+  })
+
+  it('keeps the concurrency well under the batch size', () => {
+    // A burst of the whole batch is the shape that earns a provider 429.
+    expect(SEND_CONCURRENCY).toBeGreaterThan(1)
+    expect(SEND_CONCURRENCY).toBeLessThan(BATCH_SIZE)
   })
 })
 

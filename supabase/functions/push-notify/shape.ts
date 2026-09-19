@@ -322,6 +322,51 @@ export function groupByPlatform(claims: PushClaim[]): {
 }
 
 /**
+ * How many claims are in flight at once.
+ *
+ * **Sequential was the first version and it is a timeout, not a style
+ * preference.** Each claim costs one provider request plus one or two RPCs, so
+ * a full batch is up to 600 round trips; at a realistic 150–200 ms each that is
+ * well over a minute of wall time for work the scheduler expects to finish
+ * inside its one-minute interval, and a provider latency spike turns it into an
+ * invocation that is killed halfway through — leaving rows `claimed` with no
+ * completion, which the age cut then suppresses rather than sends.
+ *
+ * Ten rather than "all of them" because both providers rate-limit, and a burst
+ * of 200 is the shape that earns a 429 — which `classifyFcmOutcome` and
+ * `classifyApnsOutcome` correctly read as `transport`, so it would not lose a
+ * token, but it would spend the batch achieving nothing.
+ */
+export const SEND_CONCURRENCY = 10
+
+/**
+ * Run `worker` over `items` with at most `limit` in flight, preserving nothing
+ * about order — the caller writes each row back independently.
+ *
+ * A worker that throws would abandon the remaining items in its lane, so the
+ * contract is that `worker` handles its own failures. `index.ts` satisfies that
+ * by classifying every error into a `PushOutcome`; this is stated here because
+ * the alternative — a `Promise.all` that rejects — silently drops the rest of
+ * the batch and looks like a quiet success in the counts.
+ */
+export async function mapWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  const size = Math.max(1, Math.floor(limit))
+  let cursor = 0
+  const lanes = Array.from({ length: Math.min(size, items.length) }, async () => {
+    for (;;) {
+      const index = cursor++
+      if (index >= items.length) return
+      await worker(items[index])
+    }
+  })
+  await Promise.all(lanes)
+}
+
+/**
  * The final state one claim's row should be written back with.
  *
  * Pure, so the state machine is testable without a provider: given an outcome
