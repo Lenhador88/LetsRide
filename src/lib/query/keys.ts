@@ -154,6 +154,22 @@ export const queryKeys = {
      */
     analyticsOptOut: (): QueryKey => ['profile', 'analyticsOptOut'],
     /**
+     * `getDigestOptOut` — PD-450. The weekly digest's own consent, from `125`'s
+     * `public.my_digest_opt_out()`. No `revalidatePath` predecessor.
+     *
+     * **Its own leaf rather than a second reading of `analyticsOptOut`**, and
+     * that is the requirement rather than a preference: PD-450 states the two
+     * consents are different things, so a rider who is not being measured may
+     * still want to be told what is on this weekend. One key for both would
+     * make the two toggles move together, which is the bug the separate column
+     * exists to prevent.
+     *
+     * Under `profile` for the reason `analyticsOptOut` gives — it is a stamp on
+     * `profiles`, it renders in a sheet off the profile screen, and
+     * `updateProfile`'s `profile.all()` sweep should reach it.
+     */
+    digestOptOut: (): QueryKey => ['profile', 'digestOptOut'],
+    /**
      * `getBlockedRiders` — PD-298's other undo list, from `105`'s
      * `public.my_blocked_riders()`. No `revalidatePath` predecessor.
      *

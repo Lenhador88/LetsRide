@@ -6,11 +6,13 @@ import {
   LockIcon,
   LogOutIcon,
   OptionsIcon,
+  PreferencesIcon,
   TrashIcon,
 } from '@/components/icons/generated'
 import { ContextMenu, ContextMenuItem } from '@/components/ui/ContextMenu'
 import { DeleteAccountSheet } from '@/components/profile/DeleteAccountSheet'
 import { FeedbackSheet } from '@/components/profile/FeedbackSheet'
+import { NotificationsSheet } from '@/components/profile/NotificationsSheet'
 import { PrivacySheet } from '@/components/profile/PrivacySheet'
 import { useSignOut } from '@/lib/actions/navigate'
 
@@ -36,13 +38,18 @@ import { useSignOut } from '@/lib/actions/navigate'
  * destructive one. Its sheet is `FeedbackSheet`, over this same canvas, for the
  * reason `Delete account`'s is.
  *
- * **`Preferences` is deliberately still not built, and that is a decision
- * rather than an oversight left for later.** There is no `/profile/preferences`
- * screen and nothing in this app's scope draws one — CLAUDE.md §Product Scope
- * names no such capability. A row that links nowhere is the dead-row failure
- * this file's own rule refuses ("either work or not be drawn"), so it is
- * omitted until a screen exists for it to open, the same treatment `Delete
- * account` had until this change.
+ * **The frame's `Preferences` row is now built, as `Notifications` (PD-450).**
+ * It stayed unbuilt while there was nothing behind it — a row that links
+ * nowhere is the dead-row failure this file's rule refuses ("either work or not
+ * be drawn") — and what changed is that `125` gave it exactly one setting to
+ * carry: the weekly round-up's opt-out. It is named for that setting rather
+ * than for the frame's label, because `Preferences` over a sheet holding one
+ * checkbox promises a screen this app still does not have.
+ *
+ * **It is a fifth row beside `Privacy`, never a second checkbox inside it.**
+ * PD-450 requires the two consents to stay distinct, and one heading over both
+ * would undo that in the only place a rider sees them — see
+ * `NotificationsSheet`.
  *
  * **`Delete account` (PD-102) is now built**, in its own list group below
  * `Sign out` per the frame, `Warning/100` with `TrashIcon`. It does **not**
@@ -95,6 +102,7 @@ export function ProfileMenu() {
   const [deleting, setDeleting] = useState(false)
   const [feedback, setFeedback] = useState(false)
   const [privacy, setPrivacy] = useState(false)
+  const [notifications, setNotifications] = useState(false)
   const { signOut, pending } = useSignOut()
 
   return (
@@ -144,6 +152,23 @@ export function ProfileMenu() {
           Privacy
         </ContextMenuItem>
 
+        {/* Beside Privacy rather than inside it, and that placement is PD-450's
+            requirement rather than a layout choice: the two are different
+            consents, and one heading over both is the conflation the separate
+            column exists to prevent. `NotificationsSheet` carries the
+            reasoning. `PreferencesIcon` because the generated set has no bell
+            — the same gap PD-250 records for postcards, and nothing here is
+            hand-drawn. */}
+        <ContextMenuItem
+          icon={<PreferencesIcon className="h-6 w-6" />}
+          onClick={() => {
+            setOpen(false)
+            setNotifications(true)
+          }}
+        >
+          Notifications
+        </ContextMenuItem>
+
         <ContextMenuItem onClick={signOut} disabled={pending}>
           <span className="flex items-center gap-2">
             <LogOutIcon className="h-6 w-6" />
@@ -176,6 +201,7 @@ export function ProfileMenu() {
 
       <FeedbackSheet open={feedback} onClose={() => setFeedback(false)} />
       <PrivacySheet open={privacy} onClose={() => setPrivacy(false)} />
+      <NotificationsSheet open={notifications} onClose={() => setNotifications(false)} />
       <DeleteAccountSheet open={deleting} onClose={() => setDeleting(false)} />
     </>
   )
