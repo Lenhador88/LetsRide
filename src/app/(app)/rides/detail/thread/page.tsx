@@ -10,10 +10,7 @@ import { useBanner } from '@/components/ui/Banner'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { useOnlineStatus } from '@/components/ui/OfflineState'
 import { SkeletonList } from '@/components/ui/Skeleton'
-import {
-  RideThreadOptions,
-  canRemoveRideThread,
-} from '@/components/rides/RideThreadOptions'
+import { RideThreadOptions } from '@/components/rides/RideThreadOptions'
 import {
   deleteOwnRideThreadMessage,
   markRideThreadSeen,
@@ -151,18 +148,14 @@ function RideThreadScreen() {
           // Waits for all three: a menu drawn before the ride and the profile
           // land would offer the wrong row, or none, and then rewrite itself.
           //
-          // **`canRemoveRideThread` is the gate rather than an unconditional
-          // mount**, and that is required rather than tidy: with reporting
-          // deferred (`proposal.md` Q4) the menu has exactly one conditional
-          // row, so a crew member who is neither the author nor the organizer
-          // would get a dots icon opening an empty sheet — which
-          // `docs/reference/design-system.md` §The ⋯ options menu calls worse
-          // than the icon's absence. The same expression decides both, so the
-          // two cannot disagree.
-          thread.data &&
-          ride.data &&
-          me.data &&
-          canRemoveRideThread({ isAuthor, isOrganizer }) ? (
+          // **No `canRemoveRideThread` gate here any more — `122`, PD-454,
+          // `design.md` D11.** `RideThreadOptionsRows` now draws `Report
+          // thread` for every non-author, so the menu is structurally
+          // non-empty for every crew member this screen reaches (`108`'s own
+          // audience already refused everyone else `getRideThread`).
+          // Re-adding a viewer gate here would be a second copy of that
+          // component's own non-emptiness argument, free to drift from it.
+          thread.data && ride.data && me.data ? (
             <RideThreadOptions
               threadId={id}
               rideId={thread.data.ride_id}

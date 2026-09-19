@@ -1,7 +1,11 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
-import { reportPostcardSchema } from '@/lib/validation/comments'
+import {
+  REPORT_REASON_WHEN_UNDRAWN,
+  reportPostcardCommentSchema,
+  reportPostcardSchema,
+} from '@/lib/validation/comments'
 import type { ActionState } from '@/lib/actions/state'
 
 /**
@@ -98,6 +102,61 @@ export async function reportPostcard(
     .upsert(
       { reporter_id: user.id, postcard_id: postcardId, reason, note },
       { onConflict: 'reporter_id,postcard_id', ignoreDuplicates: true }
+    )
+
+  if (error) return { error: 'Could not send that report. Try again.' }
+
+  return { error: null }
+}
+
+/**
+ * Reports a comment — `123`, PD-454, `reportPostcard`'s shape one subject
+ * over. The comment and the postcard it sits on are different subjects with
+ * different authors — a comment on somebody else's photo could not be
+ * reported at all before this, only the photo could.
+ *
+ * **Sends `REPORT_REASON_WHEN_UNDRAWN`, always** — no reason-picker frame for
+ * a comment report either (`design.md` Q2), so `reason` carries no signal
+ * while this is the only caller. Beside the two entries already recording
+ * that gap for the postcard itself, `docs/FIGMA-FIDELITY-TODO.md` §Postcard
+ * overflow menu.
+ *
+ * **A report currently goes nowhere anyone can read** — `123`'s own
+ * `private.postcard_comment_report_queue`, revoked from every client role
+ * including `service_role`. Not the commenter, not the postcard's author, who
+ * already holds a delete right over every comment on their own photo and
+ * gains no read alongside it (`design.md` D5, the `076` question).
+ * `invalidate` is deliberately not called: nothing this rider — or anyone
+ * else — can read changes.
+ *
+ * A duplicate report is a no-op, not an error: `unique (reporter_id,
+ * comment_id)` is the anti-brigading mechanism, and they can read their own
+ * report regardless.
+ */
+export async function reportPostcardComment(commentId: string): Promise<ActionState> {
+  const parsed = reportPostcardCommentSchema.safeParse({
+    commentId,
+    reason: REPORT_REASON_WHEN_UNDRAWN,
+    note: null,
+  })
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'That comment could not be found.' }
+  }
+
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Sign in to do that.' }
+
+  const { error } = await supabase
+    .from('postcard_comment_reports')
+    .upsert(
+      {
+        reporter_id: user.id,
+        comment_id: parsed.data.commentId,
+        reason: parsed.data.reason,
+        note: parsed.data.note,
+      },
+      { onConflict: 'reporter_id,comment_id', ignoreDuplicates: true }
     )
 
   if (error) return { error: 'Could not send that report. Try again.' }

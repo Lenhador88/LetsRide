@@ -41,6 +41,10 @@ export function CommentList({ comments, viewerId, postcardAuthorId }: CommentLis
             viewerId !== undefined &&
             (comment.author_id === viewerId || postcardAuthorId === viewerId)
           }
+          // `123`, PD-454 — the same defensive shape as `canDelete` above, so
+          // an undefined viewer (the session going away mid-render) can never
+          // read as "not the author" and draw the control.
+          canReport={viewerId !== undefined && comment.author_id !== viewerId}
         />
       ))}
     </div>
