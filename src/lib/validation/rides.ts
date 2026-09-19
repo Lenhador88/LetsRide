@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { reportNoteSchema, reportReasonSchema } from '@/lib/validation/comments'
 import type { RideFilter } from '@/types'
 
 /**
@@ -407,3 +408,20 @@ export const rideThreadMessageBodySchema = z
  *  rider on an error boundary offering `Try again` on an address that can never
  *  succeed (PD-142). */
 export const rideThreadIdSchema = z.uuid()
+
+/**
+ * What `reportRideThread` sends — `122`, PD-454, `reportClubThreadSchema`'s
+ * shape with the subject renamed. `reason` and `note` are imported from
+ * `lib/validation/comments` rather than copied, for that schema's own reason:
+ * `REPORT_REASONS` is `postcard_reports`' six-value enum, which
+ * `ride_thread_reports`' CHECK also carries, kept in step by hand.
+ *
+ * Per CLAUDE.md, this owns the **message**; `122`'s CHECK constraint, the
+ * `unique (reporter_id, thread_id)` index and `enforce_participation_gate`
+ * own the guarantee.
+ */
+export const reportRideThreadSchema = z.object({
+  threadId: z.uuid('That thread could not be found.'),
+  reason: reportReasonSchema,
+  note: reportNoteSchema,
+})

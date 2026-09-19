@@ -23,7 +23,7 @@ than trusting this list — `select distinct source from logs` through the MCP
 | `postgrest_logs` | PostgREST's own errors |
 | `postgres_logs` | statement errors, and anything a trigger raises |
 | `auth_logs`, `auth_audit_logs` | sign-in, signup, token refresh, password recovery |
-| `function_logs`, `function_edge_logs` | the three Edge Functions |
+| `function_logs`, `function_edge_logs` | the four Edge Functions — `push-notify` is DEV-only |
 | `storage_logs` | uploads and signed-URL fetches |
 | `realtime_logs` | subscription connects and failures |
 | `pgbouncer_logs` | pooler connections |

@@ -3895,13 +3895,22 @@ reset role;
 -- `ride_invites` and 084 gated `feedback`. Thirteen since 081 added
 -- club_threads AND club_messages. Eleven since 069, ten
 -- since 051, nine since 034.
+-- ** Twenty-FOUR after 122 and 123 gated the two new report tables **
+-- (ride_thread_reports, postcard_comment_reports) — one each, the same
+-- arithmetic 094 has, and measured as a delta from the twenty-two this file
+-- asserted before them: `select count(*) from pg_trigger where tgname =
+-- 'enforce_participation_gate' and not tgisinternal` answered 22 on DEV
+-- 2026-09-19 before either applied. Note that the LIVE function comment on DEV
+-- said twenty-three at that moment and was one high, 109's drop having been
+-- recorded as a trailing sentence rather than folded into its enumeration;
+-- 122 restamped it from the trigger count, not from the string.
 -- This number is deliberately hand-written rather than derived:
 -- if it were `(select count(*) from the tables we gated)` it could not notice a
 -- gate going missing, which is the whole point.
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  22, '069/081/082/083/084/085/091/092/093/094/101/108/109: twenty-two gate triggers, one per gated table — 081 added TWO, so did 092, so did 093 and so did 108 (ride_threads AND ride_thread_messages), because the advisor and the trigger sweep both fire once per table; 094 added ONE, club_thread_reports being its only new table; 101 removed ONE by dropping club_thread_waves, 092''s OTHER table keeping its gate; and 109 removed ONE more by dropping ride_messages');
+  24, '069/081/082/083/084/085/091/092/093/094/101/108/109/122/123: twenty-four gate triggers, one per gated table — 081 added TWO, so did 092, so did 093 and so did 108 (ride_threads AND ride_thread_messages), because the advisor and the trigger sweep both fire once per table; 094 added ONE, club_thread_reports being its only new table; 101 removed ONE by dropping club_thread_waves, 092''s OTHER table keeping its gate; 109 removed ONE more by dropping ride_messages; and 122 and 123 added ONE each, ride_thread_reports and postcard_comment_reports. ** This flat total is the one number a new report table moves, and it is NOT what proves either gate landed ** — 122.7 and 123.7 name their own table and assert the delta, because a total cannot tell a new gate from one that moved');
 -- Named rather than counted, because the total above cannot tell 091's new gate
 -- from one that moved off another table to land here.
 select assert_eq(
@@ -3935,7 +3944,7 @@ select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal
       and pg_get_triggerdef(oid) ilike '%current_user%'),
-  22, '069/081/083/084/085/091/092/093/094/101/108/109: every gate trigger carries the WHEN guard that reads the invoking role — including 108''s two, which is what stops the gate firing for the migration role that seeds a ride thread');
+  24, '069/081/083/084/085/091/092/093/094/101/108/109/122/123: every gate trigger carries the WHEN guard that reads the invoking role — including 108''s two, which is what stops the gate firing for the migration role that seeds a ride thread, and 122''s and 123''s, where it is what stops it firing for the table owner the RLS suite runs as');
 
 -- The two halves of the security-definer question, and they point opposite ways.
 -- The gate functions MUST be definer; the profile completion guard must NOT be,
@@ -4427,12 +4436,12 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass),
-  34, '029/061/069/078/081/083/084/085/091/092/093/094/101/108/109/111: thirty-four FKs reference public.profiles. ** 108 added THREE — ride_threads.author_id, ride_thread_messages.author_id and ride_thread_reads.user_id — and 109 removed TWO, ride_messages.author_id and ride_reads.user_id, so the ride conversation''s erasure surface moved from two tables to three and the net is -2. ** 111 added ONE, club_removals.user_id, and it is a SINGLE key rather than 083''s pair because the row deliberately records no actor — there is no second identified rider for a second key to erase. The watermark''s key is the one that would have been a privacy defect rather than a correctness one: a row there says a NAMED rider read a NAMED topic, and without the key it would outlive their account for ever');
+  36, '029/061/069/078/081/083/084/085/091/092/093/094/101/108/109/111/122/123: thirty-six FKs reference public.profiles. ** 122 and 123 added ONE EACH — ride_thread_reports.reporter_id and postcard_comment_reports.reporter_id — a SINGLE key per table rather than 083''s pair, because a report identifies one rider as its author and names its subject by a thread or comment id rather than by a second rider. ** ** 108 added THREE — ride_threads.author_id, ride_thread_messages.author_id and ride_thread_reads.user_id — and 109 removed TWO, ride_messages.author_id and ride_reads.user_id, so the ride conversation''s erasure surface moved from two tables to three and the net is -2. ** 111 added ONE, club_removals.user_id, and it is a SINGLE key rather than 083''s pair because the row deliberately records no actor — there is no second identified rider for a second key to erase. The watermark''s key is the one that would have been a privacy defect rather than a correctness one: a row there says a NAMED rider read a NAMED topic, and without the key it would outlive their account for ever');
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass
       and confdeltype = 'c'),
-  34, '029/061/069/078/081/083/084/085/091/092/093/094/101/108/109/111: ... and every one of them is ON DELETE CASCADE');
+  36, '029/061/069/078/081/083/084/085/091/092/093/094/101/108/109/111/122/123: ... and every one of them is ON DELETE CASCADE — which is the whole retention answer for both report tables: a report dies with its reporter, and nothing sweeps it on a schedule');
 
 -- 016's path CHECKs are NOT relaxed. The proposal asks for a relaxation on the
 -- grounds that pinning the path to owner_id makes any transfer raise 23514;
@@ -15718,7 +15727,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  22, '078.9c: ... and 078 itself added NO trigger — the total is twenty-two because 081, 092, 093 and 108 each added two content tables with one each, 083, 084, 085, 091 and 094 added one more each, 101 dropped 092''s club_thread_waves and 109 dropped ride_messages, each taking that table''s gate with it, and push_devices is still not among them');
+  24, '078.9c: ... and 078 itself added NO trigger — the total is twenty-four because 081, 092, 093 and 108 each added two content tables with one each, 083, 084, 085, 091, 094, 122 and 123 added one more each, 101 dropped 092''s club_thread_waves and 109 dropped ride_messages, each taking that table''s gate with it, and push_devices is still not among them');
 
 -- ---------------------------------------------------------------------------
 -- 078.10  The key is the installation, asserted against the catalogue.
@@ -17539,11 +17548,11 @@ select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal
       and pg_get_triggerdef(oid) ilike '%current_user%'),
-  22, '081.20/085/091/092/093/094/101/108/109: ... and all twenty-two carry the WHEN guard that reads the invoking role — inside a security definer body current_user is the OWNER, so a guard moved into the function would fire for nobody. 108 added TWO (ride_threads, ride_thread_messages) and 109 takes one back off when it drops ride_messages');
+  24, '081.20/085/091/092/093/094/101/108/109/122/123: ... and all twenty-four carry the WHEN guard that reads the invoking role — inside a security definer body current_user is the OWNER, so a guard moved into the function would fire for nobody. 108 added TWO (ride_threads, ride_thread_messages), 109 takes one back off when it drops ride_messages, and 122 and 123 add one each for their report tables');
 select assert_eq(
   (select obj_description('public.enforce_participation_gate()'::regprocedure, 'pg_proc')
-     like '%twenty-three BEFORE INSERT triggers%'),
-  true, '081.20/083/084/085/091/092/093/094/101/108: ... and the function''s own comment is restamped to twenty-three — a database comment is the only documentation no edit to CLAUDE.md reaches (028, 033). 108 adds the twenty-second (ride_threads) and twenty-third (ride_thread_messages); 101 had restamped it DOWNWARD, the only time this ledger has moved that way, renumbering the ordinals after the seventeenth because they are positions in a list rather than identities');
+     like '%twenty-four BEFORE INSERT triggers%'),
+  true, '081.20/083/084/085/091/092/093/094/101/108/122/123: ... and the function''s own comment is restamped to twenty-four — a database comment is the only documentation no edit to CLAUDE.md reaches (028, 033). 122 adds the twenty-third (ride_thread_reports) and 123 the twenty-fourth (postcard_comment_reports); 101 had restamped it DOWNWARD, the only time this ledger has moved that way, renumbering the ordinals after the seventeenth because they are positions in a list rather than identities. ** 122 also FIXED it: the stamp it inherited said twenty-three while pg_trigger answered twenty-two, because 109''s drop of ride_messages was recorded as a trailing sentence instead of folded into the enumeration, so a reader incrementing the string rather than the count would have written twenty-four here one file early. **');
 select assert_eq(
   (select obj_description('public.enforce_participation_gate()'::regprocedure, 'pg_proc')
      like '%club_join_requests (085)%'),
@@ -23153,7 +23162,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  22, '092.13/093/094/101/108/109: ... and the flat total is TWENTY-TWO, having been twenty-three after 108, twenty-one after 101, twenty-two after 094, twenty-one after 093, nineteen after 092 and seventeen before it. Both halves are asserted because neither implies the other, and the ABSOLUTE is only meaningful here because this suite replays the whole chain — on a hosted project it depends on which of 092-108 has applied, so the number that travels is the DELTA (+2 for 092, +2 for 093, +1 for 094, +0 for 095, -1 for 101, +2 for 108, -1 for 109) and the table names');
+  24, '092.13/093/094/101/108/109/122/123: ... and the flat total is TWENTY-FOUR, having been twenty-two after 109, twenty-three after 108, twenty-one after 101, twenty-two after 094, twenty-one after 093, nineteen after 092 and seventeen before it. Both halves are asserted because neither implies the other, and the ABSOLUTE is only meaningful here because this suite replays the whole chain — on a hosted project it depends on which of 092-123 has applied, so the number that travels is the DELTA (+2 for 092, +2 for 093, +1 for 094, +0 for 095, -1 for 101, +2 for 108, -1 for 109, +1 for 122, +1 for 123) and the table names');
 select assert_eq(
   (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
     where t.tgname = 'enforce_participation_gate'
@@ -27366,7 +27375,7 @@ select assert_eq((select cmd::text from pg_policies where tablename = 'feedback'
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  22, '096.10: 096 adds NO participation-gate trigger — twenty-two, because feedback already had one and profiles deliberately has none. The absolute has moved four times since 096 without 096 changing: twenty-two, twenty-one when 101 dropped club_thread_waves, twenty-three when 108 gated ride_threads and ride_thread_messages, and twenty-two again when 109 dropped ride_messages. Every one of those is a change to the CHAIN and not to 096');
+  24, '096.10: 096 adds NO participation-gate trigger — twenty-four, because feedback already had one and profiles deliberately has none. The absolute has moved six times since 096 without 096 changing: twenty-two, twenty-one when 101 dropped club_thread_waves, twenty-three when 108 gated ride_threads and ride_thread_messages, twenty-two again when 109 dropped ride_messages, twenty-three when 122 gated ride_thread_reports and twenty-four when 123 gated postcard_comment_reports. Every one of those is a change to the CHAIN and not to 096');
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgrelid = 'public.profiles'::regclass and not tgisinternal
@@ -28017,7 +28026,7 @@ reset role;
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  22, '097.14: TWENTY-TWO participation-gate triggers — 097 adds no table and therefore no gate, and its content write is gated inside the function instead. The absolute moves without 097 moving: -1 for 101''s club_thread_waves, +2 for 108''s two thread tables, -1 for 109''s ride_messages');
+  24, '097.14: TWENTY-FOUR participation-gate triggers — 097 adds no table and therefore no gate, and its content write is gated inside the function instead. The absolute moves without 097 moving: -1 for 101''s club_thread_waves, +2 for 108''s two thread tables, -1 for 109''s ride_messages, +1 for 122''s ride_thread_reports, +1 for 123''s postcard_comment_reports');
 -- Pinned by NAME since 112, because the claim is about WHICH triggers are here
 -- rather than how many: a count that moves says nothing about whether 097 was
 -- the one that moved it, which is the only thing this assertion is about.
@@ -29297,7 +29306,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  22, '098.36: TWENTY-TWO participation-gate triggers — 098 added no table so it added no gate; 101 removed one by dropping club_thread_waves, 108 added two and 109 removed one by dropping ride_messages. A count that moves by exactly the tables added or dropped is worth asserting: a new table WITHOUT a gate looks exactly like this number being right');
+  24, '098.36: TWENTY-FOUR participation-gate triggers — 098 added no table so it added no gate; 101 removed one by dropping club_thread_waves, 108 added two, 109 removed one by dropping ride_messages, and 122 and 123 added one each. A count that moves by exactly the tables added or dropped is worth asserting: a new table WITHOUT a gate looks exactly like this number being right');
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal
@@ -29892,7 +29901,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  22, '099.9: TWENTY-TWO participation-gate triggers — 099 adds no table and therefore no gate, and it changes a fan-out rather than a write path a rider owns. The absolute moved under it three times: -1 for 101, +2 for 108, -1 for 109');
+  24, '099.9: TWENTY-FOUR participation-gate triggers — 099 adds no table and therefore no gate, and it changes a fan-out rather than a write path a rider owns. The absolute moved under it five times: -1 for 101, +2 for 108, -1 for 109, +1 for 122, +1 for 123');
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'public' and tablename = 'notifications'),
@@ -30213,7 +30222,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  22, '100.8: TWENTY-TWO participation-gate triggers — 100 added no table and therefore no gate, it replaced two function bodies and hung nothing; 101 removed one by dropping club_thread_waves, 108 added two and 109 removed one');
+  24, '100.8: TWENTY-FOUR participation-gate triggers — 100 added no table and therefore no gate, it replaced two function bodies and hung nothing; 101 removed one by dropping club_thread_waves, 108 added two, 109 removed one, and 122 and 123 added one each');
 
 reset role;
 select set_config('test.uid', '', false);
@@ -34742,7 +34751,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  22, '111.14: TWENTY-TWO participation-gate triggers, unchanged — 111 adds a table with no authenticated writer, so a gate on it would raise this number while gating nothing (078.9''s lesson)');
+  24, '111.14: TWENTY-FOUR participation-gate triggers — 111 adds a table with no authenticated writer, so a gate on it would raise this number while gating nothing (078.9''s lesson). The two that DID arrive after it are 122''s and 123''s report tables, which have an authenticated writer and therefore earn theirs');
 select assert_eq(
   (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
     where t.tgname = 'enforce_participation_gate' and c.relname = 'club_removals'),
@@ -35219,7 +35228,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  22, '113.12: TWENTY-TWO participation-gate triggers, unchanged — 113 adds no table and gates no new write path');
+  24, '113.12: TWENTY-FOUR participation-gate triggers — 113 adds no table and gates no new write path; the two added after it are 122''s and 123''s report tables');
 select assert_eq(
   (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
     where t.tgname = 'enforce_participation_gate' and c.relname = 'profiles'),
@@ -38360,6 +38369,1315 @@ select assert_eq(
 
 reset role;
 rollback to savepoint push_delivery_121;
+
+-- ===========================================================================
+-- 122 — a ride thread can be REPORTED, and nobody on the crew reads it
+--       (PD-454, proposal.md §The negative cases N1-N38)
+-- ===========================================================================
+-- The INSERT policy names NOTHING: `reporter_id = auth.uid() and exists (select 1
+-- from public.ride_threads t where t.id = ...)`. Every refusal below is therefore
+-- INHERITED from `108`'s SELECT policy, resolved under the caller's own RLS, and
+-- that is the property this section exists to pin — a future file that spells
+-- `private.is_ride_crew` into the report policy passes a positive test and drifts
+-- the moment `108` changes.
+--
+-- ** `108`'s audience is an INTERSECTION and the CREW half is the load-bearing
+-- one here ** — the inverse of `club_threads` (081), whose parent EXISTS is the
+-- redundant half. So 122.3's first assertion uses a PUBLIC ride with no club:
+-- the rider can read the ride row perfectly well and is still refused.
+--
+--   1220001 rtorg      organiser of R1 (public, no club), R2 (club ride) and
+--                      R3 (private, no club)
+--   1220002 rtauthor   crew of R1/R2/R3; author of T1, T2, T3
+--   1220003 rtcrew     crew of R1 and R2, member of C1 — ** the reporter **
+--   1220004 rtseer     on NO crew; can read R1 in full — N1's whole point
+--   1220005 rtinvitee  PENDING invite to R3: reads the ride, none of its threads
+--   1220006 rtleaver   crew of R1, then LEAVES
+--   1220007 rtblocker  crew of R1 who BLOCKED the author
+--   1220008 rtblocked  crew of R1 whom the AUTHOR blocked — the other direction
+--   1220009 rtnoterms  crew of R1 with NO terms stamp — the gate, not the policy
+--   1220010 rtclubown  OWNER of C1, the club R2 belongs to; not on its crew
+--   1220011 rtclubadm  ADMIN of C1; not on its crew
+--   1220012 rtsecond   crew of R1; reports, then blocks the author
+--
+-- Rides:   R1 public/no club (isolates the crew half), R2 private in club C1
+--          (the club owner and admin cases), R3 private/no club (the invite).
+-- Threads: T1 on R1 by rtauthor, T2 on R2 by rtauthor, T3 on R3 by rtauthor,
+--          T4 on R1 by rtcrew — their OWN, for the self-report.
+savepoint ride_thread_reports_122;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000001220001', 'rtorg@example.com'),
+  ('00000000-0000-0000-0000-000001220002', 'rtauthor@example.com'),
+  ('00000000-0000-0000-0000-000001220003', 'rtcrew@example.com'),
+  ('00000000-0000-0000-0000-000001220004', 'rtseer@example.com'),
+  ('00000000-0000-0000-0000-000001220005', 'rtinvitee@example.com'),
+  ('00000000-0000-0000-0000-000001220006', 'rtleaver@example.com'),
+  ('00000000-0000-0000-0000-000001220007', 'rtblocker@example.com'),
+  ('00000000-0000-0000-0000-000001220008', 'rtblocked@example.com'),
+  ('00000000-0000-0000-0000-000001220009', 'rtnoterms@example.com'),
+  ('00000000-0000-0000-0000-000001220010', 'rtclubown@example.com'),
+  ('00000000-0000-0000-0000-000001220011', 'rtclubadm@example.com'),
+  ('00000000-0000-0000-0000-000001220012', 'rtsecond@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000001220001', 'rtorg'),
+      ('00000000-0000-0000-0000-000001220002', 'rtauthor'),
+      ('00000000-0000-0000-0000-000001220003', 'rtcrew'),
+      ('00000000-0000-0000-0000-000001220004', 'rtseer'),
+      ('00000000-0000-0000-0000-000001220005', 'rtinvitee'),
+      ('00000000-0000-0000-0000-000001220006', 'rtleaver'),
+      ('00000000-0000-0000-0000-000001220007', 'rtblocker'),
+      ('00000000-0000-0000-0000-000001220008', 'rtblocked'),
+      ('00000000-0000-0000-0000-000001220010', 'rtclubown'),
+      ('00000000-0000-0000-0000-000001220011', 'rtclubadm'),
+      ('00000000-0000-0000-0000-000001220012', 'rtsecond')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+-- No terms stamp, deliberately, AND on R1's crew — so 122.5's refusal cannot be
+-- coming from the INSERT policy.
+update profiles set username = 'rtnoterms', location = 'Zeist', home_country = 'NL',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000001220009';
+
+-- 103's trigger writes the owner's own club_members row, so rtclubown gets none
+-- by hand.
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000012200c1', 'Ride Report MC', false, '00000000-0000-0000-0000-000001220010');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000012200c1', '00000000-0000-0000-0000-000001220011', 'admin'),
+  ('00000000-0000-0000-0000-0000012200c1', '00000000-0000-0000-0000-000001220001', 'member'),
+  ('00000000-0000-0000-0000-0000012200c1', '00000000-0000-0000-0000-000001220002', 'member'),
+  ('00000000-0000-0000-0000-0000012200c1', '00000000-0000-0000-0000-000001220003', 'member');
+
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id, timezone) values
+  ('00000000-0000-0000-0000-0000012200e1', 'Open Run',   'Domplein',  now() + interval '10 days', true,  null, '00000000-0000-0000-0000-000001220001', 'Europe/Amsterdam'),
+  ('00000000-0000-0000-0000-0000012200e2', 'Club Run',   'Neude',     now() + interval '11 days', false, '00000000-0000-0000-0000-0000012200c1', '00000000-0000-0000-0000-000001220001', 'Europe/Amsterdam'),
+  ('00000000-0000-0000-0000-0000012200e3', 'Quiet Run',  'Vredenburg',now() + interval '12 days', false, null, '00000000-0000-0000-0000-000001220001', 'Europe/Amsterdam');
+
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000012200e1', '00000000-0000-0000-0000-000001220002', 'going'),
+  ('00000000-0000-0000-0000-0000012200e1', '00000000-0000-0000-0000-000001220003', 'going'),
+  ('00000000-0000-0000-0000-0000012200e1', '00000000-0000-0000-0000-000001220006', 'going'),
+  ('00000000-0000-0000-0000-0000012200e1', '00000000-0000-0000-0000-000001220007', 'going'),
+  ('00000000-0000-0000-0000-0000012200e1', '00000000-0000-0000-0000-000001220008', 'going'),
+  ('00000000-0000-0000-0000-0000012200e1', '00000000-0000-0000-0000-000001220009', 'going'),
+  ('00000000-0000-0000-0000-0000012200e1', '00000000-0000-0000-0000-000001220012', 'going'),
+  ('00000000-0000-0000-0000-0000012200e2', '00000000-0000-0000-0000-000001220002', 'going'),
+  ('00000000-0000-0000-0000-0000012200e2', '00000000-0000-0000-0000-000001220003', 'going'),
+  ('00000000-0000-0000-0000-0000012200e3', '00000000-0000-0000-0000-000001220002', 'going');
+
+insert into ride_threads (id, ride_id, author_id, title) values
+  ('00000000-0000-0000-0000-0000012200f1', '00000000-0000-0000-0000-0000012200e1', '00000000-0000-0000-0000-000001220002', 'Meeting spot'),
+  ('00000000-0000-0000-0000-0000012200f2', '00000000-0000-0000-0000-0000012200e2', '00000000-0000-0000-0000-000001220002', 'Club ride chat'),
+  ('00000000-0000-0000-0000-0000012200f3', '00000000-0000-0000-0000-0000012200e3', '00000000-0000-0000-0000-000001220002', 'Private plan'),
+  ('00000000-0000-0000-0000-0000012200f4', '00000000-0000-0000-0000-0000012200e1', '00000000-0000-0000-0000-000001220003', 'Mine to report');
+
+insert into ride_thread_messages (thread_id, author_id, body) values
+  ('00000000-0000-0000-0000-0000012200f1', '00000000-0000-0000-0000-000001220002', 'the reportable part'),
+  ('00000000-0000-0000-0000-0000012200f1', '00000000-0000-0000-0000-000001220003', 'see you there');
+
+-- The two DIRECTIONAL blocks around the author, one of each shape.
+--   1220007 -> 1220002 : a crew member blocked the AUTHOR
+--   1220002 -> 1220008 : the AUTHOR blocked a crew member
+-- private.is_blocked is symmetric, so a fixture with both directions is what
+-- proves the symmetry resolves in the helper rather than at each call site.
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000001220007', '00000000-0000-0000-0000-000001220002'),
+  ('00000000-0000-0000-0000-000001220002', '00000000-0000-0000-0000-000001220008');
+
+-- A PENDING invite to R3. 083's arm widens RIDE visibility and never thread
+-- visibility, and `responded_at` must stay NULL or the coupling CHECK refuses it.
+insert into ride_invites (ride_id, invitee_id, inviter_id, status) values
+  ('00000000-0000-0000-0000-0000012200e3', '00000000-0000-0000-0000-000001220005', '00000000-0000-0000-0000-000001220001', 'pending');
+
+-- ---------------------------------------------------------------------------
+-- 122.1  The table is the database's, not the client's  (task 5.21, N35)
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select pg_get_constraintdef(oid) from pg_constraint
+    where conrelid = 'public.ride_thread_reports'::regclass
+      and conname = 'ride_thread_reports_reason'),
+  'CHECK ((reason = ANY (ARRAY[''spam''::text, ''harassment''::text, ''hate''::text, ''nudity''::text, ''violence''::text, ''other''::text])))',
+  '122.1: the reason CHECK accepts exactly 011''s six values, read out of pg_constraint and compared to a literal — the half of REPORT_REASONS drift a SQL suite can see, the Zod enum being the half it cannot');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001220003', false);
+select assert_rejected($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason)
+  values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f1', 'rudeness')$$,
+  '23514', '122.1: ... and a seventh value is refused, so the list is a constraint rather than a convention');
+select assert_rejected($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason, note)
+  values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f1', 'other', '   ')$$,
+  '23514', '122.1: a note of nothing but whitespace is refused — the FLOOR is on the trimmed length, 011''s split');
+select assert_rejected($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason, note)
+  values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f1', 'other', repeat('x', 1001))$$,
+  '23514', '122.1: ... and the CEILING is on the raw length, so padding cannot smuggle a longer note past a trimmed check');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 122.2  Who MAY report  (tasks 5.1, 5.10 — N1 positive, N10)
+-- ---------------------------------------------------------------------------
+savepoint may_report_122;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001220003', false);
+insert into ride_thread_reports (reporter_id, thread_id, reason, note)
+values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f1', 'harassment', 'read the second message');
+select assert_eq(
+  (select count(*)::int from ride_thread_reports
+    where thread_id = '00000000-0000-0000-0000-0000012200f1'),
+  1, '122.2: a CREW MEMBER who can read the thread files a report and EXACTLY ONE row lands — task 5.1, and the only positive case the whole inherited-audience design rests on');
+select assert_eq(
+  (select reporter_id from ride_thread_reports
+    where thread_id = '00000000-0000-0000-0000-0000012200f1'),
+  '00000000-0000-0000-0000-000001220003'::uuid,
+  '122.2: ... with reporter_id their own');
+select assert_eq(
+  (select created_at > now() - interval '1 minute' from ride_thread_reports
+    where thread_id = '00000000-0000-0000-0000-0000012200f1'),
+  true, '122.2: ... and created_at came from the server default, the client having no grant to name it');
+select assert_allowed($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason)
+  values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f4', 'other')$$,
+  '122.2: a rider may report their OWN thread (N10) — the policy permits it, it is inert, and the affordance is simply not drawn for the author. Excluding it needs a second subquery in a policy whose whole virtue is naming nothing (D9)');
+select set_config('test.uid', '00000000-0000-0000-0000-000001220002', false);
+select assert_allowed($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason)
+  values ('00000000-0000-0000-0000-000001220002', '00000000-0000-0000-0000-0000012200f1', 'other')$$,
+  '122.2: ... and so may the thread''s own AUTHOR, from the other side of the same policy');
+select set_config('test.uid', '00000000-0000-0000-0000-000001220001', false);
+select assert_allowed($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason)
+  values ('00000000-0000-0000-0000-000001220001', '00000000-0000-0000-0000-0000012200f1', 'other')$$,
+  '122.2: the ride''s ORGANISER may report as well as delete — the two rows have different readers, and the escalation path must not be hidden from them');
+reset role;
+rollback to savepoint may_report_122;
+
+-- ---------------------------------------------------------------------------
+-- 122.3  ** THE REFUSALS THE POLICY INHERITS WITHOUT NAMING **
+--        (tasks 5.2, 5.3, 5.5, 5.6 — N1, N2, N3, N5, N6)
+-- ---------------------------------------------------------------------------
+savepoint refusals_122;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001220004', false);
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-0000012200e1'),
+  1, '122.3: fixture — rtseer READS THE PUBLIC RIDE IN FULL, so the refusal below is the crew half and nothing else');
+select assert_eq(
+  (select count(*)::int from ride_threads where id = '00000000-0000-0000-0000-0000012200f1'),
+  0, '122.3: ... and reads none of its threads, private.is_ride_crew being the load-bearing conjunct — the INVERSE of club_threads (081), where the parent EXISTS is the redundant half');
+select assert_denied($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason)
+  values ('00000000-0000-0000-0000-000001220004', '00000000-0000-0000-0000-0000012200f1', 'other')$$,
+  '122.3: ** ... and therefore cannot report it (N1) ** — a rider who can see the ride perfectly well is still refused, which is the case a hand-written `is_public` arm in the report policy would get wrong');
+select set_config('test.uid', '00000000-0000-0000-0000-000001220005', false);
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-0000012200e3'),
+  1, '122.3: fixture — a PENDING invitee reads the private ride, through 083''s private.has_live_ride_invite arm');
+select assert_eq(
+  (select count(*)::int from ride_threads where id = '00000000-0000-0000-0000-0000012200f3'),
+  0, '122.3: ... and none of its threads, because 083 widens RIDE visibility and never THREAD visibility');
+select assert_denied($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason)
+  values ('00000000-0000-0000-0000-000001220005', '00000000-0000-0000-0000-0000012200f3', 'other')$$,
+  '122.3: ** ... and therefore cannot report one (N2) ** — the assertion that goes red the day somebody "helpfully" adds the invite arm to thread visibility');
+select set_config('test.uid', '00000000-0000-0000-0000-000001220006', false);
+select assert_allowed($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason)
+  values ('00000000-0000-0000-0000-000001220006', '00000000-0000-0000-0000-0000012200f1', 'other')$$,
+  '122.3: fixture — rtleaver CAN report while still on the crew, so the refusal after they leave is the membership change and not the fixture');
+delete from ride_members
+ where ride_id = '00000000-0000-0000-0000-0000012200e1'
+   and user_id = '00000000-0000-0000-0000-000001220006';
+select assert_denied($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason)
+  values ('00000000-0000-0000-0000-000001220006', '00000000-0000-0000-0000-0000012200f1', 'other')$$,
+  '122.3: ** ... and cannot report the same thread after LEAVING THE CREW (N3) ** — asserted against the allowed case above, so it is a change of right rather than a fixture that never worked');
+-- N3's second half: and SHALL NOT be told that is why. Compared as STRINGS
+-- against a rider who never had the right, because two refusals can share a
+-- SQLSTATE and still be an oracle.
+select assert_eq(
+  error_of($$insert into ride_thread_reports (reporter_id, thread_id, reason)
+             values ('00000000-0000-0000-0000-000001220006', '00000000-0000-0000-0000-0000012200f1', 'other')$$),
+  (select error_of($$insert into ride_thread_reports (reporter_id, thread_id, reason)
+             values ('00000000-0000-0000-0000-000001220006', '00000000-0000-0000-0000-0000012200f3', 'other')$$)),
+  '122.3: ** ... and is NOT TOLD that leaving is why (N3) ** — the ex-crew refusal on a thread they could read yesterday is byte-identical to the refusal on a thread they were never near. Compared as strings, which is the only comparison that can see the two diverge');
+select set_config('test.uid', '00000000-0000-0000-0000-000001220003', false);
+select assert_denied($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason)
+  values ('00000000-0000-0000-0000-000001220012', '00000000-0000-0000-0000-0000012200f1', 'other')$$,
+  '122.3: a rider cannot report AS SOMEBODY ELSE (N5) — reporter_id = auth.uid() is a policy conjunct, not a client convention');
+select assert_denied($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason)
+  values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012209f9', 'other')$$,
+  '122.3: ... and a thread id that was never issued is refused by the same EXISTS, so a report is not an existence oracle either');
+insert into ride_thread_reports (reporter_id, thread_id, reason)
+values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f1', 'other');
+select assert_rejected($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason)
+  values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f1', 'spam')$$,
+  '23505', '122.3: a SECOND report of the same thread by the same rider is refused by ride_thread_reports_one_per_rider (N6) — 23505, which the client absorbs with `on conflict do nothing` rather than showing');
+select assert_allowed($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason)
+  values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f1', 'spam')
+  on conflict do nothing$$,
+  '122.3: ** the form the CLIENT actually emits is a silent no-op ** — supabase-js sends
+   `on conflict do nothing` only because the action passes `ignoreDuplicates: true`, and this is the
+   assertion that covers the statement rather than the constraint (supabase/tests/README.md §write
+   the emitted form)');
+select assert_rejected($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason)
+  values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f1', 'spam')
+  on conflict (reporter_id, thread_id) do update set reason = excluded.reason$$,
+  '42501', '122.3: ** and DROPPING that option breaks the FIRST report, not the second ** —
+   supabase-js''s `upsert` default is merge-duplicates, which plans `on conflict do update` against a
+   table with no UPDATE grant, so every report 42501s including a rider''s FIRST one. ** This assertion
+   proves the MECHANISM and cannot see which form the client sends ** — the tripwire for the option
+   disappearing from the action is
+   src/lib/actions/__tests__/report-upserts-ignore-duplicates.test.ts, which reads the source;
+   the grant half is 122.7/123.8''s has_table_privilege assertion. `addCountry` shipped this class');
+select assert_allowed($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason)
+  values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f2', 'other')$$,
+  '122.3: ... while the same rider reporting a DIFFERENT thread succeeds, so the key is per-subject and not a per-rider rate limit');
+reset role;
+rollback to savepoint refusals_122;
+
+-- ---------------------------------------------------------------------------
+-- 122.4  ** BLOCK-THEN-REPORT IS UNREACHABLE, IN BOTH DIRECTIONS **
+--        (task 5.11 first half — N11) and a block does not RETRACT (N13)
+-- ---------------------------------------------------------------------------
+savepoint blocks_122;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001220007', false);
+select assert_eq(
+  (select count(*)::int from ride_threads where id = '00000000-0000-0000-0000-0000012200f1'),
+  0, '122.4: a crew member who BLOCKED the author reads zero of their thread ...');
+select assert_denied($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason)
+  values ('00000000-0000-0000-0000-000001220007', '00000000-0000-0000-0000-0000012200f1', 'other')$$,
+  '122.4: ** ... and therefore cannot report it. DESIGNED, not broken (N11) ** — inherited from 011 and 094, and every fix is worse: a definer reporting RPC would have to answer about a row the caller cannot see, and a block-arm exemption becomes an existence probe. The remedy is ordering in the UI');
+select set_config('test.uid', '00000000-0000-0000-0000-000001220008', false);
+select assert_eq(
+  (select count(*)::int from ride_threads where id = '00000000-0000-0000-0000-0000012200f1'),
+  0, '122.4: ... and the same holds when the AUTHOR did the blocking — the row is directional and private.is_blocked is symmetric');
+select assert_denied($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason)
+  values ('00000000-0000-0000-0000-000001220008', '00000000-0000-0000-0000-0000012200f1', 'other')$$,
+  '122.4: ** ... so BOTH DIRECTIONS are refused, asserted separately because only one of the two fixtures is the obvious one **');
+-- N13: a block does not retract a report already filed.
+select set_config('test.uid', '00000000-0000-0000-0000-000001220012', false);
+insert into ride_thread_reports (reporter_id, thread_id, reason)
+values ('00000000-0000-0000-0000-000001220012', '00000000-0000-0000-0000-0000012200f1', 'harassment');
+reset role;
+insert into blocks (blocker_id, blocked_id)
+values ('00000000-0000-0000-0000-000001220012', '00000000-0000-0000-0000-000001220002');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001220012', false);
+select assert_eq(
+  (select count(*)::int from ride_threads where id = '00000000-0000-0000-0000-0000012200f1'),
+  0, '122.4: a reporter who then BLOCKS the author can no longer read the thread ...');
+select assert_eq(
+  (select count(*)::int from ride_thread_reports),
+  1, '122.4: ** ... and still reads their own report (N13) ** — a statement made while both parties could see each other is not unmade by a later block, and the SELECT policy carries no crew conjunct for exactly this reason');
+reset role;
+rollback to savepoint blocks_122;
+
+-- ---------------------------------------------------------------------------
+-- 122.5  The participation gate — by TABLE NAME, as a DELTA, and NOT AN ORACLE
+--        (tasks 5.9, 5.20 — N9)
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
+    where t.tgname = 'enforce_participation_gate'
+      and c.relname = 'ride_thread_reports'),
+  1, '122.5: ride_thread_reports carries the gate, NAMED — the flat total is asserted at 023''s block as 22 + 1 + 1, and a count alone cannot tell a new gate from one that moved');
+select assert_eq(
+  (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
+    where t.tgname = 'enforce_participation_gate'
+      and c.relname = 'ride_thread_reports'
+      and pg_get_triggerdef(t.oid) ilike '%current_user%'),
+  1, '122.5: ... and it carries the WHEN guard. 023 §2: inside a security definer body current_user is the OWNER, so a guard moved into the function would fire for nobody and gate nothing while looking complete');
+savepoint gate_122;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001220009', false);
+select assert_eq(
+  (select count(*)::int from ride_threads where id = '00000000-0000-0000-0000-0000012200f1'),
+  1, '122.5: fixture — the un-consented rider is ON THE CREW and READS the thread normally, so the refusal below cannot be coming from the INSERT policy');
+select assert_rejected($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason)
+  values ('00000000-0000-0000-0000-000001220009', '00000000-0000-0000-0000-0000012200f1', 'other')$$,
+  '23514', '122.5: ** a rider with terms_accepted_at NULL cannot report (N9) ** — refused by the GATE (23514), not by the policy (42501). 023 gates writing and never reading');
+select assert_eq(
+  error_of($$insert into ride_thread_reports (reporter_id, thread_id, reason)
+             values ('00000000-0000-0000-0000-000001220009', '00000000-0000-0000-0000-0000012200f1', 'other')$$),
+  error_of($$insert into ride_thread_reports (reporter_id, thread_id, reason)
+             values ('00000000-0000-0000-0000-000001220009', '00000000-0000-0000-0000-0000012200f3', 'other')$$),
+  '122.5: ** the gate is not an ORACLE (N9''s second half) ** — an un-onboarded rider gets the SAME STRING for a thread they can read and one on a private ride they cannot, because the gate keys on their own terms stamp and never on the subject. 093 shipped a membership oracle on exactly this shape');
+reset role;
+rollback to savepoint gate_122;
+
+-- ---------------------------------------------------------------------------
+-- 122.6  ** WHO MAY READ A REPORT — the 076 question **
+--        (task 5.13, four of its six — N16, N17, N20)
+-- ---------------------------------------------------------------------------
+-- The report is filed on T2, the thread of the CLUB ride, so the club owner and
+-- admin cases are about a ride their club actually owns rather than a stranger's.
+savepoint report_reads_122;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001220003', false);
+insert into ride_thread_reports (reporter_id, thread_id, reason, note)
+values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f2', 'harassment', 'the third reply');
+reset role;
+select assert_eq(
+  (select count(*)::int from ride_thread_reports),
+  1, '122.6: fixture — exactly one report exists, so every zero below is a policy refusing rather than an empty table');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001220002', false);
+select assert_eq(
+  (select count(*)::int from ride_thread_reports),
+  0, '122.6: ** the thread''s AUTHOR reads ZERO reports about their own thread (N16) ** — the load-bearing one. On a four-rider crew, learning that a report exists names the reporter by elimination even without a reporter_id');
+select set_config('test.uid', '00000000-0000-0000-0000-000001220001', false);
+select assert_eq(
+  (select count(*)::int from ride_thread_reports),
+  0, '122.6: ** the ride''s ORGANISER reads zero (N17) ** — they can already delete the thread through moderate_ride_thread, and a DELETE is not a READ. Conflating the two is how a reporter gets identified by elimination');
+select set_config('test.uid', '00000000-0000-0000-0000-000001220010', false);
+select assert_eq(
+  (select count(*)::int from ride_thread_reports),
+  0, '122.6: the CLUB OWNER of the club this ride belongs to reads zero (N20) — a ride has no admin role at all (108), and a club''s standing does not reach its rides'' conversations');
+select set_config('test.uid', '00000000-0000-0000-0000-000001220011', false);
+select assert_eq(
+  (select count(*)::int from ride_thread_reports),
+  0, '122.6: ... and so does the club''s ADMIN, asserted separately because the owner case does not imply it — 088 lets one admin promote another, so an admin can be the reported party');
+select set_config('test.uid', '00000000-0000-0000-0000-000001220012', false);
+select assert_eq(
+  (select count(*)::int from ride_thread_reports),
+  0, '122.6: ... and a fellow CREW MEMBER reads zero, which is the only one of the five that is obvious');
+select set_config('test.uid', '00000000-0000-0000-0000-000001220003', false);
+select assert_eq(
+  (select count(*)::int from ride_thread_reports),
+  1, '122.6: the REPORTER reads their own row — reporter_id = auth.uid() is the whole predicate, with no parent EXISTS above it to dominate the own-row arm (PD-362''s shape, avoided by construction)');
+reset role;
+rollback to savepoint report_reads_122;
+
+-- ---------------------------------------------------------------------------
+-- 122.7  The ABSENCES — asserted in both directions, because a well-meaning
+--        `grant all` restores only one of them
+--        (tasks 5.7, 5.8, 5.15 — N7, N8, N22)
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select string_agg(cmd, ',' order by cmd) from pg_policies
+    where schemaname = 'public' and tablename = 'ride_thread_reports'),
+  'INSERT,SELECT',
+  '122.7: ride_thread_reports carries exactly TWO policies and they are INSERT and SELECT — read as a sorted COMMAND LIST, so a set that swapped SELECT for UPDATE cannot pass a count of 2 (088 §3''s trap)');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'ride_thread_reports'
+      and roles <> '{authenticated}'),
+  0, '122.7: ... and both are `to authenticated` — decision #1, asserted rather than implied, and this is also N22''s "no policy names anon"');
+select assert_eq(
+  has_table_privilege('authenticated', 'public.ride_thread_reports', 'update'),
+  false, '122.7: authenticated holds NO UPDATE grant (N7) — the second, independent layer, which still holds if a future policy is written too permissively');
+select assert_eq(
+  has_table_privilege('authenticated', 'public.ride_thread_reports', 'delete'),
+  false, '122.7: ... and NO DELETE grant. A report is a statement of fact at a moment in time; a reporter cannot rewrite or withdraw one');
+select assert_eq(
+  (select array(select privilege_type::text from information_schema.table_privileges
+                 where table_schema = 'public' and table_name = 'ride_thread_reports'
+                   and grantee = 'authenticated' order by 1)),
+  array['SELECT'],
+  '122.7: ** authenticated''s TABLE-level grant is SELECT and nothing else ** — the INSERT is column-scoped and therefore appears only in column_privileges, which is what this assertion proves by its absence here. Scoped to the grantee, per 015''s trap');
+select assert_eq(
+  (select array(select column_name::text from information_schema.column_privileges
+                 where table_schema = 'public' and table_name = 'ride_thread_reports'
+                   and grantee = 'authenticated' and privilege_type = 'INSERT' order by 1)),
+  array['note', 'reason', 'reporter_id', 'thread_id'],
+  '122.7: ** the INSERT grant is COLUMN-SCOPED and omits created_at and id (N8, D3) ** — a deliberate departure from 011, which granted INSERT at table level. The queue orders by created_at, so a client-stamped value would pin a report to the top of the operator''s queue for ever');
+savepoint absences_122;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001220003', false);
+select assert_denied($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason, created_at)
+  values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f1', 'other', now() + interval '10 years')$$,
+  '122.7: ... and a client NAMING created_at is refused 42501 by the COLUMN grant, not by a trigger — a default applies only when the column is omitted, and PostgREST will happily name one');
+select assert_denied($$
+  insert into ride_thread_reports (id, reporter_id, thread_id, reason)
+  values ('00000000-0000-0000-0000-0000012209f1', '00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f1', 'other')$$,
+  '122.7: ... and nor may they choose the id');
+insert into ride_thread_reports (reporter_id, thread_id, reason)
+values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f1', 'other');
+select assert_denied($$
+  update ride_thread_reports set reason = 'spam'
+   where reporter_id = '00000000-0000-0000-0000-000001220003'$$,
+  '122.7: ** a reporter cannot EDIT their own report (N7) ** — refused by the missing grant, reached as a live statement rather than only as a catalogue read, because the grant and the policy are two separate layers and this exercises the first');
+select assert_denied($$
+  delete from ride_thread_reports
+   where reporter_id = '00000000-0000-0000-0000-000001220003'$$,
+  '122.7: ** ... and cannot WITHDRAW it either ** — the second direction, which a `grant all` would have restored while leaving the first assertion green');
+reset role;
+rollback to savepoint absences_122;
+select assert_eq(
+  (select count(*)::int from information_schema.table_privileges
+    where table_schema = 'public' and table_name = 'ride_thread_reports' and grantee = 'anon')
+  + (select count(*)::int from information_schema.column_privileges
+      where table_schema = 'public' and table_name = 'ride_thread_reports' and grantee = 'anon'),
+  0, '122.7: anon holds NOTHING on ride_thread_reports, table-level or per-column (N22) — decision #1, and no route is created or implied for it');
+
+-- ---------------------------------------------------------------------------
+-- 122.8  ** service_role is revoked, and the cascade does not care **
+--        (task 5.14 — N21, D6)
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  has_table_privilege('service_role', 'public.ride_thread_reports', 'select'),
+  false, '122.8: ** service_role holds no SELECT (N21) ** — named in the revoke AT CREATION, which is 076 §3b''s lesson applied at birth rather than sixty-five migrations later. NOTE: this harness never grants service_role the project default, so locally this passes for a weaker reason than on the hosted projects; 122''s §Verification block is what checks it where the default exists');
+savepoint srole_cascade_122;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001220003', false);
+insert into ride_thread_reports (reporter_id, thread_id, reason)
+values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f1', 'other');
+reset role;
+-- ** The harness does NOT reproduce Supabase's service_role default privileges,
+-- ** so both halves are staged here or the revoke revokes nothing and the delete
+-- cannot run at all. 094.10 carries the same staging for the same reason.
+grant delete on public.profiles to service_role;             -- the hosted default
+grant all on public.ride_thread_reports to service_role;     -- the hosted default
+revoke all on public.ride_thread_reports from service_role;  -- 122 §2's line
+select assert_eq(
+  has_table_privilege('service_role', 'public.ride_thread_reports', 'delete'),
+  false, '122.8: with the hosted default reproduced and then revoked, service_role holds no DELETE ...');
+-- The parent delete is issued by the OWNER here, and that is the fidelity gap
+-- 094.10 names rather than papers over: 095 measured that an RI cascade runs as
+-- the owner of the REFERENCING table whoever issues the parent delete, so the
+-- deleting role is not an input to the question. The privilege half is asserted
+-- above, by role.
+delete from profiles where id = '00000000-0000-0000-0000-000001220003';
+select assert_eq(
+  (select count(*)::int from ride_thread_reports
+    where reporter_id = '00000000-0000-0000-0000-000001220003'),
+  0, '122.8: ** ... and deleting that reporter''s account still removes their reports while service_role holds no privilege on the table (D6) ** — a referential cascade runs as the constraint''s system trigger and consults no privileges, so the revoke cannot break account deletion. Nothing in CI would notice this breaking');
+rollback to savepoint srole_cascade_122;
+
+-- ---------------------------------------------------------------------------
+-- 122.9  The reader — unreachable by every client role, by THREE barriers
+--        (tasks 5.16, 5.17 — N23, N24, N25, N26, N27, N28)
+-- ---------------------------------------------------------------------------
+-- Asserted by NAMING the role rather than by attempting the call: this suite runs
+-- as the table owner, for whom neither the schema nor the grant is a barrier. 031
+-- exists because 029 shipped a function nothing could call and nothing noticed.
+select assert_eq(has_schema_privilege('authenticated', 'private', 'usage'),
+  false, '122.9: authenticated holds no USAGE on private, so the queue is unreachable before any grant on it is considered (N23, barrier one)');
+select assert_eq(has_schema_privilege('anon', 'private', 'usage'),
+  false, '122.9: ... nor does anon');
+select assert_eq(has_table_privilege('service_role', 'private.ride_thread_report_queue', 'select'),
+  false, '122.9: ** and service_role, which DOES hold USAGE on private (031), is refused by the explicit revoke (N23, barrier two) ** — the one client-side role for which the schema is not already the barrier');
+select assert_eq(has_function_privilege('service_role', 'private.remove_reported_ride_thread(uuid)', 'execute'),
+  false, '122.9: ... and the same on the take-down (N24), so neither grant nor schema is load-bearing alone');
+select assert_eq(has_function_privilege('authenticated', 'private.remove_reported_ride_thread(uuid)', 'execute'),
+  false, '122.9: ... and authenticated cannot execute it either');
+select assert_eq(has_function_privilege('anon', 'private.remove_reported_ride_thread(uuid)', 'execute'),
+  false, '122.9: ... and nor can anon, which is the third role N24 names');
+select assert_eq(
+  (select prosecdef from pg_proc where oid = 'private.remove_reported_ride_thread(uuid)'::regprocedure),
+  false, '122.9: ** the take-down is deliberately NOT security definer (N24, D4) ** — its only caller already holds BYPASSRLS, so the marking would buy nothing and add a second thing to explain. The precedent is read rather than reasoned: 076''s and 094''s are both false');
+select assert_eq(
+  (select proconfig from pg_proc where oid = 'private.remove_reported_ride_thread(uuid)'::regprocedure),
+  array['search_path=""'],
+  '122.9: ... with search_path pinned anyway, stored WITH the literal quotes — matching on `search_path=` alone finds nothing and reads as a pass');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('ride_thread_report_queue', 'remove_reported_ride_thread')),
+  0, '122.9: ... and neither object landed in `public` by mistake, which is what a new security advisor after applying 122 would mean');
+-- ** NAME CHECK: 094's club take-down is still there. ** The signature is
+-- otherwise identical, so a collision would have silently replaced it.
+select assert_eq(
+  (select count(*)::int from pg_proc where oid = 'private.remove_reported_thread(uuid)'::regprocedure),
+  1, '122.9: ** and 094''s private.remove_reported_thread(uuid) is UNREPLACED ** — 122''s take-down is remove_reported_RIDE_thread, and a name collision would have swapped the club''s take-down for one that deletes from a different table');
+select assert_eq(
+  (select reloptions from pg_class where oid = 'private.ride_thread_report_queue'::regclass),
+  array['security_invoker=false'],
+  '122.9: the queue''s security_invoker is FALSE and WRITTEN OUT — it is the default and the entire reason the view can answer, so a future session reaching for `= true` to "make it safer" breaks it visibly rather than silently');
+select assert_eq(
+  (select array(select attname::text from pg_attribute
+                 where attrelid = 'private.ride_thread_report_queue'::regclass
+                   and attnum > 0 and not attisdropped
+                   and attname like '%reporter%' order by 1)),
+  array['reporter_id'],
+  '122.9: ** the queue names the reporter by UUID and nothing else (N26) ** — no username, no email, no join to profiles for them. The reported rider''s name is context for judging a thread; the reporter''s is not needed to judge it, so a view that ever escapes its schema leaks less');
+select assert_eq(
+  (select count(*)::int from pg_attribute
+    where attrelid = 'private.ride_thread_report_queue'::regclass
+      and attnum > 0 and not attisdropped
+      and attname in ('email', 'encrypted_password', 'raw_user_meta_data', 'reporter_username', 'reporter_email')),
+  0, '122.9: ... and no column of auth.users and no reporter-identifying column beyond the uuid (N26, N27)');
+
+-- The queue answers, and it answers about a thread on a ride the reader is not
+-- on the crew of — which is what it is for and exactly why no PostgREST role may
+-- reach it (N25).
+savepoint queue_122;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001220003', false);
+insert into ride_thread_reports (reporter_id, thread_id, reason, note)
+values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f1', 'harassment', 'the first message');
+reset role;
+select assert_eq(
+  (select count(*)::int from private.ride_thread_report_queue
+    where thread_id = '00000000-0000-0000-0000-0000012200f1'
+      and thread_title = 'Meeting spot'
+      and ride_title = 'Open Run'
+      and organiser_username = 'rtorg'
+      and author_username = 'rtauthor'
+      and reason = 'harassment'
+      and message_count = 2
+      and reports_on_this_thread = 1),
+  1, '122.9: the queue joins the report to its thread, its ride, the organiser and the author, and counts the messages — the pre-joined read the operator does at the dashboard, and message_count is what shows the proportionality before a thread-granular take-down');
+select assert_eq(
+  (select (private.remove_reported_ride_thread('00000000-0000-0000-0000-0000012209f9') ->> 'removed')::boolean),
+  false, '122.9: the take-down on a thread that does not exist returns {"removed": false} rather than raising (N32) — 076''s shape, because an operator acting on a queue row somebody already deleted has done nothing wrong');
+select assert_eq(
+  (select jsonb_array_length(private.remove_reported_ride_thread('00000000-0000-0000-0000-0000012200f1') -> 'reports')),
+  1, '122.9: ** and a real take-down returns the evidence it is about to destroy (N29) ** — read BEFORE the delete, because the reports cascade with the thread and reading them afterwards returns null, which looks exactly like a thread nobody had reported');
+select assert_eq(
+  (select count(*)::int from ride_threads where id = '00000000-0000-0000-0000-0000012200f1'),
+  0, '122.9: ... and the thread is gone, with its messages and its reports behind it');
+select assert_eq(
+  (select count(*)::int from ride_thread_reports where thread_id = '00000000-0000-0000-0000-0000012200f1'),
+  0, '122.9: ... the reports specifically, by cascade — which is the retention answer and the reason the operator is handed them first');
+rollback to savepoint queue_122;
+
+-- Also assert the messages come back CAPPED with a total beside them, since that
+-- is what makes a truncation visible rather than silent.
+savepoint takedown_shape_122;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001220003', false);
+insert into ride_thread_reports (reporter_id, thread_id, reason)
+values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f1', 'other');
+reset role;
+select assert_eq(
+  (select (private.remove_reported_ride_thread('00000000-0000-0000-0000-0000012200f1') -> 'messages_total')::int),
+  2, '122.9: the take-down returns messages_total beside the capped 200 messages, so a truncated conversation is visibly truncated rather than quietly short');
+rollback to savepoint takedown_shape_122;
+
+-- ---------------------------------------------------------------------------
+-- 122.10  Cascades from every end, and the indexes 029's erasure contract needs
+--         (task 5.18 — N29, N30, N31, N33, N34)
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select array(select conname::text || ' ' || confdeltype::text from pg_constraint
+                 where conrelid = 'public.ride_thread_reports'::regclass and contype = 'f'
+                 order by 1)),
+  array['ride_thread_reports_reporter_id_fkey c', 'ride_thread_reports_thread_id_fkey c'],
+  '122.10: TWO cascading keys — the thread and the reporter. A report dies with its subject and with the rider who wrote it, and with NOTHING ELSE: that is the retention answer (N34), stated as a mechanism rather than an intention. No scheduled deletion, no resolved_at');
+select assert_eq(
+  (select count(*)::int from pg_constraint c
+    where c.contype = 'f' and c.conrelid = 'public.ride_thread_reports'::regclass
+      and not exists (select 1 from pg_index i
+                       where i.indrelid = c.conrelid and i.indkey[0] = c.conkey[1])),
+  0, '122.10: ... and every foreign key LEADS an index — 029''s standing rule, read out of pg_index rather than measured with a timing. reporter_id leads the unique key, thread_id leads its own');
+savepoint cascade_thread_122;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001220003', false);
+insert into ride_thread_reports (reporter_id, thread_id, reason)
+values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f1', 'other');
+reset role;
+delete from ride_threads where id = '00000000-0000-0000-0000-0000012200f1';
+select assert_eq(
+  (select count(*)::int from ride_thread_reports),
+  0, '122.10: deleting the THREAD removes its reports (N29) — and the operator is handed the evidence before the delete rather than after, which is what the take-down is for');
+rollback to savepoint cascade_thread_122;
+savepoint cascade_ride_122;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001220003', false);
+insert into ride_thread_reports (reporter_id, thread_id, reason)
+values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f1', 'other');
+reset role;
+delete from rides where id = '00000000-0000-0000-0000-0000012200e1';
+select assert_eq(
+  (select count(*)::int from ride_thread_reports),
+  0, '122.10: deleting the RIDE removes the report through its thread (N31) — the existing chain, with no new cleanup path');
+select assert_eq(
+  (select count(*)::int from ride_threads where ride_id = '00000000-0000-0000-0000-0000012200e2'),
+  1, '122.10: ... and the OTHER ride''s thread is still standing, counted by survivors so the cascade is proved narrow rather than total');
+rollback to savepoint cascade_ride_122;
+savepoint cascade_reporter_122;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001220003', false);
+insert into ride_thread_reports (reporter_id, thread_id, reason)
+values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f1', 'other');
+reset role;
+delete from profiles where id = '00000000-0000-0000-0000-000001220003';
+select assert_eq(
+  (select count(*)::int from ride_thread_reports),
+  0, '122.10: ... and deleting the REPORTER''s account removes their words (N30), which is what /legal/account-deletion promises and what a moderation archive would have broken');
+select assert_eq(
+  (select count(*)::int from ride_threads where id = '00000000-0000-0000-0000-0000012200f1'),
+  1, '122.10: ... while the thread they reported is untouched — a report going does not take its subject with it');
+rollback to savepoint cascade_reporter_122;
+
+reset role;
+rollback to savepoint ride_thread_reports_122;
+
+-- ===========================================================================
+-- 123 — a postcard COMMENT can be reported, and nobody gains a read
+--       (PD-454, proposal.md §The negative cases)
+-- ===========================================================================
+-- Same shape as 122 and the same property under test: the INSERT policy names
+-- NOTHING, so every refusal is inherited from `011`'s `postcard_comments` SELECT
+-- and, through its parent EXISTS, from `postcards` SELECT — the CLUB conjunct,
+-- the HIDE `NOT EXISTS` and two block arms.
+--
+-- ** The own-comment arm sits at TOP LEVEL, and that is why 123.3 names SOMEBODY
+-- ELSE'S comment in each of its three refusals. ** The same assertion written
+-- against the rider's own comment PASSES THE INSERT and fails the test: a rider
+-- who hid a postcard still reads, and may still self-report, a comment they wrote
+-- on it. That exception is pinned as its own positive rather than discovered.
+--
+--   1230001 pcauthor   author of P1 (in private club D1) and P2 (no club);
+--                      owner of D1, so 103's trigger writes their roster row
+--   1230002 pccommenter member of D1; wrote K1 on P1 and K2 on P2
+--   1230003 pcreader   member of D1 — ** the reporter **
+--   1230004 pcoutside  member of NOTHING: cannot see P1 at all
+--   1230005 pchider    member of D1 who HID P1
+--   1230006 pcblkd     member of D1 whom the PHOTO'S AUTHOR blocked
+--   1230007 pcnoterms  member of D1 with NO terms stamp
+--   1230008 pcselfcom  member of D1 who wrote K3 on P1 and then HID P1 — the
+--                      top-level own-comment arm, as a positive
+--   1230009 pcblkcom   member of D1 who BLOCKED the commenter
+--   1230010 pcbldcom   member of D1 whom the COMMENTER blocked
+--   1230011 pcbadcom   member of D1 who wrote K4 on P1 and whom the photo's
+--                      author then blocked — N12's two halves
+savepoint comment_reports_123;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000001230001', 'pcauthor@example.com'),
+  ('00000000-0000-0000-0000-000001230002', 'pccommenter@example.com'),
+  ('00000000-0000-0000-0000-000001230003', 'pcreader@example.com'),
+  ('00000000-0000-0000-0000-000001230004', 'pcoutside@example.com'),
+  ('00000000-0000-0000-0000-000001230005', 'pchider@example.com'),
+  ('00000000-0000-0000-0000-000001230006', 'pcblkd@example.com'),
+  ('00000000-0000-0000-0000-000001230007', 'pcnoterms@example.com'),
+  ('00000000-0000-0000-0000-000001230008', 'pcselfcom@example.com'),
+  ('00000000-0000-0000-0000-000001230009', 'pcblkcom@example.com'),
+  ('00000000-0000-0000-0000-000001230010', 'pcbldcom@example.com'),
+  ('00000000-0000-0000-0000-000001230011', 'pcbadcom@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000001230001', 'pcauthor'),
+      ('00000000-0000-0000-0000-000001230002', 'pccommenter'),
+      ('00000000-0000-0000-0000-000001230003', 'pcreader'),
+      ('00000000-0000-0000-0000-000001230004', 'pcoutside'),
+      ('00000000-0000-0000-0000-000001230005', 'pchider'),
+      ('00000000-0000-0000-0000-000001230006', 'pcblkd'),
+      ('00000000-0000-0000-0000-000001230008', 'pcselfcom'),
+      ('00000000-0000-0000-0000-000001230009', 'pcblkcom'),
+      ('00000000-0000-0000-0000-000001230010', 'pcbldcom'),
+      ('00000000-0000-0000-0000-000001230011', 'pcbadcom')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+-- No terms stamp, deliberately, AND a member of D1 — so 123.5's refusal cannot be
+-- coming from the INSERT policy.
+update profiles set username = 'pcnoterms', location = 'Zeist', home_country = 'NL',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000001230007';
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000012300d1', 'Comment Report MC', false, '00000000-0000-0000-0000-000001230001');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000012300d1', '00000000-0000-0000-0000-000001230002', 'member'),
+  ('00000000-0000-0000-0000-0000012300d1', '00000000-0000-0000-0000-000001230003', 'member'),
+  ('00000000-0000-0000-0000-0000012300d1', '00000000-0000-0000-0000-000001230005', 'member'),
+  ('00000000-0000-0000-0000-0000012300d1', '00000000-0000-0000-0000-000001230006', 'member'),
+  ('00000000-0000-0000-0000-0000012300d1', '00000000-0000-0000-0000-000001230007', 'member'),
+  ('00000000-0000-0000-0000-0000012300d1', '00000000-0000-0000-0000-000001230008', 'member'),
+  ('00000000-0000-0000-0000-0000012300d1', '00000000-0000-0000-0000-000001230009', 'member'),
+  ('00000000-0000-0000-0000-0000012300d1', '00000000-0000-0000-0000-000001230010', 'member'),
+  ('00000000-0000-0000-0000-0000012300d1', '00000000-0000-0000-0000-000001230011', 'member');
+
+insert into postcards (id, author_id, club_id, image_path, caption) values
+  ('00000000-0000-0000-0000-0000012300e1', '00000000-0000-0000-0000-000001230001',
+   '00000000-0000-0000-0000-0000012300d1',
+   'postcards/00000000-0000-0000-0000-000001230001/p1.jpg', 'the club run'),
+  ('00000000-0000-0000-0000-0000012300e2', '00000000-0000-0000-0000-000001230001', null,
+   'postcards/00000000-0000-0000-0000-000001230001/p2.jpg', 'anyone can see this');
+
+insert into postcard_comments (id, postcard_id, author_id, body) values
+  ('00000000-0000-0000-0000-0000012300f1', '00000000-0000-0000-0000-0000012300e1', '00000000-0000-0000-0000-000001230002', 'the reportable sentence'),
+  ('00000000-0000-0000-0000-0000012300f2', '00000000-0000-0000-0000-0000012300e2', '00000000-0000-0000-0000-000001230002', 'on the public one'),
+  ('00000000-0000-0000-0000-0000012300f3', '00000000-0000-0000-0000-0000012300e1', '00000000-0000-0000-0000-000001230008', 'mine, and I hid the photo'),
+  ('00000000-0000-0000-0000-0000012300f4', '00000000-0000-0000-0000-0000012300e1', '00000000-0000-0000-0000-000001230011', 'the one the owner blocked');
+
+-- The HIDE is a read decision and it takes the reporting route with it, which is
+-- the refusal people read as a bug.
+insert into postcard_hides (postcard_id, user_id) values
+  ('00000000-0000-0000-0000-0000012300e1', '00000000-0000-0000-0000-000001230005'),
+  ('00000000-0000-0000-0000-0000012300e1', '00000000-0000-0000-0000-000001230008');
+
+-- Four blocks, all four directions this section needs:
+--   author -> pcblkd    : the PHOTO'S author blocked a club member
+--   pcblkcom -> commenter : a reader blocked the COMMENTER
+--   commenter -> pcbldcom : the COMMENTER blocked a reader — the other direction
+--   author -> pcbadcom  : the photo's author blocked their commenter (N12)
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000001230001', '00000000-0000-0000-0000-000001230006'),
+  ('00000000-0000-0000-0000-000001230009', '00000000-0000-0000-0000-000001230002'),
+  ('00000000-0000-0000-0000-000001230002', '00000000-0000-0000-0000-000001230010'),
+  ('00000000-0000-0000-0000-000001230001', '00000000-0000-0000-0000-000001230011');
+
+-- ---------------------------------------------------------------------------
+-- 123.1  The table is the database's, not the client's  (task 5.21, N35)
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select pg_get_constraintdef(oid) from pg_constraint
+    where conrelid = 'public.postcard_comment_reports'::regclass
+      and conname = 'postcard_comment_reports_reason'),
+  'CHECK ((reason = ANY (ARRAY[''spam''::text, ''harassment''::text, ''hate''::text, ''nudity''::text, ''violence''::text, ''other''::text])))',
+  '123.1: the reason CHECK accepts exactly 011''s six values, read out of pg_constraint and compared to a literal — asserted on BOTH new tables, because two tables are two places the Zod enum can drift from');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001230003', false);
+select assert_rejected($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason)
+  values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'rudeness')$$,
+  '23514', '123.1: ... and a seventh value is refused, so the list is a constraint rather than a convention');
+select assert_rejected($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason, note)
+  values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'other', '   ')$$,
+  '23514', '123.1: a note of nothing but SPACES is refused — the FLOOR is on the trimmed length, 011''s split, copied from 094 verbatim');
+-- ** AND THE GAP IN THAT FLOOR, PINNED RATHER THAN LEFT TO BE REDISCOVERED. **
+-- `btrim` with no second argument strips SPACES ONLY — 108's measurement:
+--   select length(btrim(E'\n\n')), length(btrim(E'\t')), length(btrim('   '));  -->  2 | 1 | 0
+-- so a note of nothing but NEWLINES — or of nothing but TABS — passes this CHECK.
+-- ** Both, not just the newline: ** a fix keyed on the word "newline" alone leaves
+-- half the class behind, and the class is every character `btrim` does not treat
+-- as a space. That is true of
+-- postcard_reports (011), club_thread_reports (094) and both of 122's and 123's
+-- tables, because task 1.3 required the constraint copied VERBATIM rather than
+-- improved in one of four places. ** It matters because it is the inversion
+-- CLAUDE.md names: ** if the Zod note schema calls `.trim()`, the CLIENT is
+-- STRICTER than the database, and the rule then lives only in Zod for anything
+-- that does not go through the form. 108 fixed the equivalent on ride_threads.title
+-- with `~ '\S'`, which has no such gap; changing it on four report tables at once
+-- is its own migration and is NOT smuggled in here.
+select assert_allowed($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason, note)
+  values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'other', E'\n\n')$$,
+  '123.1: ** ... while a note of nothing but NEWLINES is ACCEPTED, and that is asserted as the KNOWN GAP it is ** — btrim strips spaces only, so this floor is weaker than 108''s `~ ''\S''` on all four report tables including 011''s and 094''s. Written as a positive so the day somebody tightens it, this line goes red and names the four tables that have to move together');
+select assert_allowed($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason, note)
+  values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f2', 'other', E'\t')$$,
+  '123.1: ** ... and so is a note of nothing but TABS, which is the same gap and is asserted
+   SEPARATELY on purpose ** — the whitespace class `btrim` ignores is wider than the newline, so a
+   tightening keyed on E''\n'' alone would leave this line green and the floor still broken');
+select assert_rejected($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason, note)
+  values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'other', repeat('x', 1001))$$,
+  '23514', '123.1: ... and the CEILING is on the raw length');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 123.2  Who MAY report  (tasks 5.1, 5.10 — the positive, and the self-report)
+-- ---------------------------------------------------------------------------
+savepoint may_report_123;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001230003', false);
+insert into postcard_comment_reports (reporter_id, comment_id, reason, note)
+values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'harassment', 'this sentence');
+select assert_eq(
+  (select count(*)::int from postcard_comment_reports
+    where comment_id = '00000000-0000-0000-0000-0000012300f1'),
+  1, '123.2: a club member who can read the comment files a report and EXACTLY ONE row lands — task 5.1 for the comment surface');
+select assert_eq(
+  (select created_at > now() - interval '1 minute' from postcard_comment_reports
+    where comment_id = '00000000-0000-0000-0000-0000012300f1'),
+  true, '123.2: ... with created_at from the server default, the client having no grant to name it');
+select set_config('test.uid', '00000000-0000-0000-0000-000001230001', false);
+select assert_allowed($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason)
+  values ('00000000-0000-0000-0000-000001230001', '00000000-0000-0000-0000-0000012300f1', 'other')$$,
+  '123.2: the POSTCARD''S AUTHOR may report a comment on their own photo as well as delete it — the two rows have different readers, and they gain no read of the report');
+select set_config('test.uid', '00000000-0000-0000-0000-000001230002', false);
+select assert_allowed($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason)
+  values ('00000000-0000-0000-0000-000001230002', '00000000-0000-0000-0000-0000012300f1', 'other')$$,
+  '123.2: a rider may report their OWN comment (N10) — permitted, inert, and the affordance is simply not drawn for them (D9)');
+reset role;
+rollback to savepoint may_report_123;
+
+-- ---------------------------------------------------------------------------
+-- 123.3  ** THE THREE INHERITED REFUSALS, ONE PER CONJUNCT **  (task 5.4 — N4)
+--        Each names a comment the rider did NOT write. The own-comment case is
+--        the positive immediately after, because it PASSES and must.
+-- ---------------------------------------------------------------------------
+savepoint inherited_123;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001230004', false);
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-0000012300e1'),
+  0, '123.3: a rider outside the postcard''s PRIVATE CLUB reads neither the postcard ...');
+select assert_eq(
+  (select count(*)::int from postcard_comments where id = '00000000-0000-0000-0000-0000012300f1'),
+  0, '123.3: ... nor the comments on it, private.is_club_member inside postcards SELECT being the conjunct that stops them');
+select assert_denied($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason)
+  values ('00000000-0000-0000-0000-000001230004', '00000000-0000-0000-0000-0000012300f1', 'other')$$,
+  '123.3: ** ... and therefore cannot report one (N4, the CLUB conjunct) ** — inherited through the postcards EXISTS and named nowhere in the report policy');
+select set_config('test.uid', '00000000-0000-0000-0000-000001230005', false);
+select assert_eq(
+  (select count(*)::int from postcard_comments where id = '00000000-0000-0000-0000-0000012300f1'),
+  0, '123.3: a rider who HID the postcard reads none of somebody else''s comments on it ...');
+select assert_denied($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason)
+  values ('00000000-0000-0000-0000-000001230005', '00000000-0000-0000-0000-0000012300f1', 'other')$$,
+  '123.3: ** ... and cannot report them (N4, the HIDE conjunct) ** — the refusal people read as a bug and is not: hiding is a read decision and it takes the reporting route with it');
+select set_config('test.uid', '00000000-0000-0000-0000-000001230006', false);
+select assert_eq(
+  (select count(*)::int from postcard_comments where id = '00000000-0000-0000-0000-0000012300f1'),
+  0, '123.3: a rider the PHOTO''S AUTHOR blocked reads none of the comments on it ...');
+select assert_denied($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason)
+  values ('00000000-0000-0000-0000-000001230006', '00000000-0000-0000-0000-0000012300f1', 'other')$$,
+  '123.3: ** ... and cannot report them (N4, the BLOCK conjunct on the postcard) ** — three separate assertions, one per inherited conjunct, because a single one cannot say which of the three is carrying the refusal');
+-- ** THE EXCEPTION, pinned rather than discovered. ** The own-comment arm is at
+-- TOP LEVEL in postcard_comments SELECT, above the parent EXISTS, so this rider
+-- hid the postcard and STILL reads their own comment on it — and may self-report
+-- it. An assertion written against their own comment in the three refusals above
+-- would pass the insert and fail the test, which is how this was found.
+select set_config('test.uid', '00000000-0000-0000-0000-000001230008', false);
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-0000012300e1'),
+  0, '123.3: pcselfcom HID the postcard and can no longer read it ...');
+select assert_eq(
+  (select count(*)::int from postcard_comments where id = '00000000-0000-0000-0000-0000012300f3'),
+  1, '123.3: ** ... and STILL reads their OWN comment on it ** — author_id = auth.uid() sits at TOP LEVEL in postcard_comments SELECT, above the parent EXISTS, so the parent cannot dominate it (D9, quoted in design.md §Context)');
+select assert_eq(
+  (select count(*)::int from postcard_comments where id = '00000000-0000-0000-0000-0000012300f1'),
+  0, '123.3: ... while somebody ELSE''S comment on the same hidden postcard is gone, which is what makes the arm an exception rather than a hole');
+select assert_allowed($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason)
+  values ('00000000-0000-0000-0000-000001230008', '00000000-0000-0000-0000-0000012300f3', 'other')$$,
+  '123.3: ** ... and may therefore SELF-REPORT it, inertly ** — reachable at the policy level on this surface in a way it is not on a thread, and a display decision rather than a policy one (D9)');
+reset role;
+rollback to savepoint inherited_123;
+
+-- ---------------------------------------------------------------------------
+-- 123.4  ** BLOCK-THEN-REPORT, BOTH DIRECTIONS (N11), AND N12's TWO HALVES **
+--         (task 5.11)
+-- ---------------------------------------------------------------------------
+savepoint blocks_123;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001230009', false);
+select assert_eq(
+  (select count(*)::int from postcard_comments where id = '00000000-0000-0000-0000-0000012300f1'),
+  0, '123.4: a rider who BLOCKED the commenter reads zero of their comment ...');
+select assert_denied($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason)
+  values ('00000000-0000-0000-0000-000001230009', '00000000-0000-0000-0000-0000012300f1', 'other')$$,
+  '123.4: ** ... and therefore cannot report it (N11). DESIGNED, not broken ** — the remedy is ordering in the UI, and every policy fix is worse');
+select set_config('test.uid', '00000000-0000-0000-0000-000001230010', false);
+select assert_eq(
+  (select count(*)::int from postcard_comments where id = '00000000-0000-0000-0000-0000012300f1'),
+  0, '123.4: ... and the same holds when the COMMENTER did the blocking — the row is directional and private.is_blocked is symmetric');
+select assert_denied($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason)
+  values ('00000000-0000-0000-0000-000001230010', '00000000-0000-0000-0000-0000012300f1', 'other')$$,
+  '123.4: ** ... so BOTH DIRECTIONS are refused on the comment surface too, asserted separately **');
+-- ** N12, WRITTEN AS THE TWO HALVES IT ACTUALLY HAS, because a single assertion
+-- here would be true and misleading. **
+select set_config('test.uid', '00000000-0000-0000-0000-000001230001', false);
+select assert_eq(
+  (select count(*)::int from postcard_comments where id = '00000000-0000-0000-0000-0000012300f4'),
+  0, '123.4: ** N12 half (b): the PHOTO''S OWNER, reading postcard_comments as authenticated, sees ZERO ROWS for the comment by the rider they blocked ** — so the list never renders it and no screen can supply an id');
+select assert_denied($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason)
+  values ('00000000-0000-0000-0000-000001230001', '00000000-0000-0000-0000-0000012300f4', 'other')$$,
+  '123.4: ... and cannot report it either, for the same reason. The honest cost: that comment stays visible to EVERY OTHER VIEWER while its photo''s owner can neither see it, report it, nor reach it through any control this app draws');
+reset role;
+-- ** Half (a) PASSES AT THE SQL LEVEL WHILE NO SCREEN CAN REACH IT. ** The suite
+-- hands moderate_comment an id the app can never obtain, because the list it
+-- would come from filters the row out (half b above). Without this comment a
+-- green suite reads as "the photo's owner has a remedy", which is exactly the
+-- claim N12 withdraws. It is asserted anyway, because the PRIVILEGE surviving the
+-- block is a real property of 011 §1b and a future change that keyed
+-- moderate_comment on readability instead would break it silently.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001230001', false);
+select public.moderate_comment('00000000-0000-0000-0000-0000012300f4');
+reset role;
+select assert_eq(
+  (select count(*)::int from postcard_comments where id = '00000000-0000-0000-0000-0000012300f4'),
+  0, '123.4: ** N12 half (a): moderate_comment called BY THE PHOTO''S AUTHOR succeeds against a BLOCKED commenter''s comment ** — the privilege survives the block, keyed on p.author_id = auth.uid() and security definer. ** THIS HALF IS UNREACHABLE FROM THE APP: ** the suite supplied an id half (b) proves no screen can obtain, so a green assertion here is NOT a remedy for the photo''s owner. Counted as the owner, because a definer call cannot be proved by assert_allowed');
+rollback to savepoint blocks_123;
+
+-- ---------------------------------------------------------------------------
+-- 123.5  The gate — by TABLE NAME and NOT AN ORACLE  (tasks 5.9, 5.20 — N9)
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
+    where t.tgname = 'enforce_participation_gate'
+      and c.relname = 'postcard_comment_reports'),
+  1, '123.5: postcard_comment_reports carries the gate, NAMED — 123 is the twenty-fourth, and the flat total is 22 before 122 + 1 + 1');
+select assert_eq(
+  (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
+    where t.tgname = 'enforce_participation_gate'
+      and c.relname = 'postcard_comment_reports'
+      and pg_get_triggerdef(t.oid) ilike '%current_user%'),
+  1, '123.5: ... and it carries the WHEN guard (023 §2)');
+savepoint gate_123;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001230007', false);
+select assert_eq(
+  (select count(*)::int from postcard_comments where id = '00000000-0000-0000-0000-0000012300f1'),
+  1, '123.5: fixture — the un-consented rider is a club MEMBER and READS the comment normally, so the refusal below cannot be the INSERT policy');
+select assert_rejected($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason)
+  values ('00000000-0000-0000-0000-000001230007', '00000000-0000-0000-0000-0000012300f1', 'other')$$,
+  '23514', '123.5: ** a rider with terms_accepted_at NULL cannot report (N9) ** — refused by the GATE (23514), not by the policy (42501)');
+select assert_eq(
+  error_of($$insert into postcard_comment_reports (reporter_id, comment_id, reason)
+             values ('00000000-0000-0000-0000-000001230007', '00000000-0000-0000-0000-0000012300f1', 'other')$$),
+  error_of($$insert into postcard_comment_reports (reporter_id, comment_id, reason)
+             values ('00000000-0000-0000-0000-000001230007', '00000000-0000-0000-0000-0000012309f9', 'other')$$),
+  '123.5: ** the gate is not an ORACLE ** — the un-onboarded rider gets the SAME STRING for a comment they can read and a comment id that was never issued, because the gate fires BEFORE the RLS with check and keys on their own terms stamp. Compared as strings, 093''s lesson');
+reset role;
+rollback to savepoint gate_123;
+
+-- ---------------------------------------------------------------------------
+-- 123.6  Refusals that are not about visibility  (tasks 5.5, 5.6 — N5, N6)
+-- ---------------------------------------------------------------------------
+savepoint misc_123;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001230003', false);
+select assert_denied($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason)
+  values ('00000000-0000-0000-0000-000001230002', '00000000-0000-0000-0000-0000012300f1', 'other')$$,
+  '123.6: a rider cannot report AS SOMEBODY ELSE (N5) — reporter_id = auth.uid() is a policy conjunct, not a client convention');
+insert into postcard_comment_reports (reporter_id, comment_id, reason)
+values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'other');
+select assert_rejected($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason)
+  values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'spam')$$,
+  '23505', '123.6: a SECOND report of the same comment by the same rider is refused by postcard_comment_reports_one_per_rider (N6) — 23505, which the client absorbs with `on conflict do nothing`');
+select assert_allowed($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason)
+  values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'spam')
+  on conflict do nothing$$,
+  '123.6: ** the form the CLIENT actually emits is a silent no-op ** — supabase-js sends
+   `on conflict do nothing` only because the action passes `ignoreDuplicates: true`, and this is the
+   assertion that covers the statement rather than the constraint (supabase/tests/README.md §write
+   the emitted form)');
+select assert_rejected($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason)
+  values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'spam')
+  on conflict (reporter_id, comment_id) do update set reason = excluded.reason$$,
+  '42501', '123.6: ** and DROPPING that option breaks the FIRST report, not the second ** —
+   supabase-js''s `upsert` default is merge-duplicates, which plans `on conflict do update` against a
+   table with no UPDATE grant, so every report 42501s including a rider''s FIRST one. ** This assertion
+   proves the MECHANISM and cannot see which form the client sends ** — the tripwire for the option
+   disappearing from the action is
+   src/lib/actions/__tests__/report-upserts-ignore-duplicates.test.ts, which reads the source;
+   the grant half is 122.7/123.8''s has_table_privilege assertion. `addCountry` shipped this class');
+select assert_allowed($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason)
+  values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f2', 'other')$$,
+  '123.6: ... while the same rider reporting a DIFFERENT comment succeeds, so the key is per-subject and not a per-rider rate limit');
+reset role;
+rollback to savepoint misc_123;
+
+-- ---------------------------------------------------------------------------
+-- 123.7  ** WHO MAY READ A REPORT — the other two of task 5.13's six **
+--         (N18, N19), plus the reporter, plus N33's survival
+-- ---------------------------------------------------------------------------
+savepoint report_reads_123;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001230003', false);
+insert into postcard_comment_reports (reporter_id, comment_id, reason, note)
+values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'harassment', 'that sentence');
+reset role;
+select assert_eq(
+  (select count(*)::int from postcard_comment_reports),
+  1, '123.7: fixture — exactly one report exists, so every zero below is a policy refusing rather than an empty table');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001230002', false);
+select assert_eq(
+  (select count(*)::int from postcard_comment_reports),
+  0, '123.7: ** the COMMENTER reads ZERO reports filed against their comment (N18) **');
+select set_config('test.uid', '00000000-0000-0000-0000-000001230001', false);
+select assert_eq(
+  (select count(*)::int from postcard_comment_reports),
+  0, '123.7: ** the POSTCARD''S AUTHOR reads zero reports about comments on their own photo (N19) ** — the single most tempting read a reasonable implementer would add here, because they already hold a delete right over those comments. They keep the delete and gain no read (D5)');
+select set_config('test.uid', '00000000-0000-0000-0000-000001230005', false);
+select assert_eq(
+  (select count(*)::int from postcard_comment_reports),
+  0, '123.7: ... and a fellow club member reads zero, which is the only one of the three that is obvious');
+select set_config('test.uid', '00000000-0000-0000-0000-000001230003', false);
+select assert_eq(
+  (select count(*)::int from postcard_comment_reports),
+  1, '123.7: the REPORTER reads their own row — reporter_id = auth.uid() is the whole predicate');
+-- N33: leaving the club and hiding the postcard neither delete the report nor
+-- hide it from its reporter. The SELECT policy carries no visibility conjunct,
+-- deliberately: evidence that evaporates when the reporter walks away is not
+-- evidence.
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000012300d1'
+   and user_id = '00000000-0000-0000-0000-000001230003';
+select assert_eq(
+  (select count(*)::int from postcard_comments where id = '00000000-0000-0000-0000-0000012300f1'),
+  0, '123.7: the reporter LEAVES the club and can no longer read the comment ...');
+select assert_eq(
+  (select count(*)::int from postcard_comment_reports),
+  1, '123.7: ** ... and still reads their own report (N33) ** — no club conjunct on SELECT, deliberately. A "for consistency" conjunct here is the change this assertion exists to stop');
+insert into postcard_hides (postcard_id, user_id)
+values ('00000000-0000-0000-0000-0000012300e2', '00000000-0000-0000-0000-000001230003');
+select assert_eq(
+  (select count(*)::int from postcard_comment_reports),
+  1, '123.7: ... and HIDING a postcard does not delete or hide a report either (N33) — the row holds an id, a reason and a note, and no comment text, so reading it back leaks nothing');
+reset role;
+rollback to savepoint report_reads_123;
+
+-- ---------------------------------------------------------------------------
+-- 123.8  The ABSENCES, both directions, and the grants scoped to their grantee
+--         (tasks 5.7, 5.8, 5.14, 5.15 — N7, N8, N21, N22)
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select string_agg(cmd, ',' order by cmd) from pg_policies
+    where schemaname = 'public' and tablename = 'postcard_comment_reports'),
+  'INSERT,SELECT',
+  '123.8: postcard_comment_reports carries exactly TWO policies and they are INSERT and SELECT — a sorted COMMAND LIST, not a count');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'postcard_comment_reports'
+      and roles <> '{authenticated}'),
+  0, '123.8: ... and both are `to authenticated` (N22) — no policy names anon');
+select assert_eq(
+  has_table_privilege('authenticated', 'public.postcard_comment_reports', 'update'),
+  false, '123.8: authenticated holds NO UPDATE grant (N7)');
+select assert_eq(
+  has_table_privilege('authenticated', 'public.postcard_comment_reports', 'delete'),
+  false, '123.8: ... and NO DELETE grant');
+select assert_eq(
+  (select array(select privilege_type::text from information_schema.table_privileges
+                 where table_schema = 'public' and table_name = 'postcard_comment_reports'
+                   and grantee = 'authenticated' order by 1)),
+  array['SELECT'],
+  '123.8: ** authenticated''s TABLE-level grant is SELECT and nothing else ** — the INSERT being column-scoped is what its absence here proves. Scoped to the grantee, per 015''s trap');
+select assert_eq(
+  (select array(select column_name::text from information_schema.column_privileges
+                 where table_schema = 'public' and table_name = 'postcard_comment_reports'
+                   and grantee = 'authenticated' and privilege_type = 'INSERT' order by 1)),
+  array['comment_id', 'note', 'reason', 'reporter_id'],
+  '123.8: ** the INSERT grant is COLUMN-SCOPED and omits created_at and id (N8, D3) **');
+savepoint absences_123;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001230003', false);
+select assert_denied($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason, created_at)
+  values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'other', now() + interval '10 years')$$,
+  '123.8: ... and a client NAMING created_at is refused 42501 by the COLUMN grant — the queue orders by it, so a client-stamped value would pin a report to the top for ever');
+select assert_denied($$
+  insert into postcard_comment_reports (id, reporter_id, comment_id, reason)
+  values ('00000000-0000-0000-0000-0000012309f1', '00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'other')$$,
+  '123.8: ... and nor may they choose the id');
+insert into postcard_comment_reports (reporter_id, comment_id, reason)
+values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'other');
+select assert_denied($$
+  update postcard_comment_reports set reason = 'spam'
+   where reporter_id = '00000000-0000-0000-0000-000001230003'$$,
+  '123.8: ** a reporter cannot EDIT their own report (N7) ** — reached as a live statement, because the grant and the policy are two separate layers');
+select assert_denied($$
+  delete from postcard_comment_reports
+   where reporter_id = '00000000-0000-0000-0000-000001230003'$$,
+  '123.8: ** ... and cannot WITHDRAW it either ** — the second direction, which a `grant all` would restore while leaving the first green');
+reset role;
+rollback to savepoint absences_123;
+select assert_eq(
+  (select count(*)::int from information_schema.table_privileges
+    where table_schema = 'public' and table_name = 'postcard_comment_reports' and grantee = 'anon')
+  + (select count(*)::int from information_schema.column_privileges
+      where table_schema = 'public' and table_name = 'postcard_comment_reports' and grantee = 'anon'),
+  0, '123.8: anon holds NOTHING on postcard_comment_reports, table-level or per-column (N22) — decision #1');
+select assert_eq(
+  has_table_privilege('service_role', 'public.postcard_comment_reports', 'select'),
+  false, '123.8: ** service_role holds no SELECT (N21, D6) ** — named in the revoke AT CREATION. NOTE: this harness never grants service_role the project default, so locally this passes for a weaker reason than on the hosted projects; 123''s §Verification block checks it where the default exists');
+savepoint srole_cascade_123;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001230003', false);
+insert into postcard_comment_reports (reporter_id, comment_id, reason)
+values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'other');
+reset role;
+grant delete on public.profiles to service_role;                  -- the hosted default
+grant all on public.postcard_comment_reports to service_role;     -- the hosted default
+revoke all on public.postcard_comment_reports from service_role;  -- 123 §2's line
+select assert_eq(
+  has_table_privilege('service_role', 'public.postcard_comment_reports', 'delete'),
+  false, '123.8: with the hosted default reproduced and then revoked, service_role holds no DELETE ...');
+delete from profiles where id = '00000000-0000-0000-0000-000001230003';
+select assert_eq(
+  (select count(*)::int from postcard_comment_reports
+    where reporter_id = '00000000-0000-0000-0000-000001230003'),
+  0, '123.8: ** ... and deleting that reporter''s account still removes their reports while service_role holds no privilege on the table (D6) ** — the cascade runs as the constraint''s system trigger and consults no privileges, so the revoke cannot break account deletion. Repeated on BOTH tables, because the revoke is a per-table decision');
+rollback to savepoint srole_cascade_123;
+
+-- ---------------------------------------------------------------------------
+-- 123.9  The reader — three barriers, no image_path, and the take-down
+--         (tasks 5.16, 5.17, 5.19 — N23-N28, N32)
+-- ---------------------------------------------------------------------------
+select assert_eq(has_table_privilege('service_role', 'private.postcard_comment_report_queue', 'select'),
+  false, '123.9: service_role, which DOES hold USAGE on private (031), is refused the queue by the explicit revoke (N23) — the schema is not the barrier for this one role');
+select assert_eq(has_function_privilege('service_role', 'private.remove_reported_comment(uuid)', 'execute'),
+  false, '123.9: ... and the same on the take-down (N24)');
+select assert_eq(has_function_privilege('authenticated', 'private.remove_reported_comment(uuid)', 'execute'),
+  false, '123.9: ... and authenticated cannot execute it');
+select assert_eq(has_function_privilege('anon', 'private.remove_reported_comment(uuid)', 'execute'),
+  false, '123.9: ... and nor can anon — all three roles N24 names, so neither grant nor schema is load-bearing alone');
+select assert_eq(
+  (select prosecdef from pg_proc where oid = 'private.remove_reported_comment(uuid)'::regprocedure),
+  false, '123.9: ** the take-down is deliberately NOT security definer (N24, D4) ** — nothing to escalate to, its only caller already holding BYPASSRLS');
+select assert_eq(
+  (select proconfig from pg_proc where oid = 'private.remove_reported_comment(uuid)'::regprocedure),
+  array['search_path=""'],
+  '123.9: ... with search_path pinned, stored WITH the literal quotes');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('postcard_comment_report_queue', 'remove_reported_comment')),
+  0, '123.9: ... and neither object landed in `public` by mistake, which is what a new security advisor after applying 123 would mean');
+select assert_eq(
+  (select prosecdef from pg_proc where oid = 'public.moderate_comment(uuid)'::regprocedure),
+  true, '123.9: ** and 011 §1b''s public.moderate_comment is UNTOUCHED and still security definer ** — 123 adds a report right and takes no delete right away, and the definer marking is what makes the photo owner''s privilege survive a block (N12 half a)');
+select assert_eq(
+  (select reloptions from pg_class where oid = 'private.postcard_comment_report_queue'::regclass),
+  array['security_invoker=false'],
+  '123.9: the queue''s security_invoker is FALSE and WRITTEN OUT — the default AND the entire reason the view can answer');
+select assert_eq(
+  (select array(select attname::text from pg_attribute
+                 where attrelid = 'private.postcard_comment_report_queue'::regclass
+                   and attnum > 0 and not attisdropped
+                   and attname like '%reporter%' order by 1)),
+  array['reporter_id'],
+  '123.9: ** the queue names the reporter by UUID and nothing else (N26) **');
+select assert_eq(
+  (select count(*)::int from pg_attribute
+    where attrelid = 'private.postcard_comment_report_queue'::regclass
+      and attnum > 0 and not attisdropped
+      and attname = 'image_path'),
+  0, '123.9: ** and there is NO image_path (N27, D12) ** — a departure from 076 rather than an omission: a comment take-down leaves nothing in Storage so there is no second runbook step, and a comment is judged on its text. The caption is the context the words sit in; the photo is not, and an offensive PHOTO is reportable on the surface that already carries that column');
+select assert_eq(
+  (select count(*)::int from pg_attribute
+    where attrelid = 'private.postcard_comment_report_queue'::regclass
+      and attnum > 0 and not attisdropped
+      and attname in ('email', 'encrypted_password', 'raw_user_meta_data', 'reporter_username', 'reporter_email')),
+  0, '123.9: ... and no column of auth.users (N27)');
+
+savepoint queue_123;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001230003', false);
+insert into postcard_comment_reports (reporter_id, comment_id, reason, note)
+values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'harassment', 'that sentence');
+reset role;
+select assert_eq(
+  (select count(*)::int from private.postcard_comment_report_queue
+    where comment_id = '00000000-0000-0000-0000-0000012300f1'
+      and comment_body = 'the reportable sentence'
+      and commenter_username = 'pccommenter'
+      and postcard_author_username = 'pcauthor'
+      and postcard_caption = 'the club run'
+      and reason = 'harassment'
+      and reports_on_this_comment = 1),
+  1, '123.9: the queue joins the report to its comment, the commenter and the photo''s author, and it answers about a comment on a PRIVATE CLUB''S photo the reader is not in — which is what it is for (N25) and exactly why no PostgREST role may reach it');
+select assert_eq(
+  (select (private.remove_reported_comment('00000000-0000-0000-0000-0000012309f9') ->> 'removed')::boolean),
+  false, '123.9: the take-down on a comment that does not exist returns {"removed": false} rather than raising (N32)');
+select assert_eq(
+  (select jsonb_array_length(private.remove_reported_comment('00000000-0000-0000-0000-0000012300f1') -> 'reports')),
+  1, '123.9: ** and a real take-down returns the evidence it is about to destroy (N29) ** — read BEFORE the delete, because the reports cascade with the comment');
+select assert_eq(
+  (select count(*)::int from postcard_comments where id = '00000000-0000-0000-0000-0000012300f1'),
+  0, '123.9: ... and the comment is gone');
+select assert_eq(
+  (select count(*)::int from postcard_comment_reports where comment_id = '00000000-0000-0000-0000-0000012300f1'),
+  0, '123.9: ... with its reports behind it, by cascade');
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-0000012300e1'),
+  1, '123.9: ** ... and the POSTCARD is still standing ** — the take-down removes one comment and not the photo it sits under, counted by survivors');
+rollback to savepoint queue_123;
+
+-- ---------------------------------------------------------------------------
+-- 123.10  Cascades from every end  (task 5.18 — N30, N31, N34)
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select array(select conname::text || ' ' || confdeltype::text from pg_constraint
+                 where conrelid = 'public.postcard_comment_reports'::regclass and contype = 'f'
+                 order by 1)),
+  array['postcard_comment_reports_comment_id_fkey c', 'postcard_comment_reports_reporter_id_fkey c'],
+  '123.10: TWO cascading keys — the comment and the reporter, and NOTHING ELSE: that is the retention answer (N34), a mechanism rather than an intention');
+select assert_eq(
+  (select count(*)::int from pg_constraint c
+    where c.contype = 'f' and c.conrelid = 'public.postcard_comment_reports'::regclass
+      and not exists (select 1 from pg_index i
+                       where i.indrelid = c.conrelid and i.indkey[0] = c.conkey[1])),
+  0, '123.10: ... and every foreign key LEADS an index — 029''s standing rule, read out of pg_index');
+savepoint cascade_postcard_123;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001230003', false);
+insert into postcard_comment_reports (reporter_id, comment_id, reason)
+values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'other');
+reset role;
+delete from postcards where id = '00000000-0000-0000-0000-0000012300e1';
+select assert_eq(
+  (select count(*)::int from postcard_comment_reports),
+  0, '123.10: deleting the POSTCARD removes the report through its comment (N31) — the existing chain, with no new cleanup path');
+select assert_eq(
+  (select count(*)::int from postcard_comments where postcard_id = '00000000-0000-0000-0000-0000012300e2'),
+  1, '123.10: ... and the other postcard''s comment is still standing, counted by survivors');
+rollback to savepoint cascade_postcard_123;
+savepoint cascade_comment_123;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001230003', false);
+insert into postcard_comment_reports (reporter_id, comment_id, reason)
+values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'other');
+reset role;
+delete from postcard_comments where id = '00000000-0000-0000-0000-0000012300f1';
+select assert_eq(
+  (select count(*)::int from postcard_comment_reports),
+  0, '123.10: deleting the COMMENT removes its reports (N29)');
+rollback to savepoint cascade_comment_123;
+savepoint cascade_reporter_123;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001230003', false);
+insert into postcard_comment_reports (reporter_id, comment_id, reason)
+values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'other');
+reset role;
+delete from profiles where id = '00000000-0000-0000-0000-000001230003';
+select assert_eq(
+  (select count(*)::int from postcard_comment_reports),
+  0, '123.10: ... and deleting the REPORTER''s account removes their words (N30)');
+select assert_eq(
+  (select count(*)::int from postcard_comments where id = '00000000-0000-0000-0000-0000012300f1'),
+  1, '123.10: ... while the comment they reported is untouched');
+rollback to savepoint cascade_reporter_123;
+
+reset role;
+rollback to savepoint comment_reports_123;
 
 
 rollback;

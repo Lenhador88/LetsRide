@@ -189,7 +189,7 @@ never the **guarantee**. **Forms are hand-rolled** — controlled inputs plus `u
 | Kind | Tool | Status |
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | Gates every PR touching `supabase/**` |
-| Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard, the session store | Vitest — `npm run test:unit` | Gates every PR that touches code. `src/lib/auth/guard.ts` (58 cases, replacing the untestable `proxy.ts`). `lib/actions/__tests__/` reads every action module on comment-stripped source to assert each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Fifty-five** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence, verified both ways. Almost all render through `renderToStaticMarkup` under `environment: 'node'`; **jsdom is the answer only when something needs a mounted effect, a layout, an event or a portal**, and each jsdom test states which in its header — `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'` |
+| Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard, the session store | Vitest — `npm run test:unit` | Gates every PR that touches code. `src/lib/auth/guard.ts` (58 cases, replacing the untestable `proxy.ts`). `lib/actions/__tests__/` reads every action module on comment-stripped source to assert each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Fifty-six** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence, verified both ways. Almost all render through `renderToStaticMarkup` under `environment: 'node'`; **jsdom is the answer only when something needs a mounted effect, a layout, an event or a portal**, and each jsdom test states which in its header — `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'` |
 | Edge Functions | `deno check`, CI's `functions` job | Type-checks every `index.ts` under Deno when `supabase/functions/**` changes. `tsconfig.json` excludes the directory, so `tsc` never sees the entrypoints |
 | Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything**: signs in, walks every screen including discovered detail routes, checks the guard's redirects and sign-out. `WALK_FIXTURES=1` creates the rows the detail routes need; a shrunken `N/N` is a skip, not a pass. In CI as the `walk` job, minting its own rider, **skipped until the repository variable `WALK_CI=1` is set** because the Actions secrets name PROD. Not a required check yet (PD-370) |
 | End-to-end | Playwright | Deferred as a full suite. The walk asks one question per route — did this render — and asserts behaviour only in named phases, each covering a defect no other gate can see |
@@ -282,10 +282,11 @@ Four rules, each with a test naming the trap it avoids:
 
 ## Supabase Rules
 
-**Three Edge Functions, deployed to both projects**: `delete-account` (the only place a
+**Four Edge Functions — three on both projects, `push-notify` on DEV only**: `delete-account` (the only place a
 service-role key exists — the Auth admin API needs it), `resolve-ride-location` (geocodes a
-meeting point and renders its tiles) and `search-places` (proxies the typeahead). Four rules on
-`delete-account`, which is why it does not contradict §What Not To Do — **the function is not the
+meeting point and renders its tiles), `search-places` (proxies the typeahead) and `push-notify`
+(`121`'s outbox drain — **deployed to DEV only**, and inert until the owner's activation steps).
+Four rules on `delete-account`, which is why it does not contradict §What Not To Do — **the function is not the
 app**: the key lives only in the function's secret store (`src/__tests__/no-service-role-key.test.ts`
 is the tripwire); it takes no user id; it verifies the JWT itself; only CI's `functions` job
 type-checks it.
@@ -328,15 +329,15 @@ repointed. `docs/ENVIRONMENTS.md` is the contract. **Never promote a Vercel prev
 — both Supabase variables are inlined at build time and promote does not rebuild. **Check drift
 rather than claiming it**: `npm run db:drift` compares migration *names*.
 
-**Applied state: 121 files; DEV is at `123` and PROD at `116` — measured 2026-09-19.** DEV-ahead
+**Applied state: 123 files; DEV is at `123` and PROD at `116` — measured 2026-09-19.** DEV-ahead
 is the resting state between a merge and its promotion; promote everything the gap contains, in
 filename order, per `docs/ENVIRONMENTS.md` §Migrations, and record each file's ordering in
 `docs/reference/migrations.md` §Applied state. Count rather than trust it — `list_migrations`
-against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV answers 126 rows and FIVE have no
-file here; PROD has none** — the three long-standing hand-applied ones plus `122` and `123`, whose
-files are on a branch that has not merged. **Three sessions build at once, so the DEV ref runs
-ahead of the tree by however many are in flight**: count the FILE-LESS rows rather than the gap,
-and take the next number off `list_migrations` rather than off `wc -l`.
+against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV answers 126 rows and
+THREE have no file; PROD none** — the long-standing hand-applied ones. **Three sessions build at
+once, so the DEV ref runs ahead of the tree by however many are in flight**: count the FILE-LESS
+rows rather than the gap, and take the next number off `list_migrations` rather than off `wc -l`.
+`118`, `122` and `123` were each spent on DEV while their branch was still open.
 **`113` then `114` was a required order on the PROD promotion and must not be collapsed** if it is
 ever replayed: `114` refuses a NULL country, so applied ahead of the bundle that writes one it
 strands every new signup in a wizard with no skip. PROD's last four rows are `home_country`,
@@ -363,7 +364,7 @@ before it applies** — every affected path exercised on DEV, in a rolled-back t
 recorded statement that does not equal `md5sum` of its file is the NORM; compare the OBJECT
 (`docs/reference/migrations.md` §Applying a large file, §What reads as drift).
 
-Suite **3990** assertions — re-derive rather than trust it:
+Suite **4158** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs.
 
@@ -389,7 +390,7 @@ difference between the projects is almost always a pending promotion.
 
 **A new table KEEPS Supabase's default `service_role` grants. Revoking is the exception, for a
 restricted-readership sink** — rows the one credential that bypasses RLS must not be able to
-enumerate (`076` §3). Four are revoked today, and the criterion is a judgement about the ROWS
+enumerate (`076` §3). Six are revoked today, and the criterion is a judgement about the ROWS
 with no mechanical test — an earlier mechanical test excluded the two reporting tables and would
 have re-opened the exposure. `rls_enabled_no_policy` is a candidate set worth checking, never the
 criterion; PD-413 holds the two candidates found unrevoked. Re-run rather than trust any list:
@@ -401,8 +402,8 @@ select count(*) filter (where sr)                          as kept,
   from (select c.relname, has_table_privilege('service_role', c.oid, 'SELECT') as sr
           from pg_class c join pg_namespace n on n.oid = c.relnamespace
          where n.nspname='public' and c.relkind='r') t;
--- 30 kept · 4 revoked · club_thread_reports, postcard_reports, push_deliveries,
---                       push_devices (2026-09-19).
+-- 30 kept · 6 revoked · club_thread_reports, postcard_comment_reports, postcard_reports,
+--                       push_deliveries, push_devices, ride_thread_reports (2026-09-19).
 ```
 
 Each revoke carries a grantee-scoped assertion in one of two forms — a savepoint-staged
