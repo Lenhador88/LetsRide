@@ -12,6 +12,12 @@ This file is the durable half: the rider we are talking to, the claims the code 
 supports, the naming and slogan decisions, and the listing copy with its real character caps.
 `.claude/agents/product.md` is the agent that maintains it.
 
+**The paste-ready App Store Connect fields live next door, in
+[`docs/reference/app-store-listing.md`](app-store-listing.md)** — every field counted, the two
+questionnaires answered, the three URLs, and the screenshot order. This file is the reasoning;
+that one is the text. When the two disagree about a cap or a count, that one was measured later
+and wins.
+
 **Everything here about the market is a stance, not a measurement.** Nothing in this container
 can survey riders, so every claim of the form *"riders want X"* — or search for X, or read X —
 is flagged **[unvalidated]** and stays flagged until someone talks to riders. A guess that
@@ -130,11 +136,13 @@ These are constraints, not to-dos. Each one changes what marketing is even possi
    carry the whole pitch itself**; the app cannot help. This is the single biggest difference
    between marketing this app and marketing a normal social product.
 2. **Onboarding is required and not skippable.** Decision #5. Between the install and the
-   first screenshot-worthy moment sit **two** screens — terms, and a username with live
-   availability checking. Both are places a rider leaves. **Two, not three: `075` (PD-286)
-   deleted the location step, and `complete_onboarding(p_location text)` kept the argument, so
-   the RPC signature reads as corroboration for a screen that is gone.** The check is
-   `ls src/app/onboarding/`. This is the funnel worth instrumenting before any spend —
+   first screenshot-worthy moment sit **three** screens — terms, a username with live
+   availability checking, and a home town. Each is a place a rider leaves. **Three, and the
+   plausible wrong answer is two**: `075` (PD-286) did delete the location step, and every
+   summary written between then and PD-428 says so, but PD-428 put it back and PD-445 turned it
+   into a town with the country derived from the pick. `ls src/app/onboarding/` settles it —
+   `terms`, `username`, `town` — and `guard.ts` resumes an incomplete rider at
+   `/onboarding/town`. This is the funnel worth instrumenting before any spend —
    `docs/reference/analytics.md` §What each number is for already counts the four stamps.
 3. **A new rider lands in a club rather than an empty app.** `complete_onboarding` joins them
    to the club carrying `clubs.is_default`. That is the answer to the cold-start problem and
@@ -278,19 +286,24 @@ measures correctly, and the first line carrying `—`, `–`, `’` or `…` is 
 everything around it is right. Those are exactly the characters a copy pass introduces.
 **`LC_ALL=C.UTF-8 wc -m`, or `python3 -c "print(len(…))"`.**
 
+**Every App Store row below was re-read from Apple's own help pages on 2026-09-19** and the
+citations are in `docs/reference/app-store-listing.md` §What is verified, what is inherited, what
+is a guess. The Play rows were not, and are inherited.
+
 | Field | Cap | Notes |
 |---|---|---|
-| App Store — app name | 30 | Highest keyword weight of any field **[unvalidated]** |
+| App Store — app name | 30 | 2 minimum. Highest keyword weight of any field **[unvalidated]**. The only one of these that is **not** editable without a new version once the app has been submitted |
 | App Store — subtitle | 30 | Second highest **[unvalidated]**. Shown under the name in search results |
-| App Store — keywords | 100 | Comma-separated, **no spaces after commas**; never repeat a word already in the name or subtitle |
-| App Store — promotional text | 170 | Editable without a new version — the only *marketing copy* field that is. The three URL fields are editable any time too |
-| App Store — description | 4000 | Almost nobody expands it **[unvalidated]**; write for the first ~3 lines |
-| Play — title | 30 | |
-| Play — short description | 80 | The one that appears above the fold |
-| Play — full description | 4000 | Indexed for search, unlike Apple's |
+| App Store — keywords | **100 bytes** | **Bytes, not characters** — identical for ASCII and not for anything else. Each keyword must be **longer than two characters**, which is what killed `near,me`. Comma-separated, **no spaces after commas**; Apple's own wording says not to repeat the app name or company name, and not repeating the subtitle is this file's inference |
+| App Store — promotional text | 170 | Editable without a new version. **It is not the only one** — subtitle, description, keywords and the three URLs are all editable too; what makes it the field to reach for is that it is the one written to be replaced |
+| App Store — description | 4000 | Almost nobody expands it **[unvalidated]**; write for the first ~3 lines. Apple says it feeds web search results, which is this product's only SEO surface |
+| Play — title | 30 | **[inherited]** — not re-checked; `play.google.com` and `support.google.com` are both refused at this container's egress proxy |
+| Play — short description | 80 | **[inherited]**. The one that appears above the fold |
+| Play — full description | 4000 | **[inherited]**. Indexed for search, unlike Apple's |
 
 **These caps move.** Check them against App Store Connect and the Play Console before a
-submission rather than against this table.
+submission rather than against this table — which is exactly how the two corrections above were
+found.
 
 ### Three fields, three jobs — and the tagline is not one of them
 
@@ -447,8 +460,15 @@ already own `motorcycle`, `clubs`, `join`, `rides`, `tell`, `story`. The keyword
 100 characters on what they do not (86 of them):
 
 ```
-group,riders,near,me,community,social,meetup,biker,motorbike,crew,tour,bike,trip,share
+group,riders,nearby,community,social,meetup,biker,motorbike,crew,tour,bike,trip,share,photos,moto
 ```
+
+**That line changed on 2026-09-19 and the earlier one is worth naming, because it measured
+green.** It read `group,riders,near,me,…` at 86 characters, comfortably inside a cap this file
+called 100 *characters*. The cap is 100 **bytes** and Apple additionally refuses any keyword of
+two characters or fewer, so `me` would have been rejected at upload with the count looking fine.
+`nearby` replaces the pair; `photos` and `moto` spend what that frees. 97 bytes, and
+`docs/reference/app-store-listing.md` §Keywords has the check that refuses both traps.
 
 So `community` and `group rides` are still bid for — just not in the 30 characters where they
 would cost the uncontested word. **Not `friends`**: the app has no such concept (see the
@@ -491,15 +511,22 @@ Then the feature list, drawn only from the claimable table above.
 
 Both are submission blockers and neither is copy:
 
-- **Support URL is required by App Store Connect, and there is no support page.** The public
-  routes are `/legal/privacy`, `/legal/terms`, `/legal/attributions` and
+**Both now have an answer, and only the first still needs anything built.**
+
+- **Support URL is required by App Store Connect, and there is still no support page.** The
+  public routes are `/legal/privacy`, `/legal/terms`, `/legal/attributions` and
   `/legal/account-deletion` — check rather than trust: `ls src/app/legal/`. The privacy policy
   URL is covered; the support URL is not, and the apex that would normally host it is
-  unattached (`PD-34`, `docs/ENVIRONMENTS.md` §Domains).
-- **The App Privacy label is wrong** and has been since the observability SDKs landed —
-  `docs/reference/native-shell.md` §Store readiness row 8 owns it. It is a listing artefact
-  that a product decision drives, so it belongs on this file's radar even though the work is
-  `native`'s.
+  unattached (`PD-34`, `docs/ENVIRONMENTS.md` §Domains). **The proposed answer is one static
+  page at `/legal/support`** — public already, because the guard's denylist carries `/legal/*`,
+  so it is one file and no routing change. `docs/reference/app-store-listing.md` §The Support
+  URL, which is the one open question in this file has the contents, Apple's exact requirement,
+  and the two worse answers to fall back on.
+- **The App Privacy label is answered.** `ios/App/App/PrivacyInfo.xcprivacy` carries the
+  measured list — **eleven** collected data types, each Linked, none Tracking — and
+  `docs/reference/app-store-listing.md` §App Privacy transcribes it into the questionnaire's own
+  field names. Transcribe, never re-derive: the manifest and the questionnaire disagreeing is a
+  rejection now and a correction later.
 
 ## Where a rider actually hears about this
 
