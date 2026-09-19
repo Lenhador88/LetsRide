@@ -117,6 +117,7 @@ import {
   SEND_CONCURRENCY,
   classifyApnsOutcome,
   classifyFcmOutcome,
+  classifyPayloadError,
   fcmErrorNamesToken,
   groupByDelivery,
   mapWithConcurrency,
@@ -506,16 +507,19 @@ Deno.serve(async (req: Request) => {
         notification_id: delivery.notificationId,
       })
 
-      // An error is not a refusal. A refusal is zero rows; an error means we do
-      // not know, so retry rather than suppress — suppressing is terminal and
-      // would silently drop a notification the rider was entitled to.
+      /**
+       * An error is not a refusal — a refusal is zero rows, handled below.
+       * `classifyPayloadError` splits our own `23514` (unknown type, NULL copy)
+       * from everything transient; see `shape.ts` for why the default retries.
+       */
       if (payloadError) {
+        const outcome = classifyPayloadError(payloadError.code)
         await db.rpc('complete_push_delivery', {
           delivery_id: delivery.deliveryId,
-          outcome: 'retry',
+          outcome,
           delivered_installations: [],
         })
-        counts.retry++
+        counts[outcome]++
         return
       }
 

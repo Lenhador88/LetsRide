@@ -7,6 +7,7 @@ import {
   SEND_CONCURRENCY,
   classifyApnsOutcome,
   classifyFcmOutcome,
+  classifyPayloadError,
   fcmErrorNamesToken,
   groupByDelivery,
   mapWithConcurrency,
@@ -393,6 +394,47 @@ describe('resolveDeliveryOutcome', () => {
     ])
     expect(verdict.deadInstallations).toEqual(['i3'])
     expect(verdict.deliveredInstallations).toEqual(['i2'])
+  })
+})
+
+/**
+ * `search-places`'s `classifyLedgerError` one function along, and the same trap:
+ * three outcomes hide behind one call, and conflating any two is a real defect.
+ * There, `isPolicyRefusal` matched `42501` only while the gate raised `23514`,
+ * and a refusal fell to the outage branch (PD-276).
+ */
+describe('classifyPayloadError', () => {
+  it('treats our own check violation as terminal, not retryable', () => {
+    // `push_payload_for`'s `else` arm raises 23514 for an unknown type or NULL
+    // copy. Retrying re-raises it every minute until the age cut.
+    expect(classifyPayloadError('23514')).toBe('failed')
+  })
+
+  it('retries anything transient', () => {
+    expect(classifyPayloadError('57014')).toBe('retry') // statement timeout
+    expect(classifyPayloadError('08006')).toBe('retry') // connection failure
+    expect(classifyPayloadError('40001')).toBe('retry') // serialization failure
+  })
+
+  /**
+   * The direction of the default is the decision. An unrecognised code retries,
+   * costing a few attempts and then `failed`. Defaulting to `failed` would make
+   * one transient pooler blip permanently drop a notification the rider was
+   * entitled to.
+   */
+  it('defaults an unknown, absent or empty code to retry', () => {
+    expect(classifyPayloadError('XX000')).toBe('retry')
+    expect(classifyPayloadError(undefined)).toBe('retry')
+    expect(classifyPayloadError(null)).toBe('retry')
+    expect(classifyPayloadError('')).toBe('retry')
+  })
+
+  it('never answers suppressed — a refusal is zero rows and never reaches here', () => {
+    // Suppression is terminal. Reaching it from an ERROR would silently drop a
+    // notification the gate never actually refused.
+    for (const code of ['23514', '57014', 'XX000', null]) {
+      expect(['failed', 'retry']).toContain(classifyPayloadError(code))
+    }
   })
 })
 

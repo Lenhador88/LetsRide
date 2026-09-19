@@ -366,6 +366,34 @@ export function toFcmMessage(payload: PushPayload, token: string): Record<string
 export type DeliveryOutcome = 'sent' | 'suppressed' | 'retry' | 'failed'
 
 /**
+ * What a failed `push_payload_for` call means for the outbox row.
+ *
+ * **Three outcomes hide behind one call and conflating any two is a real
+ * defect**, which is `search-places`'s `classifyLedgerError` one function
+ * along — there, `isPolicyRefusal` matched `42501` only, the gate raised
+ * `23514`, and a refusal fell to the outage branch (PD-276).
+ *
+ * - **Zero rows is a REFUSAL**, not an error, and never reaches this function.
+ *   The visibility gate declined: the recipient is blocked, left the private
+ *   club, or the subject is gone. That is `suppressed` and is terminal.
+ * - **`23514` (check_violation) is OUR bug** — an unknown notification type, or
+ *   NULL copy — raised deliberately by `push_payload_for`'s `else` arm so it
+ *   cannot return a push with no words on it. Retrying re-raises it every
+ *   minute until the age cut, so it is `failed`: terminal, and visible in the
+ *   table as a failure rather than buried as a suppression.
+ * - **Anything else is transport** — a dropped connection, a statement timeout,
+ *   the pooler restarting. `retry`, because we do not know.
+ *
+ * The direction of the default matters: an unrecognised code retries, which
+ * costs a few attempts and then `failed`. Defaulting to `failed` would make one
+ * transient pooler blip permanently drop a notification the rider was entitled
+ * to.
+ */
+export function classifyPayloadError(code?: string | null): 'failed' | 'retry' {
+  return code === '23514' ? 'failed' : 'retry'
+}
+
+/**
  * Turn a delivery's per-device outcomes into the one verdict the SQL takes.
  *
  * - **Any device delivered → `sent`.** A rider with three phones who got it on
