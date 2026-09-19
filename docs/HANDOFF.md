@@ -25,12 +25,11 @@ history.
 - **`development` is the default branch and deploys to DEV** (`app-dev.letsride.social`);
   `main` is production (`app.letsride.social`). `development` is normally ahead of `main`, and
   that is the steady state.
-- **Migrations: 117 files; DEV at `118`, PROD at `116`** — `117` is PD-398's; `118` came from
-  another branch, applied but unmerged, so **take the next number from `list_migrations`, never
-  from the file count**. DEV answers 121 rows: three hand-applied with no file, PROD none. `115` grants `anon` EXECUTE on one function — the first
-  exception to decision #1 — so its advisor class
-  (`anon_security_definer_function_executable`) is now on both projects rather than DEV alone.
-  `docs/reference/migrations.md` §Applied state has the per-file log.
+- **Migrations: 119 files; DEV at `120`, PROD at `116`** — `118` is applied to DEV from a branch
+  that never merged, so **take the next number from `list_migrations`, never from the file
+  count**. DEV answers 123 rows, three hand-applied with no file; PROD none.
+  `docs/reference/migrations.md` §Applied state has the per-file log, and §Security advisors the
+  per-project advisor counts — 45 on DEV, 43 on PROD.
 - **Edge Functions: the two projects DISAGREE, and that is the resting state after a merge.**
   `resolve-ride-location` is DEV `v8` (2026-09-07T20:42Z) / PROD `v6` (the 2026-09-06T22:20Z
   dispatch), and the `ezbr_sha256` differs. The next promotion to `main` levels them. Read the
@@ -68,7 +67,7 @@ history.
   capability, an owner action. **Child C (PD-303) is the sender**, blocked on the
   APNs `.p8` and the FCM service account. PD-291 stays open until C lands.
 - **PD-454's proposal is merged, not its build** — the change stays under `openspec/changes/`;
-  its migrations (not `118` — taken) and both surfaces are their own PR.
+  its migrations (take the next free number) and both surfaces are their own PR.
 - **PD-385 is open on purpose**: 9 DEV rides carry a coordinate and no tile, repairable only by
   their own organizers.
 
@@ -111,8 +110,10 @@ live), so read `src/` and `supabase/migrations/`, matching a migration by SUBJEC
 filename its proposal guessed. **The tool accepting a change is not evidence it shipped**: three
 it accepts are verified NOT BUILT and must not be archived —
 `place-backdated-postcards-on-the-timeline`, `postcard-audience-follows-its-entry-point` and
-`page-the-club-timeline-on-scroll`. `add-account-deletion` (open decision, collides with
-`enforce-creator-membership`) and `enforce-ride-capacity` (PD-436) also stay open.
+`page-the-club-timeline-on-scroll`. `enforce-ride-capacity` (PD-436) stays open, and so does
+`add-account-deletion`: Q4 answered, tasks remain, it collides with `enforce-creator-membership`,
+and **its spec still records the pre-PD-98 succession answer, which must be fixed before it
+archives.**
 
 ## Test accounts
 

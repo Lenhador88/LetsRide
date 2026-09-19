@@ -3966,10 +3966,17 @@ select assert_eq(
 -- the function's own `current_user <> 'authenticated'` guard — so its presence
 -- is all the suite can honestly assert. It is defence in depth against a future
 -- re-grant, and this count is what notices if it is ever dropped as dead code.
+--
+-- ** 120 adds the THIRD, and it is a BEFORE DELETE one, which is why the count
+-- moved rather than the sentence. ** `retain_consent_record` copies the terms
+-- version and the day of acceptance into `private.consent_records` before the
+-- cascade from `auth.users` takes the row. It is the only DELETE trigger this
+-- table has ever carried, so a fourth appearing here is a new writer on the
+-- erasure path and wants reading, not re-counting.
 select assert_eq(
   (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
     where c.relname = 'profiles' and not t.tgisinternal),
-  2, 'profiles carries the 003/012 UPDATE trigger and 023''s INSERT one');
+  3, 'profiles carries the 003/012 UPDATE trigger, 023''s INSERT one and 120''s BEFORE DELETE one');
 
 -- The invariant every other section ends on. 023 changes no policy's role
 -- targeting and grants anon nothing.
@@ -37115,6 +37122,573 @@ end $$;
 reset role;
 select set_config('test.uid', '', false);
 rollback to savepoint welcome_club_117;
+
+
+-- ===========================================================================
+-- 119. A DELETION IN PROGRESS IS VISIBLE TO ANOTHER DELETION (PD-175)
+-- ===========================================================================
+-- 032 §3 states this race precisely and deliberately leaves it open: B's
+-- transfer RPC commits owning nothing, A's transfer RPC then picks B as
+-- successor for a club they share, and B's deleteUser cascades that club away
+-- with every postcard every other member posted into it.
+--
+-- 119 closes it with a marker — profiles.deletion_started_at, stamped by
+-- private.transfer_owned_clubs before it does anything else, and read by the
+-- successor select, which now refuses a candidate whose own marker is set and
+-- younger than 15 minutes.
+--
+-- ** WHAT THIS SUITE CAN AND CANNOT SEE, stated because 032 was explicit that
+-- it could see nothing here. ** It runs one psql session, so the two-process
+-- interleaving itself is out of reach — 032's own idempotency assertion has the
+-- same limit, and it is why the race survived review. What IS reachable, and is
+-- the whole of the fix's observable behaviour, is the predicate: given a marked
+-- candidate, is that candidate skipped. A marker set by hand in this session is
+-- indistinguishable to the successor select from one another transaction
+-- committed, because the select reads the column and not the lock.
+--
+-- ** VERIFIED BOTH WAYS — every revert below was RUN, not predicted: **
+--   * delete the `deletion_started_at is null or ...` conjunct ... 119.2 picks
+--     the marked rider, which IS the defect
+--   * delete the UPDATE at the top of the function ................ 119.1 reads
+--     false — the rider who owns nothing is never stamped
+--   * widen the window to `now() + interval '1 hour'`, so every marker reads
+--     stale ......................................................... 119.2 again
+--   * make 119.6's marked member eligible in isolation ............ 119.6 reads
+--     false: the club is handed to the rider who is mid-deletion
+--   * put `deletion_started_at` into a public security definer function's
+--     projection .................................................... 119.5
+--
+-- ** AND ONE REVERT THAT LOOKS LIKE A PASS, which is the useful entry. **
+-- Narrowing the window to zero — the obvious probe — leaves the suite GREEN,
+-- and it is not evidence the window does nothing. `now()` is the TRANSACTION
+-- timestamp: a marker written by the same transaction that reads it is EQUAL to
+-- `now()` and so still fails `< now()`. The real path never has that shape, the
+-- marker there being committed by another transaction and strictly older.
+-- ===========================================================================
+savepoint deletion_marker_119;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000119001', 'pd175_departing@example.com'),
+  ('00000000-0000-0000-0000-000000119002', 'pd175_alsodeleting@example.com'),
+  ('00000000-0000-0000-0000-000000119003', 'pd175_healthy@example.com'),
+  ('00000000-0000-0000-0000-000000119004', 'pd175_ownsnothing@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000000119001', 'pd175departing'),
+      ('00000000-0000-0000-0000-000000119002', 'pd175alsodeleting'),
+      ('00000000-0000-0000-0000-000000119003', 'pd175healthy'),
+      ('00000000-0000-0000-0000-000000119004', 'pd175ownsnothing')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0001190000d1', 'PD175 Shared MC', true,
+   '00000000-0000-0000-0000-000000119001');
+
+-- The rider who is ALSO deleting is an `admin`, so 029's ordering puts them
+-- FIRST — ahead of the healthy `member`. Without 119 they are the successor,
+-- which is the defect; with it they are skipped and the healthy rider inherits.
+-- A fixture where the marked rider sorted last would pass either way.
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0001190000d1', '00000000-0000-0000-0000-000000119002', 'admin'),
+  ('00000000-0000-0000-0000-0001190000d1', '00000000-0000-0000-0000-000000119003', 'member');
+
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0001190000d1'
+      and user_id = '00000000-0000-0000-0000-000000119002' and role = 'admin'),
+  1, '119.0: the fixture puts the rider who is also deleting AHEAD of the healthy one — admin sorts before member, so a green 119.2 cannot be an accident of ordering');
+select assert_eq(
+  (select deletion_started_at is null from profiles
+    where id = '00000000-0000-0000-0000-000000119002'),
+  true, '119.0: ... and nobody carries a marker before the transfer runs');
+
+-- ---------------------------------------------------------------------------
+-- 119.1  ** THE STAMP HAPPENS, AND IT DOES NOT NEED A CLUB **
+-- ---------------------------------------------------------------------------
+-- Unconditional and above the loop, because a rider who owns nothing still has
+-- to be skippable as somebody ELSE's successor — and for them the loop body
+-- never runs. A stamp written inside the loop would pass a test that only ever
+-- deleted club owners.
+select assert_eq(
+  (select count(*)::int from private.transfer_owned_clubs('00000000-0000-0000-0000-000000119004')),
+  0, '119.1: a rider who owns no club surrenders no object path ...');
+select assert_eq(
+  (select deletion_started_at is not null from profiles
+    where id = '00000000-0000-0000-0000-000000119004'),
+  true, '119.1: ** ... and is STILL stamped. ** The marker is above the club loop, so it exists for every departing rider and not only for the ones who own something. Move the UPDATE inside the loop and this reads false');
+
+-- ---------------------------------------------------------------------------
+-- 119.2  ** A CLUB IS NOT HANDED TO SOMEBODY WHO IS ALSO LEAVING **
+-- ---------------------------------------------------------------------------
+-- This is PD-175. 119.1 has just stamped nobody relevant; the marker below is
+-- the one that matters, and it is set through the same column the other
+-- deletion's transfer would have written.
+update profiles set deletion_started_at = now()
+ where id = '00000000-0000-0000-0000-000000119002';
+
+select assert_eq(
+  (select count(*)::int from private.transfer_owned_clubs('00000000-0000-0000-0000-000000119001')),
+  0, '119.2: the shared club carries no image path, so the transfer surrenders none ...');
+select assert_eq(
+  (select owner_id from clubs where id = '00000000-0000-0000-0000-0001190000d1'),
+  '00000000-0000-0000-0000-000000119003'::uuid,
+  '119.2: ** ... and the club goes to the HEALTHY rider, not the one who is mid-deletion. ** This is the race 032 §3 left open: drop the deletion_started_at conjunct from the successor select and this reads ...119002, whose own deleteUser then cascades the club and every other member''s postcards away');
+select assert_eq(
+  (select role::text from club_members
+    where club_id = '00000000-0000-0000-0000-0001190000d1'
+      and user_id = '00000000-0000-0000-0000-000000119003'),
+  'owner', '119.2: ... and the successor''s membership row says owner, so the club is genuinely theirs rather than orphaned with a stale role');
+
+rollback to savepoint deletion_marker_119;
+
+-- ---------------------------------------------------------------------------
+-- 119.3  ** A STALE MARKER DOES NOT EXCLUDE ANYONE — the recovery story **
+-- ---------------------------------------------------------------------------
+-- 032 named "a new way to be stuck if a run dies half way" as the cost of this
+-- mechanism, and the 15-minute window is the answer. A successful deletion
+-- takes the row with it, so a marker that outlives its run always belongs to a
+-- run that FAILED — and its rider is still here, still using the app, and must
+-- not be silently barred from inheriting a club for ever.
+--
+-- Same fixture, rebuilt: the savepoint above rolled the marker back with
+-- everything else, which is deliberate — 119.3 must not depend on 119.2's
+-- leftovers.
+savepoint stale_marker_119;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000119011', 'pd175_departing2@example.com'),
+  ('00000000-0000-0000-0000-000000119012', 'pd175_staleMarker@example.com'),
+  ('00000000-0000-0000-0000-000000119013', 'pd175_healthy2@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000000119011', 'pd175departing2'),
+      ('00000000-0000-0000-0000-000000119012', 'pd175stalemarker'),
+      ('00000000-0000-0000-0000-000000119013', 'pd175healthy2')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0001190000d2', 'PD175 Stale MC', true,
+   '00000000-0000-0000-0000-000000119011');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0001190000d2', '00000000-0000-0000-0000-000000119012', 'admin'),
+  ('00000000-0000-0000-0000-0001190000d2', '00000000-0000-0000-0000-000000119013', 'member');
+
+-- An hour old: four times the window, so this cannot turn on clock skew.
+update profiles set deletion_started_at = now() - interval '1 hour'
+ where id = '00000000-0000-0000-0000-000000119012';
+
+select assert_eq(
+  (select count(*)::int from private.transfer_owned_clubs('00000000-0000-0000-0000-000000119011')),
+  0, '119.3: no image path to surrender ...');
+select assert_eq(
+  (select owner_id from clubs where id = '00000000-0000-0000-0000-0001190000d2'),
+  '00000000-0000-0000-0000-000000119012'::uuid,
+  '119.3: ** ... and the rider carrying a STALE marker inherits normally. ** Their deletion failed and they are still here; excluding them for ever would be the "new way to be stuck" 032 warned the marker would introduce. Widen the conjunct to `deletion_started_at is null` alone and this reads ...119013');
+
+rollback to savepoint stale_marker_119;
+
+-- ---------------------------------------------------------------------------
+-- 119.4  THE MARKER IS NOT A COLUMN ANY CLIENT CAN SEE OR SET
+-- ---------------------------------------------------------------------------
+-- 025 made every authenticated grant on profiles column-scoped, so a new column
+-- is outside all three lists by construction and 119 writes no revoke. That is
+-- reasoning, and reasoning is what this assertion replaces: a later migration
+-- re-granting profiles at TABLE level would publish a deletion-in-progress flag
+-- to every signed-in rider with nothing else going red.
+select assert_eq(
+  (select bool_or(has_column_privilege(r, 'public.profiles', 'deletion_started_at', p))
+     from unnest(array['authenticated','anon']) r,
+          unnest(array['select','insert','update']) p),
+  false, '119.4: neither client role holds SELECT, INSERT or UPDATE on profiles.deletion_started_at — six combinations, none of them granted');
+
+-- ---------------------------------------------------------------------------
+-- 119.5  NO security definer ACCESSOR PROJECTS THE MARKER
+-- ---------------------------------------------------------------------------
+-- 119.4 covers the grant. This covers the OTHER route to a column a grant does
+-- not reach: an own-row `security definer` RPC runs as the owner, so anything
+-- it projects is readable by whoever may call it. my_onboarding_state() is the
+-- one a rider calls on every page load, and adding a column to its projection
+-- is a one-word change that no grant assertion would notice.
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.prosecdef and p.prosrc like '%deletion_started_at%'),
+  0, '119.5: no security definer function in public names deletion_started_at — the marker has exactly one reader and it is in `private`');
+
+-- ---------------------------------------------------------------------------
+-- 119.6  ** SKIPPING THE LAST CANDIDATE KEEPS THE CLUB, it does not delete it **
+-- ---------------------------------------------------------------------------
+-- The worry this answers: excluding a marked candidate could leave no successor
+-- and destroy a club holding somebody else's postcards — the very harm 119
+-- exists to prevent, reintroduced by its own fix. It does not, and the reason
+-- is that 107 (widened by 117) already changed that arm: with no successor the
+-- club is KEPT ownerless when any postcard in it is third-party. So the club
+-- reaches that arm one deletion earlier, with the postcards intact.
+--
+-- ** This is why 119 adds no last-resort pass preferring a marked candidate. **
+-- Such a pass would hand the club to a rider whose deletion lands moments
+-- later, and then it cascades away — strictly worse than ownerless.
+savepoint marked_last_candidate_119;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000119021', 'pd175_owner3@example.com'),
+  ('00000000-0000-0000-0000-000000119022', 'pd175_onlymarked@example.com'),
+  ('00000000-0000-0000-0000-000000119023', 'pd175_exmember@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000000119021', 'pd175owner3'),
+      ('00000000-0000-0000-0000-000000119022', 'pd175onlymarked'),
+      ('00000000-0000-0000-0000-000000119023', 'pd175exmember')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0001190000d3', 'PD175 Keepme MC', true,
+   '00000000-0000-0000-0000-000000119021');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0001190000d3', '00000000-0000-0000-0000-000000119022', 'member');
+-- By a rider who LEFT, so they hold no membership row: 107's third-party case.
+insert into postcards (id, author_id, club_id, image_path, caption, taken_place_name, taken_location_precision) values
+  ('00000000-0000-0000-0000-0001190000f3', '00000000-0000-0000-0000-000000119023',
+   '00000000-0000-0000-0000-0001190000d3',
+   'postcards/00000000-0000-0000-0000-000000119023/cccccccc-0000-4000-8000-000000119001.jpg',
+   'a third party''s photo in the club with one marked member', 'Zandvoort', 'place');
+
+update profiles set deletion_started_at = now()
+ where id = '00000000-0000-0000-0000-000000119022';
+
+select assert_eq(
+  (select count(*)::int from private.transfer_owned_clubs('00000000-0000-0000-0000-000000119021')),
+  0, '119.6: no image path to surrender ...');
+delete from profiles where id = '00000000-0000-0000-0000-000000119021';
+select assert_eq(
+  (select owner_id is null from clubs where id = '00000000-0000-0000-0000-0001190000d3'),
+  true, '119.6: ** ... and the club is KEPT OWNERLESS rather than handed to the marked rider or deleted. ** 107''s arm, reached one deletion earlier because 119 skipped the only candidate');
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-0001190000f3'),
+  1, '119.6: ** ... and the third party''s postcard is still there, ** which is the whole point of both 107 and 119');
+
+rollback to savepoint marked_last_candidate_119;
+
+-- ---------------------------------------------------------------------------
+-- 119.7  THE DELETE ARM IS REACHED UNCHANGED when there is nothing to preserve
+-- ---------------------------------------------------------------------------
+-- The other half of 119.6: no third-party postcard, so 032's delete arm runs
+-- exactly as before. 119 changes which deletion reaches it, never what it does.
+savepoint marked_last_candidate_delete_119;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000119031', 'pd175_owner4@example.com'),
+  ('00000000-0000-0000-0000-000000119032', 'pd175_onlymarked2@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000000119031', 'pd175owner4'),
+      ('00000000-0000-0000-0000-000000119032', 'pd175onlymarked2')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0001190000d4', 'PD175 Deleteme MC', true,
+   '00000000-0000-0000-0000-000000119031');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0001190000d4', '00000000-0000-0000-0000-000000119032', 'member');
+-- One private ride and one public one, so 032 §2's narrowing is re-asserted
+-- through this path rather than assumed to still hold.
+insert into rides (id, organizer_id, club_id, title, departure_at, meeting_point, is_public) values
+  ('00000000-0000-0000-0000-0001190000e1', '00000000-0000-0000-0000-000000119031',
+   '00000000-0000-0000-0000-0001190000d4', 'PD175 private ride',
+   timestamptz '2027-01-01 09:00:00+00', 'Zandvoort', false),
+  ('00000000-0000-0000-0000-0001190000e2', '00000000-0000-0000-0000-000000119031',
+   '00000000-0000-0000-0000-0001190000d4', 'PD175 public ride',
+   timestamptz '2027-01-01 09:00:00+00', 'Zandvoort', true);
+
+update profiles set deletion_started_at = now()
+ where id = '00000000-0000-0000-0000-000000119032';
+
+select assert_eq(
+  (select count(*)::int from private.transfer_owned_clubs('00000000-0000-0000-0000-000000119031')),
+  0, '119.7: no image path to surrender ...');
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001190000d4'),
+  0, '119.7: ** ... and with nothing third-party to preserve the club is DELETED, ** 032''s arm unchanged — 119 changes which deletion reaches it, never what it does');
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-0001190000e1'),
+  0, '119.7: ... its PRIVATE ride goes with it, 032 §2 ...');
+select assert_eq(
+  (select club_id is null from rides where id = '00000000-0000-0000-0000-0001190000e2'),
+  true, '119.7: ** ... and its PUBLIC ride SURVIVES with club_id NULL. ** 032 §2 narrowed this and 119 must not widen it back');
+
+rollback to savepoint marked_last_candidate_delete_119;
+
+-- ===========================================================================
+-- 120. CONSENT OUTLIVES THE RIDER (PD-458)
+-- ===========================================================================
+-- Deleting an account cascades profiles away, and with it terms_accepted_at and
+-- 030's terms_version — the evidence 012 spent a migration arguing for, and
+-- which 023 actively relies on. 120 keeps the version and the DAY of acceptance
+-- in private.consent_records, and keeps nothing that points at a person.
+--
+-- The writer is a BEFORE DELETE trigger on public.profiles rather than a step in
+-- the Edge Function, so the cascade from auth.users carries it and no deletion
+-- path can bypass it — 042 revoked the DELETE grant, so nothing but that cascade
+-- and the table owner reaches the row at all.
+--
+-- ** VERIFIED BOTH WAYS — each revert was RUN, not predicted: **
+--   * drop the `terms_accepted_at is not null` guard ..... 120.2 reads 2
+--   * add a `created_at timestamptz default now()` ........ 120.4 names it
+--   * drop the trigger ... goes red at the 023 section's profiles trigger
+--     COUNT, thousands of lines earlier, and the suite stops there — so 120.1's
+--     own bite is not what that revert demonstrates. Recorded this way round
+--     because the count reading 2 looks like an unrelated regression unless the
+--     reader knows 120 is what moved it to 3.
+--   * ** return NULL instead of OLD ** ... takes TWO runs to demonstrate, and
+--     the second is the one worth having. Blanket, it goes red at 029's
+--     counterfactual (line ~4642) — an earlier section whose own delete the
+--     trigger has just cancelled — and never reaches here. Scoped to 120.5's
+--     fixture id alone, ** 120.5 reads 1 **: auth.users lost its row, profiles
+--     kept its own, and nothing raised. Both runs were made.
+-- ===========================================================================
+savepoint consent_records_120;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000120001', 'pd458_consented@example.com'),
+  ('00000000-0000-0000-0000-000000120002', 'pd458_neveraccepted@example.com');
+reset role;
+
+update profiles
+   set username = 'pd458consented', location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-03-04 22:45:17+00',
+       terms_version           = '0-placeholder'
+ where id = '00000000-0000-0000-0000-000000120001';
+
+-- The rider who never accepted: 003 creates the profile row at signup, so this
+-- state is reachable for anyone who abandoned the wizard at the consent step.
+update profiles set terms_accepted_at = null, terms_version = null
+ where id = '00000000-0000-0000-0000-000000120002';
+
+select assert_eq(
+  (select count(*)::int from private.consent_records),
+  0, '120.0: the retention table is empty before anything is deleted, so every count below is this section''s own');
+
+-- ---------------------------------------------------------------------------
+-- 120.1  ** THE RECORD SURVIVES THE RIDER **
+-- ---------------------------------------------------------------------------
+delete from profiles where id = '00000000-0000-0000-0000-000000120001';
+select assert_eq(
+  (select count(*)::int from profiles where id = '00000000-0000-0000-0000-000000120001'),
+  0, '120.1: the rider is gone ...');
+select assert_eq(
+  (select count(*)::int from private.consent_records
+    where terms_version = '0-placeholder' and accepted_on = date '2026-03-04'),
+  1, '120.1: ** ... and exactly one record survives, carrying the version and the DAY it was accepted. ** Drop the trigger and this reads 0');
+
+-- ---------------------------------------------------------------------------
+-- 120.2  A RIDER WHO NEVER ACCEPTED LEAVES NOTHING BEHIND
+-- ---------------------------------------------------------------------------
+-- There was no consent, so a row would assert something that never happened —
+-- and an "unknown" row is a fabricated evidence record, which is 030's own
+-- ruling about backfilling a version, applied one level up.
+delete from profiles where id = '00000000-0000-0000-0000-000000120002';
+select assert_eq(
+  (select count(*)::int from private.consent_records),
+  1, '120.2: deleting a rider who never accepted the terms writes NOTHING — still the one row from 120.1. Drop the `terms_accepted_at is not null` guard and this reads 2');
+
+-- ---------------------------------------------------------------------------
+-- 120.3  private.consent_records IS UNREACHABLE, by schema and by grant
+-- ---------------------------------------------------------------------------
+-- 117.8's shape, and the two client roles fail for a different reason than
+-- service_role does: for them the schema is the barrier and PostgREST publishes
+-- public alone; for service_role — which holds USAGE on private and BYPASSES
+-- RLS — the barrier is the absent TABLE grant and nothing else.
+select assert_eq(
+  (select bool_or(has_table_privilege(r, 'private.consent_records', p))
+     from unnest(array['authenticated','anon','service_role']) r,
+          unnest(array['select','insert','update','delete']) p),
+  false, '120.3: no client role and not service_role holds any privilege on private.consent_records — twelve combinations, none of them granted');
+select assert_eq(
+  (select relrowsecurity from pg_class where oid = 'private.consent_records'::regclass),
+  true, '120.3: ... and RLS is on regardless, which CLAUDE.md asks of every new table — belt and braces, since service_role bypasses it and the client roles never reach the schema');
+
+-- ---------------------------------------------------------------------------
+-- 120.4  ** THE COLUMN SET IS THE POINT, so it is pinned rather than described **
+-- ---------------------------------------------------------------------------
+-- The header, the table comment and PD-458 all say the same thing: this table
+-- must hold no subject id, no hash of one, and no timestamp of the deletion
+-- itself. ** The trap is created_at. ** A `default now()` under a name that
+-- reads like ordinary bookkeeping records the deletion moment at full
+-- precision, and one row per deletion stamped to the microsecond is a join away
+-- from auth.users at these volumes — which re-identifies the very person the
+-- day-precision accepted_on exists to protect.
+--
+-- Pinned as an exact set rather than a count: a count passes when somebody
+-- swaps one column for another.
+select assert_eq(
+  (select string_agg(attname, ',' order by attname) from pg_attribute
+    where attrelid = 'private.consent_records'::regclass and attnum > 0 and not attisdropped),
+  'accepted_on,id,terms_version',
+  '120.4: private.consent_records holds exactly id, terms_version and accepted_on — no subject id, no hash of one, and NO created_at, which is the one that looks like bookkeeping and is a re-identification path');
+select assert_eq(
+  (select atttypid::regtype::text from pg_attribute
+    where attrelid = 'private.consent_records'::regclass and attname = 'accepted_on'),
+  'date', '120.4: ... and accepted_on is a DATE, not a timestamptz. Widening it to full precision restores the correlation with auth.users that day precision removes');
+
+-- ---------------------------------------------------------------------------
+-- 120.5  ** THE CASCADE PATH, which is the only one production uses **
+-- ---------------------------------------------------------------------------
+-- 120.1 deletes the profile row directly, which the table owner can do and no
+-- client can (042). The REAL path is delete-account calling deleteUser, so the
+-- row goes through the auth.users cascade — a different mechanism, and the one
+-- the whole design rests on.
+--
+-- ** The profile row is checked GONE, and that is not belt and braces. ** A
+-- BEFORE DELETE trigger that returns NULL instead of OLD silently CANCELS the
+-- delete: auth.users loses its row, profiles keeps its own, nothing raises, and
+-- the rider is told the deletion succeeded — 012 §KNOWN LIMIT's orphan state,
+-- reached through the very mechanism 120 introduces. An assertion that only
+-- counted the retention row would pass in exactly that state.
+savepoint consent_cascade_120;
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000120003', 'pd458_cascade@example.com');
+reset role;
+
+update profiles
+   set username = 'pd458cascade', location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-05-09 06:12:44+00',
+       terms_version           = '0-placeholder'
+ where id = '00000000-0000-0000-0000-000000120003';
+
+-- As the suite's own role, not auth_admin: the harness grants auth_admin INSERT
+-- on auth.users and not DELETE, and the role that performs the delete is
+-- irrelevant to what is being asserted — what matters is that the row goes
+-- through the FK cascade rather than through a direct delete on profiles.
+delete from auth.users where id = '00000000-0000-0000-0000-000000120003';
+
+select assert_eq(
+  (select count(*)::int from profiles where id = '00000000-0000-0000-0000-000000120003'),
+  0, '120.5: ** the profile row is GONE, through the auth.users cascade. ** Return NULL instead of OLD from the trigger and this reads 1 while every other assertion in this section still passes — the auth row deleted, the profile orphaned, and nothing raised');
+select assert_eq(
+  (select count(*)::int from private.consent_records where accepted_on = date '2026-05-09'),
+  1, '120.5: ... and the record was written by the CASCADE, not by a direct delete — which is the path delete-account actually takes');
+
+rollback to savepoint consent_cascade_120;
+
+-- ---------------------------------------------------------------------------
+-- 120.6  A NULL terms_version STILL WRITES A ROW — 030's meaning of NULL
+-- ---------------------------------------------------------------------------
+-- Different from 120.2 and the difference is the point. A NULL
+-- `terms_accepted_at` means no consent happened. A NULL `terms_version` means
+-- the consent happened and predates the column — 030 refused to backfill one
+-- precisely so that NULL would keep saying "genuinely unknown". Dropping the
+-- row here would invent a second meaning for absence.
+savepoint consent_null_version_120;
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000120004', 'pd458_nullversion@example.com');
+reset role;
+
+update profiles
+   set username = 'pd458nullver', location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-02-02 11:11:11+00',
+       terms_version           = null
+ where id = '00000000-0000-0000-0000-000000120004';
+
+delete from auth.users where id = '00000000-0000-0000-0000-000000120004';
+select assert_eq(
+  (select count(*)::int from private.consent_records
+    where accepted_on = date '2026-02-02' and terms_version is null),
+  1, '120.6: a consent with no version recorded still leaves a row, version NULL — 030''s four un-backfilled rows keep meaning "the version is genuinely unknown" rather than "no consent"');
+
+-- A second deletion adds nothing, and the reason is the EVENT rather than a
+-- dedupe key: there is no subject id to key on, and after the first delete
+-- there is no row left to delete.
+delete from auth.users where id = '00000000-0000-0000-0000-000000120004';
+select assert_eq(
+  (select count(*)::int from private.consent_records
+    where accepted_on = date '2026-02-02'),
+  1, '120.6: ... and deleting the same rider again writes no second row — the trigger fires on a DELETE and there is no row left to delete, which is the whole argument since there is no key to dedupe on');
+
+rollback to savepoint consent_null_version_120;
+
+-- ---------------------------------------------------------------------------
+-- 120.7  ** TRUNCATE IS THE ONE REAL BYPASS, and what keeps it out of reach **
+-- ---------------------------------------------------------------------------
+-- A TRUNCATE does not fire row-level delete triggers, so a rider who could
+-- truncate `profiles` would erase every consent record that was never written.
+-- `047` revoked TRUNCATE and `042` revoked DELETE; re-asserted here rather than
+-- cited, because this retention is the thing that now depends on them.
+select assert_eq(
+  (select bool_or(has_table_privilege(r, 'public.profiles', p))
+     from unnest(array['authenticated','anon']) r,
+          unnest(array['truncate','delete']) p),
+  false, '120.7: no client role holds TRUNCATE or DELETE on public.profiles — 047 and 042 — so the cascade this trigger hangs off is the only route to a profiles delete');
+
+-- ---------------------------------------------------------------------------
+-- 120.8  THE SCHEMA IS THE BARRIER FOR CLIENTS, THE GRANT FOR service_role
+-- ---------------------------------------------------------------------------
+-- 120.3 asserts the table grant. This asserts the other half, and the shape is
+-- counter-intuitive enough that 117 measured it rather than reasoning it:
+-- service_role DOES hold USAGE on `private`, which is exactly why the absent
+-- table grant has to be the thing doing the work.
+select assert_eq(
+  (select has_schema_privilege('anon', 'private', 'usage')
+       or has_schema_privilege('authenticated', 'private', 'usage')),
+  false, '120.8: neither client role holds USAGE on the private schema, so they cannot name the table at all');
+select assert_eq(
+  has_schema_privilege('service_role', 'private', 'usage'),
+  true, '120.8: ** service_role DOES hold USAGE on private ** — so the refusal in 120.3 rests on the absent TABLE grant, never on the schema and never on RLS, which it bypasses');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'private' and tablename = 'consent_records'),
+  0, '120.8: ... and the table carries no policy at all, which is deliberate: a policy would be the thing that granted reach');
+
+rollback to savepoint consent_records_120;
 
 
 rollback;
