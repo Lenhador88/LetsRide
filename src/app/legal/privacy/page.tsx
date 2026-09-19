@@ -81,6 +81,43 @@ export default function PrivacyPage() {
           map you see is served from our own storage and a search never discloses your identity,
           session or IP address to Geoapify.
         </li>
+        {/* PD-303, and it is the first bullet on this page describing content
+            that RLS governs leaving Supabase for a third party at all. Every
+            outbound call before this one sends a query string or a coordinate;
+            this one sends another rider's username and, on a private club or a
+            non-public ride, the name a rider chose expecting it to stay inside
+            that club.
+
+            Written to the same rule as Geoapify and Sentry above — what the app
+            does when something happens, never what is or is not switched on
+            yet. "No push is delivered today" would be true until the owner
+            installs a provider key nobody in a session can reach, and false one
+            second after, on a public page describing where a rider's data goes.
+            The deploy moves without this file moving; do not reintroduce a
+            claim that depends on it.
+
+            The disclosure obligation begins with the first delivered push, and
+            the push is what discloses — NOT the lock screen. Design Q4 is
+            explicit that asking only about the lock screen is materially the
+            wrong question: that surface is the rider's own device, the
+            sub-processor is not. So the bullet names transmission first and the
+            lock screen second, and a rewrite that leads on "anyone can read it
+            on your phone" has lost the point of it. */}
+        <li>
+          <span className="font-medium">Apple and Google</span> — deliver notifications to your
+          phone. When something happens that you asked to be told about — someone likes your
+          postcard, joins your ride, replies in your club — the text of that notification is sent
+          to Apple (on an iPhone) or Google (on an Android phone), who pass it to your device.{' '}
+          <span className="font-medium">
+            That text includes the other rider&rsquo;s username, and the name of the club or the
+            title of the ride it happened in, including when that club or ride is private.
+          </span>{' '}
+          It is sent to them unencrypted by us, along with an identifier for your installation of
+          the app, because that is the only way either company will deliver a notification at all.
+          It also means the text appears on your lock screen — both phones let you turn that off
+          per app in your own settings, and turning notifications off in{' '}
+          <span className="font-medium">Profile</span> stops us sending them in the first place.
+        </li>
         {/* PD-315. Written to the same rule as the Geoapify bullet above: it
             describes what the app does when something happens, never what has
             or has not been switched on yet. A sentence like "we do not use
