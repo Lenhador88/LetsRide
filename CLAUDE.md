@@ -333,7 +333,7 @@ is the resting state between a merge and its promotion; promote everything the g
 filename order, per `docs/ENVIRONMENTS.md` §Migrations, and record each file's ordering in
 `docs/reference/migrations.md` §Applied state. Count rather than trust it — `list_migrations`
 against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV records THREE rows with
-no file and PROD none** — the long-standing hand-applied ones. DEV answers 121 rows: `118` is
+no file and PROD none** — the long-standing hand-applied ones. DEV answers 123 rows: `118` is
 applied from a branch that has not merged, so count the FILE-LESS rows rather than the gap.
 **`113` then `114` was a required order on the PROD promotion and must not be collapsed** if it is
 ever replayed: `114` refuses a NULL country, so applied ahead of the bundle that writes one it

@@ -27,10 +27,9 @@ history.
   that is the steady state.
 - **Migrations: 119 files; DEV at `120`, PROD at `116`** — `118` is applied to DEV from a branch
   that never merged, so **take the next number from `list_migrations`, never from the file
-  count**. DEV answers 123 rows, three hand-applied with no file; PROD none. `115` grants `anon`
-  EXECUTE on one function — decision #1's first exception — so its advisor class
-  (`anon_security_definer_function_executable`) is on both projects.
-  `docs/reference/migrations.md` §Applied state has the per-file log.
+  count**. DEV answers 123 rows, three hand-applied with no file; PROD none.
+  `docs/reference/migrations.md` §Applied state has the per-file log, and §Security advisors the
+  per-project advisor counts — 45 on DEV, 43 on PROD.
 - **Edge Functions: the two projects DISAGREE, and that is the resting state after a merge.**
   `resolve-ride-location` is DEV `v8` (2026-09-07T20:42Z) / PROD `v6` (the 2026-09-06T22:20Z
   dispatch), and the `ezbr_sha256` differs. The next promotion to `main` levels them. Read the
@@ -111,9 +110,10 @@ live), so read `src/` and `supabase/migrations/`, matching a migration by SUBJEC
 filename its proposal guessed. **The tool accepting a change is not evidence it shipped**: three
 it accepts are verified NOT BUILT and must not be archived —
 `place-backdated-postcards-on-the-timeline`, `postcard-audience-follows-its-entry-point` and
-`page-the-club-timeline-on-scroll`. `add-account-deletion` (collides with
-`enforce-creator-membership`; its Q4 is answered but tasks remain) and `enforce-ride-capacity`
-(PD-436) also stay open.
+`page-the-club-timeline-on-scroll`. `add-account-deletion` stays open — Q4 answered, tasks
+remain, collides with `enforce-creator-membership`, and **its spec still records the pre-PD-98
+succession answer, which must be fixed before it archives** — as does `enforce-ride-capacity`
+(PD-436).
 
 ## Test accounts
 

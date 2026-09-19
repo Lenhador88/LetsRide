@@ -249,6 +249,17 @@ removal landing without its code repair is an outage.
     the table appears in no view, no `security definer` accessor's projection and no join.
   - Re-run `CLAUDE.md` §Supabase Rules' kept/revoked query after applying and record the new
     counts in the migration header rather than trusting "fourth".
+- [ ] 1.11b **Exercise the REAL deletion path on DEV, before the PROD promotion.** `CLAUDE.md`
+  asks for a hand-exercise gate when a migration hangs a trigger off an already-shipped write
+  path, and `120` is exactly that shape — the `delete-account` Edge Function calling GoTrue's
+  admin delete, which cascades into `public.profiles`. **The gate was met by PROXY and that is
+  not the same thing**: the *mechanism* was verified on a scratch parent/child pair on DEV, and
+  `120.5` exercises a real `auth.users` cascade on the suite's own cluster — but the live
+  function → GoTrue → cascade path was never run. Closure is retrospective and cheap now that it
+  is applied: create a disposable DEV rider, accept the terms, delete the account **through the
+  function**, then assert the `profiles` row is gone AND `private.consent_records` gained exactly
+  one row with that rider's version and day. Reported by `reviewer` on the PR that landed this.
+
 - [x] 1.11a Apply to DEV, then read the security advisors. **Predicted before applying, and the
   prediction was HALF WRONG — the measured half is the one to keep.** The `public`
   security-definer classes did not move, as expected: a `security definer` function in `private`

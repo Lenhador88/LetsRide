@@ -333,10 +333,12 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 state between a merge and its promotion: `117` (PD-398), `119` (PD-175) and `120` (PD-458) are
 applied to DEV and await the `development` → `main` promotion, which is the only thing that should
 carry them to PROD. **`119` and `120` are RECORDED ON DEV IN THE OPPOSITE ORDER to their
-filenames** — `120` went up first — and it is harmless here rather than forgiven: they share no
-object, neither reads anything the other writes, and either order produces the same database. The
-rule they are not an exception to is that filename order equals apply order for a file that
-DEPENDS on an earlier one. Before
+filenames** — `120` went up first — and it is harmless here rather than forgiven: **neither reads
+or writes anything the other defines**, so the two DDLs commute and either order produces the same
+database. **They do both touch `public.profiles`** — `119` adds a column, `120` adds a BEFORE
+DELETE trigger — so "they share no object" would be the wrong reason and is not the one being
+given. The rule they are not an exception to is that filename order equals apply order for a file
+that DEPENDS on an earlier one. Before
 that: `116` was the state on 2026-09-08, with BOTH projects level after the promotion. `113`
 was applied to DEV migration-first, ahead of #428; the merge is what landed its file, so the
 row that read as file-less until then is an ordinary applied migration. DEV's row count reads

@@ -63,7 +63,9 @@
 -- ---------------------------------------------------------------------------
 -- Two riders who each own a club AND are members of each other's can now
 -- deadlock: each holds the lock on its own `profiles` row and waits for the
--- other's. Postgres detects it and aborts one transaction, the transfer RPC
+-- other's. ** Three or more concurrent deletions can form a longer wait cycle
+-- than that two-rider one ** — same detection, same retry, same outcome, and
+-- said here so the two-rider shape is not read as the only one. Postgres detects it and aborts one transaction, the transfer RPC
 -- fails, the Edge Function throws and answers `deletion_failed` 500, and the
 -- rider retries — by which time the other deletion has committed and the retry
 -- finds a stamped, skippable row. Nothing is lost and nothing is half-done:
@@ -87,11 +89,17 @@
 -- silently.
 --
 -- So the marker is consulted with a freshness window rather than as a boolean.
--- ** 15 minutes ** — the work between the stamp and `deleteUser` is a Storage
--- list-and-remove sweep, seconds for an ordinary rider and bounded by
--- `MAX_DEPTH` and the chunked `remove()` for the largest one, so 15 minutes is
--- generous by orders of magnitude while keeping an abandoned marker from
--- outliving the hour.
+-- ** 15 minutes **, and the bound is STRUCTURAL rather than an estimate — which
+-- matters, because the estimate is the weaker argument and it rots. The weak
+-- form: the work between the stamp and `deleteUser` is a Storage
+-- list-and-remove sweep, seconds for an ordinary rider. That is a guess about a
+-- loop whose chunk count grows with the rider's object count
+-- (`delete-account/index.ts`, one sequential `remove()` per `REMOVE_CHUNK`), so
+-- it is not a ceiling. ** The form that holds: an Edge Function invocation
+-- cannot outlive the platform's wall-clock limit for one, which is far under 15
+-- minutes. ** So a marker older than the window ALWAYS belongs to a run that is
+-- already dead, and never to one still in flight — whatever the rider's folder
+-- looks like.
 --
 -- ** The residual, stated rather than implied: ** a rider whose deletion failed
 -- and who retries more than 15 minutes later is racing again, exactly as they
