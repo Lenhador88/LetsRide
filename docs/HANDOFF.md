@@ -25,26 +25,24 @@ history.
 - **`development` is the default branch and deploys to DEV** (`app-dev.letsride.social`);
   `main` is production (`app.letsride.social`). `development` is normally ahead of `main`, and
   that is the steady state.
-- **Migrations: 123 files; DEV at `123`, PROD at `116`** — DEV answers 126 rows, the three extra
+- **Migrations: 124 files; DEV at `124`, PROD at `116`** — DEV answers 127 rows, the three extra
   hand-applied with no file; PROD none. **Take the next number from `list_migrations`, never the
-  file count**: `118`, `122` and `123` each reached DEV while their branch was open —
+  file count** — `118`, `122` and `123` each reached DEV while their branch was open, which is
   ordinary with several sessions building. `docs/reference/migrations.md` §Applied state has the
-  per-file log; §Security advisors the counts.
+  per-file log and §Security advisors the counts.
 - **Edge Functions: the older three AGREE across both projects** — identical `ezbr_sha256`
   (2026-09-19); equality is not currency. **`push-notify` is DEV-only**, `v1`, deployed by
   `deploy-functions.yml` off PD-303's merge. Read the `deploy` *job's* conclusion, never the
   run's: without the token it skips and the run is green anyway.
 - **The walk is green on DEV** as both fixture accounts (2026-09-06 baselines in
-  `docs/reference/running-locally.md` §The walk). In CI it is **skipped** — the Actions secrets
-  name PROD and `WALK_CI` is unset (§Blocked on the owner).
-- **The Linear team is `Let's ride`, not `Pedro & Dave`** — the old name errors, `list_issue_statuses`
-  included. Pass the id `7388c68e-ef17-4998-a9b7-d8ad8ce66038`.
-- **OpenSpec has 34 open changes and 22 archived**
+  `docs/reference/running-locally.md` §The walk); in CI it is **skipped**, per §Blocked on the
+  owner.
+- **Pass the Linear team id `7388c68e-ef17-4998-a9b7-d8ad8ce66038`, never a name** — a stale one
+  errors on `list_issue_statuses` and answers `[]` elsewhere, so empty is not proof.
+- **OpenSpec has 35 open changes and 22 archived**
   (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`).
-  **Archiving one is not two commands**: a stale `## MODIFIED Requirements` block drops scenarios
-  wholesale, so diff scenario names per requirement first, and re-point any pointer **into** the
-  change in the same commit. `docs/reference/journal.md` §The open OpenSpec changes has the check
-  that proves nothing was lost.
+  **Archiving one is not two commands** — `docs/reference/journal.md` §The open OpenSpec changes
+  has the mechanism and the check that proves nothing was lost.
 
 ## In flight
 
@@ -62,12 +60,15 @@ history.
   the checks and the owner action. **It stays open**: the Android half needs a signing fingerprint
   that cannot exist until `android/` does.
 - **Push (`openspec/changes/deliver-push-notifications`): child C (PD-303) is built and delivers
-  nothing yet** — `121` + `push-notify/` are merged, the function is deployed to DEV, and it is
-  **inert** until the rest run in `121`'s order: `pg_cron`+`pg_net`, the two provider secrets,
-  the Vault trio, one `curl` proving the gateway forwards a non-JWT bearer, *then* the schedule.
-  The job is Vault-gated per project and no-ops on both today. Child B (#438, #446) is
-  unverified on a device — 2.15–2.19a want a Push-capable provisioning profile. PD-291 stays
-  open until a phone has received one.
+  nothing yet** — `121` + `push-notify/` are merged and the function is on DEV, but the job is
+  Vault-gated per project and no-ops on both until the owner runs `121` §10's order. Child B
+  (#438, #446) is unverified on a device — 2.15–2.19a want a Push-capable provisioning profile.
+  PD-291 stays open until a phone has received one.
+- **The mail rail is merged and sends nothing** (PD-457): `124` + `send-moderation-digest/` are
+  inert until the owner deploys, sets the secrets, invokes it once by hand, then schedules —
+  **secrets before schedule**, or the attempt cap burns on every claimed entry.
+  **`DIGEST_RECIPIENT` is the owner's private mailbox, never `SUPPORT_EMAIL`** —
+  `docs/ENVIRONMENTS.md` §`send-moderation-digest`'s secrets is the control no test can reach.
 - **PD-385 is open on purpose**: 9 DEV rides have a coordinate and no tile, repairable only by
   their organizers.
 
@@ -91,18 +92,16 @@ body carries its own steps.
 
 ## Next action
 
-**Archive `require-a-home-country-at-onboarding` FIRST, then the two changes this branch shipped.**
-Not a preference: two requirements `onboarding-takes-a-town-and-its-country` MODIFIES live only in
-that change's delta, so the wrong order leaves them with no base. `a-club-says-where-it-is-based`
-shares its `ride-start-location` requirement with the unarchived
-`inline-place-search-with-recent-starts`, and **only one order is safe**: the sibling FIRST. The
-other way round drops two scenarios, because a MODIFIED block replaces them wholesale and the
-sibling was written before those two existed.
+**Archive `require-a-home-country-at-onboarding` FIRST.** Not a preference: two requirements
+`onboarding-takes-a-town-and-its-country` MODIFIES live only in that change's delta, so the wrong
+order leaves them with no base. `a-club-says-where-it-is-based` shares its `ride-start-location`
+requirement with the unarchived `inline-place-search-with-recent-starts`, and **only one order is
+safe**: the sibling FIRST — the other way drops two scenarios, because a MODIFIED block replaces
+them wholesale and the sibling predates those two.
 
-**Then the rest — the 31 others need the expensive half.** Each one left is refused for a reason
-its message names; the three shapes, their cost and the current ordering chain are in
-`docs/reference/journal.md` §The open OpenSpec changes. **Re-probe the order rather than reading a
-list — archiving one change moves the others.**
+**Then the rest.** Each one left is refused for a reason its message names; the shapes, their cost
+and the current ordering chain are in `docs/reference/journal.md` §The open OpenSpec changes.
+**Re-probe the order rather than reading a list — archiving one change moves the others.**
 
 **Two things no gate enforces.** *Verify shipped first, and never from `tasks.md`* — tick counts
 are wrong both ways (`add-club-timeline` 0/38 is live; `capture-photo-time-and-place` 3/81 is

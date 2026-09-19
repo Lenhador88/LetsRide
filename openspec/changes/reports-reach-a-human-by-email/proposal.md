@@ -57,7 +57,7 @@ around; it is what forces the whole design through named RPCs, exactly as `121` 
 - **`public.claim_moderation_digest(batch_size int)`** — `security definer`, granted to
   `service_role` **by name** and to nobody else. Returns stale claims to unsent, inserts markers for
   unmarked source rows, **counts an attempt on every row it hands out** (D4), and returns **the exact
-  projection that may leave the database** — enumerated per column in `design.md` §The projection.
+  projection that may leave the database** — enumerated per column in `design.md` §D5 — The projection, per source, per column.
 - **`public.complete_moderation_digest(uuid[], text)`** — records `sent`, `retry` or `skipped` for
   the claimed entries. Same grant shape.
 - **`private.moderation_digest_tick()`** — the scheduled entry point, `121` §10's Vault gate reused
@@ -502,7 +502,7 @@ Every one carries a recommended default, so nothing here blocks the build.
   (new), `supabase/tests/rls_test.sql` (appended), `src/__tests__/` (two tripwires). **No file under
   `src/app/`, `src/components/`, `src/lib/data/` or `src/lib/actions/` is touched** — slot-2 holds
   three of those and this change needs none of them.
-- **Ordering, and it is `CLAUDE.md` §The sequencing rule applied:** `124` is purely additive and
+- **Ordering — the sequencing rule in `CLAUDE.md` §Supabase Rules, applied:** `124` is purely additive and
   inert — it creates a table nothing writes and functions nobody can call yet — so it may apply
   before or after any deploy. What must not happen is a **schedule** before the **function** is
   deployed, or a function deployed before its secrets exist: the first posts to a 404 hourly, the
