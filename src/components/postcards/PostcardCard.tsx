@@ -474,7 +474,7 @@ function PostcardCardComponent({
           count={postcard.comments_count ?? 0}
           linkToThread={linkToThread}
         />
-        <ShareButton postcardId={postcard.id} />
+        <ShareButton postcard={postcard} />
         {/* The design closes this row with the overflow menu, pushed right. */}
         <div className="ml-auto">
           <PostcardMenu

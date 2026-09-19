@@ -44,6 +44,37 @@ function isDismissal(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { name?: unknown }).name === 'AbortError'
 }
 
+/**
+ * Hand a composed image to the device's share sheet — PD-451's half.
+ *
+ * **`'unavailable'` here is not a failure the rider is told about.** It means
+ * *this device will not take a file*, and the caller's answer is to share the
+ * link instead, which is what every surface did before this existed. Only the
+ * link path reports to the rider, so its three outcomes stay the whole
+ * vocabulary and nothing above has to learn a fourth.
+ *
+ * **`canShare` is asked with the actual file, not with `{ files: [] }`.** The
+ * spec has it validate the payload — a platform that takes images but not this
+ * type, or not a file this size, answers false here rather than rejecting
+ * after the sheet is already up. Guarding on `navigator.share` alone is the
+ * version that looks fine on a desktop Chrome and drops the file on iOS.
+ *
+ * A dismissal is a success, for `shareAppLink`'s reason and by its test:
+ * `AbortError` is the rider deciding not to post, and falling through to the
+ * link would be the app sharing anyway after they said no.
+ */
+export async function shareImageFile(file: File, title: string): Promise<'shared' | 'unavailable'> {
+  if (!navigator.canShare?.({ files: [file] }) || !navigator.share) return 'unavailable'
+
+  try {
+    await navigator.share({ files: [file], title })
+    return 'shared'
+  } catch (error) {
+    if (isDismissal(error)) return 'shared'
+    return 'unavailable'
+  }
+}
+
 export async function shareAppLink(path: string, title: string): Promise<ShareOutcome> {
   const url = `${canonicalOrigin()}${path}`
 
