@@ -133,7 +133,7 @@ describe('the blocks', () => {
     const text = renderEntry(report())
     expect(text).toContain('REPORT · postcard')
     expect(text).toContain('reason: nudity')
-    expect(text).toContain('reports on this item:   2')
+    expect(text).toContain('reports on this item:  2')
     expect(text).toContain('reports on its author: 5')
     expect(text).toContain('subject id: p1')
     expect(text).toContain('entry id:   e1')
