@@ -37117,6 +37117,341 @@ select set_config('test.uid', '', false);
 rollback to savepoint welcome_club_117;
 
 
+-- ===========================================================================
+-- 119. A DELETION IN PROGRESS IS VISIBLE TO ANOTHER DELETION (PD-175)
+-- ===========================================================================
+-- 032 §3 states this race precisely and deliberately leaves it open: B's
+-- transfer RPC commits owning nothing, A's transfer RPC then picks B as
+-- successor for a club they share, and B's deleteUser cascades that club away
+-- with every postcard every other member posted into it.
+--
+-- 119 closes it with a marker — profiles.deletion_started_at, stamped by
+-- private.transfer_owned_clubs before it does anything else, and read by the
+-- successor select, which now refuses a candidate whose own marker is set and
+-- younger than 15 minutes.
+--
+-- ** WHAT THIS SUITE CAN AND CANNOT SEE, stated because 032 was explicit that
+-- it could see nothing here. ** It runs one psql session, so the two-process
+-- interleaving itself is out of reach — 032's own idempotency assertion has the
+-- same limit, and it is why the race survived review. What IS reachable, and is
+-- the whole of the fix's observable behaviour, is the predicate: given a marked
+-- candidate, is that candidate skipped. A marker set by hand in this session is
+-- indistinguishable to the successor select from one another transaction
+-- committed, because the select reads the column and not the lock.
+--
+-- ** VERIFIED BOTH WAYS — every revert below was RUN, not predicted: **
+--   * delete the `deletion_started_at is null or ...` conjunct ... 119.2 picks
+--     the marked rider, which IS the defect
+--   * delete the UPDATE at the top of the function ................ 119.1 reads
+--     false — the rider who owns nothing is never stamped
+--   * widen the window to `now() + interval '1 hour'`, so every marker reads
+--     stale ......................................................... 119.2 again
+--   * make 119.6's marked member eligible in isolation ............ 119.6 reads
+--     false: the club is handed to the rider who is mid-deletion
+--   * put `deletion_started_at` into a public security definer function's
+--     projection .................................................... 119.5
+--
+-- ** AND ONE REVERT THAT LOOKS LIKE A PASS, which is the useful entry. **
+-- Narrowing the window to zero — the obvious probe — leaves the suite GREEN,
+-- and it is not evidence the window does nothing. `now()` is the TRANSACTION
+-- timestamp: a marker written by the same transaction that reads it is EQUAL to
+-- `now()` and so still fails `< now()`. The real path never has that shape, the
+-- marker there being committed by another transaction and strictly older.
+-- ===========================================================================
+savepoint deletion_marker_119;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000119001', 'pd175_departing@example.com'),
+  ('00000000-0000-0000-0000-000000119002', 'pd175_alsodeleting@example.com'),
+  ('00000000-0000-0000-0000-000000119003', 'pd175_healthy@example.com'),
+  ('00000000-0000-0000-0000-000000119004', 'pd175_ownsnothing@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000000119001', 'pd175departing'),
+      ('00000000-0000-0000-0000-000000119002', 'pd175alsodeleting'),
+      ('00000000-0000-0000-0000-000000119003', 'pd175healthy'),
+      ('00000000-0000-0000-0000-000000119004', 'pd175ownsnothing')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0001190000d1', 'PD175 Shared MC', true,
+   '00000000-0000-0000-0000-000000119001');
+
+-- The rider who is ALSO deleting is an `admin`, so 029's ordering puts them
+-- FIRST — ahead of the healthy `member`. Without 119 they are the successor,
+-- which is the defect; with it they are skipped and the healthy rider inherits.
+-- A fixture where the marked rider sorted last would pass either way.
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0001190000d1', '00000000-0000-0000-0000-000000119002', 'admin'),
+  ('00000000-0000-0000-0000-0001190000d1', '00000000-0000-0000-0000-000000119003', 'member');
+
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0001190000d1'
+      and user_id = '00000000-0000-0000-0000-000000119002' and role = 'admin'),
+  1, '119.0: the fixture puts the rider who is also deleting AHEAD of the healthy one — admin sorts before member, so a green 119.2 cannot be an accident of ordering');
+select assert_eq(
+  (select deletion_started_at is null from profiles
+    where id = '00000000-0000-0000-0000-000000119002'),
+  true, '119.0: ... and nobody carries a marker before the transfer runs');
+
+-- ---------------------------------------------------------------------------
+-- 119.1  ** THE STAMP HAPPENS, AND IT DOES NOT NEED A CLUB **
+-- ---------------------------------------------------------------------------
+-- Unconditional and above the loop, because a rider who owns nothing still has
+-- to be skippable as somebody ELSE's successor — and for them the loop body
+-- never runs. A stamp written inside the loop would pass a test that only ever
+-- deleted club owners.
+select assert_eq(
+  (select count(*)::int from private.transfer_owned_clubs('00000000-0000-0000-0000-000000119004')),
+  0, '119.1: a rider who owns no club surrenders no object path ...');
+select assert_eq(
+  (select deletion_started_at is not null from profiles
+    where id = '00000000-0000-0000-0000-000000119004'),
+  true, '119.1: ** ... and is STILL stamped. ** The marker is above the club loop, so it exists for every departing rider and not only for the ones who own something. Move the UPDATE inside the loop and this reads false');
+
+-- ---------------------------------------------------------------------------
+-- 119.2  ** A CLUB IS NOT HANDED TO SOMEBODY WHO IS ALSO LEAVING **
+-- ---------------------------------------------------------------------------
+-- This is PD-175. 119.1 has just stamped nobody relevant; the marker below is
+-- the one that matters, and it is set through the same column the other
+-- deletion's transfer would have written.
+update profiles set deletion_started_at = now()
+ where id = '00000000-0000-0000-0000-000000119002';
+
+select assert_eq(
+  (select count(*)::int from private.transfer_owned_clubs('00000000-0000-0000-0000-000000119001')),
+  0, '119.2: the shared club carries no image path, so the transfer surrenders none ...');
+select assert_eq(
+  (select owner_id from clubs where id = '00000000-0000-0000-0000-0001190000d1'),
+  '00000000-0000-0000-0000-000000119003'::uuid,
+  '119.2: ** ... and the club goes to the HEALTHY rider, not the one who is mid-deletion. ** This is the race 032 §3 left open: drop the deletion_started_at conjunct from the successor select and this reads ...119002, whose own deleteUser then cascades the club and every other member''s postcards away');
+select assert_eq(
+  (select role::text from club_members
+    where club_id = '00000000-0000-0000-0000-0001190000d1'
+      and user_id = '00000000-0000-0000-0000-000000119003'),
+  'owner', '119.2: ... and the successor''s membership row says owner, so the club is genuinely theirs rather than orphaned with a stale role');
+
+rollback to savepoint deletion_marker_119;
+
+-- ---------------------------------------------------------------------------
+-- 119.3  ** A STALE MARKER DOES NOT EXCLUDE ANYONE — the recovery story **
+-- ---------------------------------------------------------------------------
+-- 032 named "a new way to be stuck if a run dies half way" as the cost of this
+-- mechanism, and the 15-minute window is the answer. A successful deletion
+-- takes the row with it, so a marker that outlives its run always belongs to a
+-- run that FAILED — and its rider is still here, still using the app, and must
+-- not be silently barred from inheriting a club for ever.
+--
+-- Same fixture, rebuilt: the savepoint above rolled the marker back with
+-- everything else, which is deliberate — 119.3 must not depend on 119.2's
+-- leftovers.
+savepoint stale_marker_119;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000119011', 'pd175_departing2@example.com'),
+  ('00000000-0000-0000-0000-000000119012', 'pd175_staleMarker@example.com'),
+  ('00000000-0000-0000-0000-000000119013', 'pd175_healthy2@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000000119011', 'pd175departing2'),
+      ('00000000-0000-0000-0000-000000119012', 'pd175stalemarker'),
+      ('00000000-0000-0000-0000-000000119013', 'pd175healthy2')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0001190000d2', 'PD175 Stale MC', true,
+   '00000000-0000-0000-0000-000000119011');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0001190000d2', '00000000-0000-0000-0000-000000119012', 'admin'),
+  ('00000000-0000-0000-0000-0001190000d2', '00000000-0000-0000-0000-000000119013', 'member');
+
+-- An hour old: four times the window, so this cannot turn on clock skew.
+update profiles set deletion_started_at = now() - interval '1 hour'
+ where id = '00000000-0000-0000-0000-000000119012';
+
+select assert_eq(
+  (select count(*)::int from private.transfer_owned_clubs('00000000-0000-0000-0000-000000119011')),
+  0, '119.3: no image path to surrender ...');
+select assert_eq(
+  (select owner_id from clubs where id = '00000000-0000-0000-0000-0001190000d2'),
+  '00000000-0000-0000-0000-000000119012'::uuid,
+  '119.3: ** ... and the rider carrying a STALE marker inherits normally. ** Their deletion failed and they are still here; excluding them for ever would be the "new way to be stuck" 032 warned the marker would introduce. Widen the conjunct to `deletion_started_at is null` alone and this reads ...119013');
+
+rollback to savepoint stale_marker_119;
+
+-- ---------------------------------------------------------------------------
+-- 119.4  THE MARKER IS NOT A COLUMN ANY CLIENT CAN SEE OR SET
+-- ---------------------------------------------------------------------------
+-- 025 made every authenticated grant on profiles column-scoped, so a new column
+-- is outside all three lists by construction and 119 writes no revoke. That is
+-- reasoning, and reasoning is what this assertion replaces: a later migration
+-- re-granting profiles at TABLE level would publish a deletion-in-progress flag
+-- to every signed-in rider with nothing else going red.
+select assert_eq(
+  (select bool_or(has_column_privilege(r, 'public.profiles', 'deletion_started_at', p))
+     from unnest(array['authenticated','anon']) r,
+          unnest(array['select','insert','update']) p),
+  false, '119.4: neither client role holds SELECT, INSERT or UPDATE on profiles.deletion_started_at — six combinations, none of them granted');
+
+-- ---------------------------------------------------------------------------
+-- 119.5  NO security definer ACCESSOR PROJECTS THE MARKER
+-- ---------------------------------------------------------------------------
+-- 119.4 covers the grant. This covers the OTHER route to a column a grant does
+-- not reach: an own-row `security definer` RPC runs as the owner, so anything
+-- it projects is readable by whoever may call it. my_onboarding_state() is the
+-- one a rider calls on every page load, and adding a column to its projection
+-- is a one-word change that no grant assertion would notice.
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.prosecdef and p.prosrc like '%deletion_started_at%'),
+  0, '119.5: no security definer function in public names deletion_started_at — the marker has exactly one reader and it is in `private`');
+
+-- ---------------------------------------------------------------------------
+-- 119.6  ** SKIPPING THE LAST CANDIDATE KEEPS THE CLUB, it does not delete it **
+-- ---------------------------------------------------------------------------
+-- The worry this answers: excluding a marked candidate could leave no successor
+-- and destroy a club holding somebody else's postcards — the very harm 119
+-- exists to prevent, reintroduced by its own fix. It does not, and the reason
+-- is that 107 (widened by 117) already changed that arm: with no successor the
+-- club is KEPT ownerless when any postcard in it is third-party. So the club
+-- reaches that arm one deletion earlier, with the postcards intact.
+--
+-- ** This is why 119 adds no last-resort pass preferring a marked candidate. **
+-- Such a pass would hand the club to a rider whose deletion lands moments
+-- later, and then it cascades away — strictly worse than ownerless.
+savepoint marked_last_candidate_119;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000119021', 'pd175_owner3@example.com'),
+  ('00000000-0000-0000-0000-000000119022', 'pd175_onlymarked@example.com'),
+  ('00000000-0000-0000-0000-000000119023', 'pd175_exmember@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000000119021', 'pd175owner3'),
+      ('00000000-0000-0000-0000-000000119022', 'pd175onlymarked'),
+      ('00000000-0000-0000-0000-000000119023', 'pd175exmember')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0001190000d3', 'PD175 Keepme MC', true,
+   '00000000-0000-0000-0000-000000119021');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0001190000d3', '00000000-0000-0000-0000-000000119022', 'member');
+-- By a rider who LEFT, so they hold no membership row: 107's third-party case.
+insert into postcards (id, author_id, club_id, image_path, caption, taken_place_name, taken_location_precision) values
+  ('00000000-0000-0000-0000-0001190000f3', '00000000-0000-0000-0000-000000119023',
+   '00000000-0000-0000-0000-0001190000d3',
+   'postcards/00000000-0000-0000-0000-000000119023/cccccccc-0000-4000-8000-000000119001.jpg',
+   'a third party''s photo in the club with one marked member', 'Zandvoort', 'place');
+
+update profiles set deletion_started_at = now()
+ where id = '00000000-0000-0000-0000-000000119022';
+
+select assert_eq(
+  (select count(*)::int from private.transfer_owned_clubs('00000000-0000-0000-0000-000000119021')),
+  0, '119.6: no image path to surrender ...');
+delete from profiles where id = '00000000-0000-0000-0000-000000119021';
+select assert_eq(
+  (select owner_id is null from clubs where id = '00000000-0000-0000-0000-0001190000d3'),
+  true, '119.6: ** ... and the club is KEPT OWNERLESS rather than handed to the marked rider or deleted. ** 107''s arm, reached one deletion earlier because 119 skipped the only candidate');
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-0001190000f3'),
+  1, '119.6: ** ... and the third party''s postcard is still there, ** which is the whole point of both 107 and 119');
+
+rollback to savepoint marked_last_candidate_119;
+
+-- ---------------------------------------------------------------------------
+-- 119.7  THE DELETE ARM IS REACHED UNCHANGED when there is nothing to preserve
+-- ---------------------------------------------------------------------------
+-- The other half of 119.6: no third-party postcard, so 032's delete arm runs
+-- exactly as before. 119 changes which deletion reaches it, never what it does.
+savepoint marked_last_candidate_delete_119;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000119031', 'pd175_owner4@example.com'),
+  ('00000000-0000-0000-0000-000000119032', 'pd175_onlymarked2@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000000119031', 'pd175owner4'),
+      ('00000000-0000-0000-0000-000000119032', 'pd175onlymarked2')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0001190000d4', 'PD175 Deleteme MC', true,
+   '00000000-0000-0000-0000-000000119031');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0001190000d4', '00000000-0000-0000-0000-000000119032', 'member');
+-- One private ride and one public one, so 032 §2's narrowing is re-asserted
+-- through this path rather than assumed to still hold.
+insert into rides (id, organizer_id, club_id, title, departure_at, meeting_point, is_public) values
+  ('00000000-0000-0000-0000-0001190000e1', '00000000-0000-0000-0000-000000119031',
+   '00000000-0000-0000-0000-0001190000d4', 'PD175 private ride',
+   timestamptz '2027-01-01 09:00:00+00', 'Zandvoort', false),
+  ('00000000-0000-0000-0000-0001190000e2', '00000000-0000-0000-0000-000000119031',
+   '00000000-0000-0000-0000-0001190000d4', 'PD175 public ride',
+   timestamptz '2027-01-01 09:00:00+00', 'Zandvoort', true);
+
+update profiles set deletion_started_at = now()
+ where id = '00000000-0000-0000-0000-000000119032';
+
+select assert_eq(
+  (select count(*)::int from private.transfer_owned_clubs('00000000-0000-0000-0000-000000119031')),
+  0, '119.7: no image path to surrender ...');
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001190000d4'),
+  0, '119.7: ** ... and with nothing third-party to preserve the club is DELETED, ** 032''s arm unchanged — 119 changes which deletion reaches it, never what it does');
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-0001190000e1'),
+  0, '119.7: ... its PRIVATE ride goes with it, 032 §2 ...');
+select assert_eq(
+  (select club_id is null from rides where id = '00000000-0000-0000-0000-0001190000e2'),
+  true, '119.7: ** ... and its PUBLIC ride SURVIVES with club_id NULL. ** 032 §2 narrowed this and 119 must not widen it back');
+
+rollback to savepoint marked_last_candidate_delete_119;
+
+
+
 rollback;
 
 \echo ''

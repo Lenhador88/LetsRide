@@ -417,7 +417,12 @@ describe('the rating block renders as five skimmable scores', () => {
     for (const file of ['CLAUDE.md', 'docs/reference/known-issues.md']) {
       const lines = readFileSync(join(repoRoot, file), 'utf8').split('\n')
       const scored = lines.filter((l) => SCORE.test(l))
-      expect(scored.length, `${file} has no rating blocks — the scan above passed vacuously`).toBeGreaterThanOrEqual(15)
+      // The floor was 15 while `known-issues.md` held three blocks. PD-175 was
+      // FIXED (119), and a closed issue leaves with its ratings — so the floor
+      // had to move or a real fix would read as a broken test. 10 is two
+      // complete blocks: still enough to catch wholesale deletion, which is all
+      // this floor is for, while the per-label checks below do the real work.
+      expect(scored.length, `${file} has no rating blocks — the scan above passed vacuously`).toBeGreaterThanOrEqual(10)
 
       for (const label of LABELS) {
         const seen = scored.filter((l) => l.includes(`**${label}**`)).length
