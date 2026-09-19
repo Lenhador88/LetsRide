@@ -67,6 +67,20 @@ That transitive step is the single most dangerous thing in this proposal.
   - **`terms_version`** on `profiles`, because `terms_accepted_at` records *when* consent was
     given and nothing records *to what*, and a consent record that cannot name its terms is weak
     evidence — which is `012`'s own standard applied to `012`'s own column.
+  - **A deletion-in-progress marker on `profiles`** (PD-175), stamped by the transfer function
+    before it picks anybody, and read by the successor select so a club is never handed to a
+    rider whose own deletion is already under way. `032` §3 states that race precisely and
+    leaves it open; this closes it in SQL, with **no change to the Edge Function**. The column is
+    writable and readable by nobody a client can be, and it is read in exactly one place — see
+    `design.md` §D12 for why a marker that gates anything else would be a worse design.
+  - **A consent retention table and a `before delete` trigger on `profiles`** (PD-458), writing
+    one row per completed deletion carrying the terms version and a day-precision acceptance
+    date and **no subject identifier at all** — not a uuid and not a hash of one. RLS on, no
+    policy, and **no credential in the system able to read it, `service_role` included**: that
+    credential bypasses RLS, so the refusal rests on the absent table grant. Whether that needs
+    an explicit revoke depends on where the table lives, and the migration says which rule it is
+    under rather than inheriting a default. The Edge Function is untouched here too, which
+    PD-458 requires: its re-authentication proof is already verified and must not be disturbed.
 - **A public `/legal/account-deletion` page** for Play's web-accessible requirement. It sits
   under the existing public prefix, holds no data, needs no session and adds **no `anon`
   grant** — decision #1 is untouched.
@@ -94,11 +108,15 @@ retention rules this change states in advance so the table cannot be created wit
   the empty-versus-forbidden distinction.
 - `deletion-privileged-execution`: the Edge Function as a security boundary. Owns the
   service-role blast radius, idempotency, partial failure, and the rule that the function
-  deletes the caller and only the caller.
+  deletes the caller and only the caller. **Also owns what two deletions running at once may do
+  to each other**, which is the one part of it the function itself cannot enforce — the rule is
+  in the database and the function is untouched.
 - `deletion-evidence-and-retention`: the tension between GDPR Art. 17 erasure and keeping the
   consent record `012` calls evidence. Owns retention windows, moderation reports, username
   release, and the rule that any future table holding personal data states its window at
-  creation.
+  creation. **Settled 2026-09-18, and against this capability's own earlier recommendation**: a
+  de-identified record is kept, and it carries no subject identifier — not a uuid and **not a
+  hash of one**, because the id space is enumerable from `auth.users`.
 
 ### Modified Capabilities
 
@@ -164,6 +182,21 @@ indexes, one column, and **possibly** a relaxed CHECK pair (`016`). **No SELECT 
 — that is a deliberate property, and it is what keeps this change from touching the visibility
 layer at all.
 
+**Two further migrations, added 2026-09-18 and numbered nowhere in this document.** The marker
+column plus a `create or replace` on `private.transfer_owned_clubs` (PD-175), and the consent
+retention table plus its `before delete` trigger (PD-458). **Take both numbers from
+`list_migrations` against BOTH projects and from `ls supabase/migrations/` at the moment of
+writing** — `docs/HANDOFF.md` records that the file count and the highest applied number
+disagree, and a number free in the repository can already be taken in a project by a row with no
+file behind it. Still no SELECT policy change: the marker is enforced by `025`'s column
+allowlist, and the retention table has no policy at all. Both are additive in `CLAUDE.md`
+§Supabase Rules' sequencing sense — no shipped bundle writes, reads or can observe either object — so
+neither is ordered against a deploy.
+
+**The flow they correct is already in production.** PD-102 completed 2026-08-19, so these are
+repairs to a live irreversible path rather than groundwork, and the race in particular is a
+defect that can fire rather than a note against future work.
+
 **The `016` relaxation is probably not needed at all, and the delta says so rather than letting
 a migration be written for it.** `clubs_avatar_path_owned` is
 `avatar_path is null or avatar_path like ('club-avatars/' || owner_id::text || '/%')`, and a
@@ -187,6 +220,13 @@ today. It brings a deploy step CI does not have and a secret Vercel does not hol
 `openspec/config.yaml`. The cascade itself is testable in the RLS suite — delete a fixture's
 `auth.users` row inside a savepoint and assert what survives — which is better than it sounds,
 because the cascade is the part of this change most likely to be wrong.
+
+**One thing the RLS suite structurally cannot cover, and it is the race.** The suite runs inside
+one psql transaction, so its idempotency assertion proves nothing about two concurrent HTTP
+invocations. The suite can assert the marker column's grants, the freshness predicate's presence
+in the successor select's `where` clause, and every single-session branch of the function; the
+interleaving needs two sessions and its own harness, and "the suite is green" is not evidence for
+it. Recorded here rather than discovered at review.
 
 **Sequencing — this constraint is now satisfied and the note is kept as the reason.** This
 change must not ship before `023` is applied. **`023` was applied on 2026-08-06** (the consent

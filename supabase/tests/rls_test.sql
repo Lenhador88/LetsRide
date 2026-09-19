@@ -3966,10 +3966,17 @@ select assert_eq(
 -- the function's own `current_user <> 'authenticated'` guard — so its presence
 -- is all the suite can honestly assert. It is defence in depth against a future
 -- re-grant, and this count is what notices if it is ever dropped as dead code.
+--
+-- ** 120 adds the THIRD, and it is a BEFORE DELETE one, which is why the count
+-- moved rather than the sentence. ** `retain_consent_record` copies the terms
+-- version and the day of acceptance into `private.consent_records` before the
+-- cascade from `auth.users` takes the row. It is the only DELETE trigger this
+-- table has ever carried, so a fourth appearing here is a new writer on the
+-- erasure path and wants reading, not re-counting.
 select assert_eq(
   (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
     where c.relname = 'profiles' and not t.tgisinternal),
-  2, 'profiles carries the 003/012 UPDATE trigger and 023''s INSERT one');
+  3, 'profiles carries the 003/012 UPDATE trigger, 023''s INSERT one and 120''s BEFORE DELETE one');
 
 -- The invariant every other section ends on. 023 changes no policy's role
 -- targeting and grants anon nothing.
@@ -37450,6 +37457,238 @@ select assert_eq(
 
 rollback to savepoint marked_last_candidate_delete_119;
 
+-- ===========================================================================
+-- 120. CONSENT OUTLIVES THE RIDER (PD-458)
+-- ===========================================================================
+-- Deleting an account cascades profiles away, and with it terms_accepted_at and
+-- 030's terms_version — the evidence 012 spent a migration arguing for, and
+-- which 023 actively relies on. 120 keeps the version and the DAY of acceptance
+-- in private.consent_records, and keeps nothing that points at a person.
+--
+-- The writer is a BEFORE DELETE trigger on public.profiles rather than a step in
+-- the Edge Function, so the cascade from auth.users carries it and no deletion
+-- path can bypass it — 042 revoked the DELETE grant, so nothing but that cascade
+-- and the table owner reaches the row at all.
+--
+-- ** VERIFIED BOTH WAYS — each revert was RUN, not predicted: **
+--   * drop the `terms_accepted_at is not null` guard ..... 120.2 reads 2
+--   * add a `created_at timestamptz default now()` ........ 120.4 names it
+--   * drop the trigger ... goes red at the 023 section's profiles trigger
+--     COUNT, thousands of lines earlier, and the suite stops there — so 120.1's
+--     own bite is not what that revert demonstrates. Recorded this way round
+--     because the count reading 2 looks like an unrelated regression unless the
+--     reader knows 120 is what moved it to 3.
+--   * ** return NULL instead of OLD ** ... takes TWO runs to demonstrate, and
+--     the second is the one worth having. Blanket, it goes red at 029's
+--     counterfactual (line ~4642) — an earlier section whose own delete the
+--     trigger has just cancelled — and never reaches here. Scoped to 120.5's
+--     fixture id alone, ** 120.5 reads 1 **: auth.users lost its row, profiles
+--     kept its own, and nothing raised. Both runs were made.
+-- ===========================================================================
+savepoint consent_records_120;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000120001', 'pd458_consented@example.com'),
+  ('00000000-0000-0000-0000-000000120002', 'pd458_neveraccepted@example.com');
+reset role;
+
+update profiles
+   set username = 'pd458consented', location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-03-04 22:45:17+00',
+       terms_version           = '0-placeholder'
+ where id = '00000000-0000-0000-0000-000000120001';
+
+-- The rider who never accepted: 003 creates the profile row at signup, so this
+-- state is reachable for anyone who abandoned the wizard at the consent step.
+update profiles set terms_accepted_at = null, terms_version = null
+ where id = '00000000-0000-0000-0000-000000120002';
+
+select assert_eq(
+  (select count(*)::int from private.consent_records),
+  0, '120.0: the retention table is empty before anything is deleted, so every count below is this section''s own');
+
+-- ---------------------------------------------------------------------------
+-- 120.1  ** THE RECORD SURVIVES THE RIDER **
+-- ---------------------------------------------------------------------------
+delete from profiles where id = '00000000-0000-0000-0000-000000120001';
+select assert_eq(
+  (select count(*)::int from profiles where id = '00000000-0000-0000-0000-000000120001'),
+  0, '120.1: the rider is gone ...');
+select assert_eq(
+  (select count(*)::int from private.consent_records
+    where terms_version = '0-placeholder' and accepted_on = date '2026-03-04'),
+  1, '120.1: ** ... and exactly one record survives, carrying the version and the DAY it was accepted. ** Drop the trigger and this reads 0');
+
+-- ---------------------------------------------------------------------------
+-- 120.2  A RIDER WHO NEVER ACCEPTED LEAVES NOTHING BEHIND
+-- ---------------------------------------------------------------------------
+-- There was no consent, so a row would assert something that never happened —
+-- and an "unknown" row is a fabricated evidence record, which is 030's own
+-- ruling about backfilling a version, applied one level up.
+delete from profiles where id = '00000000-0000-0000-0000-000000120002';
+select assert_eq(
+  (select count(*)::int from private.consent_records),
+  1, '120.2: deleting a rider who never accepted the terms writes NOTHING — still the one row from 120.1. Drop the `terms_accepted_at is not null` guard and this reads 2');
+
+-- ---------------------------------------------------------------------------
+-- 120.3  private.consent_records IS UNREACHABLE, by schema and by grant
+-- ---------------------------------------------------------------------------
+-- 117.8's shape, and the two client roles fail for a different reason than
+-- service_role does: for them the schema is the barrier and PostgREST publishes
+-- public alone; for service_role — which holds USAGE on private and BYPASSES
+-- RLS — the barrier is the absent TABLE grant and nothing else.
+select assert_eq(
+  (select bool_or(has_table_privilege(r, 'private.consent_records', p))
+     from unnest(array['authenticated','anon','service_role']) r,
+          unnest(array['select','insert','update','delete']) p),
+  false, '120.3: no client role and not service_role holds any privilege on private.consent_records — twelve combinations, none of them granted');
+select assert_eq(
+  (select relrowsecurity from pg_class where oid = 'private.consent_records'::regclass),
+  true, '120.3: ... and RLS is on regardless, which CLAUDE.md asks of every new table — belt and braces, since service_role bypasses it and the client roles never reach the schema');
+
+-- ---------------------------------------------------------------------------
+-- 120.4  ** THE COLUMN SET IS THE POINT, so it is pinned rather than described **
+-- ---------------------------------------------------------------------------
+-- The header, the table comment and PD-458 all say the same thing: this table
+-- must hold no subject id, no hash of one, and no timestamp of the deletion
+-- itself. ** The trap is created_at. ** A `default now()` under a name that
+-- reads like ordinary bookkeeping records the deletion moment at full
+-- precision, and one row per deletion stamped to the microsecond is a join away
+-- from auth.users at these volumes — which re-identifies the very person the
+-- day-precision accepted_on exists to protect.
+--
+-- Pinned as an exact set rather than a count: a count passes when somebody
+-- swaps one column for another.
+select assert_eq(
+  (select string_agg(attname, ',' order by attname) from pg_attribute
+    where attrelid = 'private.consent_records'::regclass and attnum > 0 and not attisdropped),
+  'accepted_on,id,terms_version',
+  '120.4: private.consent_records holds exactly id, terms_version and accepted_on — no subject id, no hash of one, and NO created_at, which is the one that looks like bookkeeping and is a re-identification path');
+select assert_eq(
+  (select atttypid::regtype::text from pg_attribute
+    where attrelid = 'private.consent_records'::regclass and attname = 'accepted_on'),
+  'date', '120.4: ... and accepted_on is a DATE, not a timestamptz. Widening it to full precision restores the correlation with auth.users that day precision removes');
+
+-- ---------------------------------------------------------------------------
+-- 120.5  ** THE CASCADE PATH, which is the only one production uses **
+-- ---------------------------------------------------------------------------
+-- 120.1 deletes the profile row directly, which the table owner can do and no
+-- client can (042). The REAL path is delete-account calling deleteUser, so the
+-- row goes through the auth.users cascade — a different mechanism, and the one
+-- the whole design rests on.
+--
+-- ** The profile row is checked GONE, and that is not belt and braces. ** A
+-- BEFORE DELETE trigger that returns NULL instead of OLD silently CANCELS the
+-- delete: auth.users loses its row, profiles keeps its own, nothing raises, and
+-- the rider is told the deletion succeeded — 012 §KNOWN LIMIT's orphan state,
+-- reached through the very mechanism 120 introduces. An assertion that only
+-- counted the retention row would pass in exactly that state.
+savepoint consent_cascade_120;
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000120003', 'pd458_cascade@example.com');
+reset role;
+
+update profiles
+   set username = 'pd458cascade', location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-05-09 06:12:44+00',
+       terms_version           = '0-placeholder'
+ where id = '00000000-0000-0000-0000-000000120003';
+
+-- As the suite's own role, not auth_admin: the harness grants auth_admin INSERT
+-- on auth.users and not DELETE, and the role that performs the delete is
+-- irrelevant to what is being asserted — what matters is that the row goes
+-- through the FK cascade rather than through a direct delete on profiles.
+delete from auth.users where id = '00000000-0000-0000-0000-000000120003';
+
+select assert_eq(
+  (select count(*)::int from profiles where id = '00000000-0000-0000-0000-000000120003'),
+  0, '120.5: ** the profile row is GONE, through the auth.users cascade. ** Return NULL instead of OLD from the trigger and this reads 1 while every other assertion in this section still passes — the auth row deleted, the profile orphaned, and nothing raised');
+select assert_eq(
+  (select count(*)::int from private.consent_records where accepted_on = date '2026-05-09'),
+  1, '120.5: ... and the record was written by the CASCADE, not by a direct delete — which is the path delete-account actually takes');
+
+rollback to savepoint consent_cascade_120;
+
+-- ---------------------------------------------------------------------------
+-- 120.6  A NULL terms_version STILL WRITES A ROW — 030's meaning of NULL
+-- ---------------------------------------------------------------------------
+-- Different from 120.2 and the difference is the point. A NULL
+-- `terms_accepted_at` means no consent happened. A NULL `terms_version` means
+-- the consent happened and predates the column — 030 refused to backfill one
+-- precisely so that NULL would keep saying "genuinely unknown". Dropping the
+-- row here would invent a second meaning for absence.
+savepoint consent_null_version_120;
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000120004', 'pd458_nullversion@example.com');
+reset role;
+
+update profiles
+   set username = 'pd458nullver', location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-02-02 11:11:11+00',
+       terms_version           = null
+ where id = '00000000-0000-0000-0000-000000120004';
+
+delete from auth.users where id = '00000000-0000-0000-0000-000000120004';
+select assert_eq(
+  (select count(*)::int from private.consent_records
+    where accepted_on = date '2026-02-02' and terms_version is null),
+  1, '120.6: a consent with no version recorded still leaves a row, version NULL — 030''s four un-backfilled rows keep meaning "the version is genuinely unknown" rather than "no consent"');
+
+-- A second deletion adds nothing, and the reason is the EVENT rather than a
+-- dedupe key: there is no subject id to key on, and after the first delete
+-- there is no row left to delete.
+delete from auth.users where id = '00000000-0000-0000-0000-000000120004';
+select assert_eq(
+  (select count(*)::int from private.consent_records
+    where accepted_on = date '2026-02-02'),
+  1, '120.6: ... and deleting the same rider again writes no second row — the trigger fires on a DELETE and there is no row left to delete, which is the whole argument since there is no key to dedupe on');
+
+rollback to savepoint consent_null_version_120;
+
+-- ---------------------------------------------------------------------------
+-- 120.7  ** TRUNCATE IS THE ONE REAL BYPASS, and what keeps it out of reach **
+-- ---------------------------------------------------------------------------
+-- A TRUNCATE does not fire row-level delete triggers, so a rider who could
+-- truncate `profiles` would erase every consent record that was never written.
+-- `047` revoked TRUNCATE and `042` revoked DELETE; re-asserted here rather than
+-- cited, because this retention is the thing that now depends on them.
+select assert_eq(
+  (select bool_or(has_table_privilege(r, 'public.profiles', p))
+     from unnest(array['authenticated','anon']) r,
+          unnest(array['truncate','delete']) p),
+  false, '120.7: no client role holds TRUNCATE or DELETE on public.profiles — 047 and 042 — so the cascade this trigger hangs off is the only route to a profiles delete');
+
+-- ---------------------------------------------------------------------------
+-- 120.8  THE SCHEMA IS THE BARRIER FOR CLIENTS, THE GRANT FOR service_role
+-- ---------------------------------------------------------------------------
+-- 120.3 asserts the table grant. This asserts the other half, and the shape is
+-- counter-intuitive enough that 117 measured it rather than reasoning it:
+-- service_role DOES hold USAGE on `private`, which is exactly why the absent
+-- table grant has to be the thing doing the work.
+select assert_eq(
+  (select has_schema_privilege('anon', 'private', 'usage')
+       or has_schema_privilege('authenticated', 'private', 'usage')),
+  false, '120.8: neither client role holds USAGE on the private schema, so they cannot name the table at all');
+select assert_eq(
+  has_schema_privilege('service_role', 'private', 'usage'),
+  true, '120.8: ** service_role DOES hold USAGE on private ** — so the refusal in 120.3 rests on the absent TABLE grant, never on the schema and never on RLS, which it bypasses');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'private' and tablename = 'consent_records'),
+  0, '120.8: ... and the table carries no policy at all, which is deliberate: a policy would be the thing that granted reach');
+
+rollback to savepoint consent_records_120;
 
 
 rollback;

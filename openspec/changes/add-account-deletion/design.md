@@ -261,6 +261,9 @@ it does not cleanly return.
   images render broken.
 - **Client disconnects mid-call** → the function completes server-side. The client's next start
   finds no session, which is the correct outcome, reached by an unnerving route.
+- **Two riders deleting at the same moment** is not a state of one invocation and is not settled
+  here. `032` §3 states the race; **D12 closes it** with a deletion-in-progress marker, and this
+  bullet exists so a reader of D7 alone does not conclude the failure list is complete.
 - **A still-valid access token on another device** keeps working until it expires — up to an
   hour by default. It can read; it cannot write, because every INSERT's FK to `profiles` now
   fails `23503`, and with `023` applied `private.may_participate()` returns false first. This is
@@ -313,28 +316,99 @@ Confirmation being on is what keeps it at "the same person, with their own addre
 "anyone, with any address" — so this is one more reason not to turn it off on the project real
 riders use, whatever DEV ends up doing.
 
-### D10 — The consent record: erasure wins, with one narrow retention
+### D10 — The consent record: erasure wins, and what survives names nobody
 
 `012` argues that `terms_accepted_at` is evidence and that evidence a party can rewrite is not
 evidence. GDPR Art. 17 says the subject may demand erasure. Art. 17(3)(e) preserves data needed
 for the establishment or defence of legal claims. Both are real and they point opposite ways.
 
-The recommendation, for a pre-launch app with four accounts and no paid tier:
+**DECIDED by the product owner 2026-09-18 (PD-458): keep a de-identified record.** The app gates
+content writes on the acceptance (`023`), so it is an assertion the product actively relies on,
+and today the deletion erases the only proof of it. The shape:
 
-- **Erase the `profiles` row, consent stamp included**, with everything else.
-- **Retain one row in an append-only `consent_records` table** holding a one-way hash of the
-  subject's uuid (salted with a secret held only by the Edge Function), the terms version, the
-  server timestamp, and nothing else. No email, no username, no IP. It cannot identify anyone by
-  inspection; it can confirm or refute a specific claim if the claimant supplies their own uuid.
-  Not readable by `authenticated` at all — no policy, no grant.
-- **Add `profiles.terms_version`**, because `terms_accepted_at` records *when* and nothing
-  records *what*, and the document at `/legal/terms` changes without leaving a trace. A consent
-  record that cannot name its terms is exactly the weak evidence `012` set out to prevent, and
-  `012` did not notice it about its own column.
+- **Erase the `profiles` row, consent stamp included**, with everything else. Unchanged.
+- **Retain one row per completed deletion in a new append-only table** holding the terms version
+  and a **day-precision** acceptance date, and **no subject identifier of any kind**. Not a
+  uuid, not an email, not a username, not a device id, not free text, and **not a hash**.
+- **`profiles.terms_version`** is the half that had to land first and did (`030`), because it
+  cannot be reconstructed later.
 
-This is a legal position, not an engineering one. Q4 is the product owner's, and the default
-above lets the build proceed either way: without the retention table the flow is strictly
-simpler, so adopting "retain nothing" later removes work rather than adding it.
+**The salted hash of the subject's uuid is REFUSED, and the reason is the important part.** The
+id space is enumerable from `auth.users`: anyone holding the table and the salt — or the table
+and enough compute against a small id space — is a lookup table away from turning the hash back
+into the id. A hash of an enumerable identifier is the identifier. So the record either carries
+nothing, or it carries a coarse bucket that cannot single anyone out; there is no third option
+that is honestly de-identified. This closes Q4 against D10's own earlier recommendation.
+
+**Why a `before delete` row trigger on `public.profiles` rather than a step in the Edge
+Function.** PD-458 requires the function untouched — its re-authentication proof is verified
+(2.6 cases 6–8) and must not be disturbed — and a trigger is stronger than the alternatives on
+its own merits:
+
+- It fires on the cascade. Measured on DEV 2026-09-18, Postgres 17: a parent row deleted through
+  `ON DELETE CASCADE` performs a real `DELETE` on the child and **fires the child's row-level
+  triggers** — two parent rows deleted, two trigger fires, including the one whose payload column
+  was NULL. So `auth.users` → `profiles` reaches it and no deletion path can bypass it by
+  forgetting a step.
+- It is strictly stronger than an `on delete set null` FK from a retained row to `profiles`,
+  which PD-458 lists as the other option: with the FK there is a window — the whole life of the
+  account — in which the subject id **is** in the retention table. With the trigger there is
+  never a moment when it is there at all.
+- The row and the erasure are one transaction. `before` rather than `after` so that a failure to
+  record the consent prevents the erasure rather than following it.
+
+**The trigger function MUST `return old`, and this is the single most dangerous line in the
+change.** A `before delete` row trigger that returns NULL *cancels* the delete. Measured on DEV
+2026-09-18 on scratch tables: with a `before delete` trigger returning NULL on the child, a
+cascading delete of the parent leaves **the parent gone and the child row alive, and raises
+nothing**. Applied to `profiles` that is `012` §KNOWN LIMIT's orphan state reached silently — an
+`auth.users` row deleted, its `profiles` row surviving, the Edge Function answering
+`{"deleted": true}`. Every early-return path in the function body has to return `old`, and the
+cascade assertion has to check that the `profiles` row is actually gone rather than checking only
+that the retention row appeared.
+
+**The consequence, stated rather than buried: this record can no longer confirm or refute one
+named claimant's specific claim.** That was the hash's entire purpose. What survives is that *a*
+consent to version X existed on day D. The product owner took that trade deliberately, and it is
+cheap to reverse: adding a subject column later is one migration, and the rows already written
+simply do not have one.
+
+**Whether the count is itself identifying — settled here rather than shipped by accident.** One
+timestamped row per deletion, plus `auth.users`, is a re-identification path at four accounts:
+match a retention row's minute to a departure and the row is a person again. Two answers, both
+taken:
+
+- **Coarsen the retained acceptance time to the day.** A day bucket holding one deletion is still
+  a narrow bracket at today's volumes, which is why the second answer matters more than this one.
+- **Retain no deletion timestamp at all, and no `created_at`.** That column is the trap: a
+  `default now()` records the deletion moment at full precision under a name that reads like
+  bookkeeping, undoing the first answer while looking like housekeeping. A key is permitted only
+  if it carries no order — a random uuid is fine, a `bigserial` is another deletion clock.
+
+*A finer bucket was considered and rejected.* Hour precision reads as more useful evidence and is
+a materially better correlation key against a departure; the evidence question a retained row can
+actually answer is "was there consent to version X around then", which a day answers as well as
+an hour. Month was considered and is worse in the other direction: it weakens the record without
+removing the ordering oracle below, which is what actually does the work.
+
+**`service_role` must not be able to read the table either, and the reason is the ordering
+oracle.** `xmin` and `ctid` are system columns on every table and expose physical insertion
+order, so anyone holding SELECT can order the rows and bracket each against any other transaction
+in the database — and no coarsening of a stored date survives that. The row count is the one
+disclosure accepted: how many accounts have been deleted is not personal data about any of them.
+
+`CLAUDE.md` §Supabase Rules asks a new table to decide this explicitly, and where the table lives
+decides how. **In `private` it is outside that rule rather than an exception to it**: Supabase
+sets its default privileges on `public`, so a table created in `private` never receives the
+`service_role` grants there would otherwise be something to revoke; `anon` and `authenticated`
+hold no USAGE on the schema; PostgREST publishes `public` alone. `service_role` does hold USAGE
+and does bypass RLS, so **the absent table grant is what stops it** — not RLS and not a policy.
+Enable RLS in the same migration regardless, as belt and braces rather than the barrier, because
+`CLAUDE.md` asks it of every new table without exception. **In `public` the same end state needs
+an explicit revoke**, which would make it the fourth revoked table and add one INFO advisor.
+Either placement is defensible; what is not is leaving the `public` default in place and calling
+the rows de-identified. Re-run `CLAUDE.md`'s own kept/revoked query after applying and record the
+counts rather than trusting a number written here.
 
 ### D11 — Empty and forbidden must stop looking identical
 
@@ -352,6 +426,119 @@ Four screens need the treatment: `/rides/detail`, `/postcards/detail`, a byline 
 profile, and the deck when a card disappears between fetch and swipe. The deck matters more than
 it looks: `CLAUDE.md` records that it only moves forward, so a card that vanishes must be skipped
 rather than leaving a blank the rider cannot get back to.
+
+### D12 — A deletion-in-progress marker closes `032` §3's race, entirely in SQL
+
+`032` §3 states the race precisely and deliberately leaves it open: B's transfer RPC commits (B
+owns nothing), A's transfer RPC then picks B as successor for club C, B's Edge Function reaches
+`deleteUser(B)`, and C cascades away with every postcard every other member posted into it — the
+exact harm the transfer function exists to prevent, reached through it. `032` names two
+candidate mechanisms and closes neither.
+
+**Taken: a deletion-in-progress marker on `profiles`, with no change to the Edge Function.**
+PD-175's own comment assumed the other mechanism — a serialising advisory lock held across the
+whole invocation — and said in the same breath that it does not need an answer to proceed. The
+marker wins on the objection that comment raised against it. That objection was *"a rider stuck
+undeletable with a recovery story nobody has written"*, and it describes a marker that **gates
+the deletion**. This one does not: nothing anywhere reads the marker to refuse a deletion, a
+sign-in, a write or a read. It is consulted in exactly one place — choosing a club's successor —
+so the worst a stuck marker can do is what §"The staleness window" below bounds.
+
+The advisory lock loses on two counts of its own. It serialises *every* deletion in the system
+behind one lock to fix a collision between two riders who share a club, and a lock held across an
+HTTP invocation leaves no trace a later session can inspect when a run dies holding it.
+
+**The mechanism.**
+
+1. A new `public.profiles` column, working name `deletion_started_at timestamptz`, writable by
+   nobody a client can be.
+2. `private.transfer_owned_clubs(departing)` stamps it for the departing rider **at the very top
+   of its body, before the club loop**. The transfer RPC is the deletion's first database call —
+   the Edge Function's order is `getUser` → `signInWithPassword` → `transfer_owned_clubs_for_deletion`
+   → Storage sweep → `deleteUser` — so this is the earliest moment the marker can exist.
+3. The successor `select` excludes any candidate whose marker is set and still fresh.
+
+**Why the marker has to be a column on `profiles` and not a row in a `private` table.** Because
+the stamp and the successor select must contend for the *same row lock*. `029`'s
+`for update of p` is what makes that true, and this is where it stops being decoration.
+
+**`032` §3 says the lock did not close the race, and this is exactly what changes that.** The
+lock's reach is one transaction, which was useless when nothing inside the transaction recorded
+an intention that outlived it. Now something does:
+
+- **A's select reaches B's row while B's stamp is uncommitted.** A blocks on B's row lock until
+  B's transfer RPC commits, then re-reads the updated row, finds the marker set, and skips B.
+  Under `read committed` a locked row that has been updated concurrently is re-checked against
+  the query's **`where` clause** — so the freshness test must live in `where`, never in
+  `order by`. `order by` is not re-evaluated after the lock, and a marker expressed as a sort key
+  would be silently ignored in precisely the interleaving it exists for. Verified on DEV
+  2026-09-18 against the real tables, with the column added inside a rolled-back transaction: the
+  plan is `Limit → LockRows → Sort → Hash Join` with
+  `Filter: ((deletion_started_at IS NULL) OR (deletion_started_at < (now() - '00:15:00')))` on the
+  `profiles` scan — below `LockRows`, in the qual, which is what the re-check re-evaluates.
+- **B's stamp reaches B's row while A holds it.** B blocks until A's transfer RPC commits. B's
+  club loop therefore cannot run until after A's transfer is visible, so B sees club C already
+  handed to it and hands it on. **The stamp's position at the top of the body is what buys this**
+  — it is the serialisation point, and a stamp written after the loop would not be one.
+
+**The reverse interleaving, and why it is only harmless because of the marker.** A's transfer
+commits first, handing C to B; B's transfer then runs, finds it owns C, and transfers it on. The
+usual reading is "no harm, B's own transfer cleans up". That is true only if B's transfer does
+not hand C straight back to A — and A is sitting in C's roster, demoted to `member` by `032` §1,
+about to be deleted. Without the marker B picks A and the cascade takes C anyway. With it, A is
+marked and skipped. The marker is load-bearing in both directions, not just the one `032` names.
+
+**Excluding the last candidate is safe, and the reason is a later migration rather than anything
+in this decision.** The obvious worry is that exclusion trades the race for a new route to the
+same harm: a club whose only remaining candidate is marked would reach the no-successor branch
+and be *deleted*, destroying the third-party postcards the transfer exists to protect. **`107`
+already removed that branch's teeth, and `117` widened it**: when no successor remains, the club
+is **kept with `owner_id NULL`** if any postcard in it was authored by someone else, and deleted
+only when there is nothing third-party to lose. So a skipped last candidate reaches the ownerless
+arm one deletion earlier than it otherwise would, with the postcards intact — which is that arm's
+purpose.
+
+*A last-resort pass that preferred a marked candidate over the no-successor branch was
+considered and is rejected.* It was drafted against the pre-`107` shape, where the branch
+deleted. Against the shape that exists it is strictly worse: an ownerless club definitely
+survives, while a club handed to a marked rider cascades away the moment that rider's deletion
+completes — which is the ordinary case, since the marker means a deletion is in flight.
+
+**The residual that survives, and it is `107`'s rather than this decision's:** the no-successor
+branch keys on **postcards alone**, so a club whose only third-party content is a `club_threads`
+row still takes the delete branch. This decision moves one club into that branch one deletion
+earlier; it does not widen it. Recorded here because it is the thing a reader will look for.
+
+**The deadlock this admits, named rather than found later.** Two riders who each own a club
+*and* are members of each other's can now deadlock: each holds the lock on its own `profiles`
+row and waits for the other's. Postgres detects it, aborts one, the transfer RPC fails, the Edge
+Function answers a retryable error, and the retry finds a stamped, skippable row — nothing lost,
+nothing half-done, because `032` §1 made the transfer idempotent for exactly this class.
+`for update of p skip locked` would remove the deadlock and replace it with a silently wrong
+answer: a candidate momentarily locked for an unrelated reason — a rider editing their bio —
+would be skipped, and a club whose only remaining member was that rider would take the ownerless
+or delete arm when a transfer was available. A loud retryable error beats a quiet wrong outcome
+in a function that exists to protect other riders' content.
+
+**The staleness window is the recovery story, and it is 15 minutes.** Nothing clears the marker.
+A successful deletion takes the row with it, so **a marker that outlives its run always means the
+run failed** — and its rider is still here, still signed in, and would otherwise be skipped as a
+club successor for ever, silently. That is the cost `032` named for this mechanism and the window
+is the answer to it. A deletion completes inside one HTTP invocation: the work between the stamp
+and `deleteUser` is a Storage list-and-remove sweep, seconds for an ordinary rider and bounded for
+the largest, so 15 minutes is generous by orders of magnitude while keeping an abandoned marker
+from outliving the hour.
+
+**The residual, stated rather than implied.** A rider whose deletion failed and who retries more
+than fifteen minutes later is racing again, exactly as they were before this decision. The window
+trades a permanent silent exclusion for a reopened window on one retry, and that is the right way
+round: the first is invisible and forever, the second is the status quo ante for one rider for one
+call.
+
+**This is not testable by the RLS suite and the tasks say so.** PD-175's own comment makes the
+point: the suite's idempotency assertion runs both calls inside one psql transaction, so it
+proves nothing about two. The suite can assert the column's grants, the predicate's presence and
+the single-session branches; the interleaving needs two sessions and its own harness.
 
 ## Risks / Trade-offs
 
@@ -380,6 +567,25 @@ rather than leaving a blank the rider cannot get back to.
 - **First Edge Function in the repo** brings a deploy path CI does not have. → One task for it,
   and a note that a function deployed by hand and never redeployed is the same class of drift as
   an unapplied migration.
+- **A stale marker makes a live rider ineligible as a club successor** (D12). → Bounded two ways:
+  the 15-minute window, and `107`/`117`'s no-successor arm, which keeps a club ownerless rather
+  than deleting it when third-party postcards remain. Without that arm this would not be
+  cosmetic — it would be a second route to the destroyed postcards the transfer exists to
+  prevent — so the suite must assert the ownerless outcome for a skipped last candidate directly
+  rather than inferring it from the exclusion.
+- **A forged marker.** → The only writer is a `security definer` function in `private`, reached
+  only through `031`'s `service_role`-only wrapper, and the client holds no column grant; `047`
+  already revoked `TRIGGER` on `profiles` from `authenticated`. A second `service_role` caller
+  could mark an arbitrary rider, and the blast radius of that is "not chosen as a club successor
+  for fifteen minutes" — which is why the marker is deliberately not read anywhere else.
+- **The retention row's de-identification rests on nobody being able to order the rows** (D10).
+  → `service_role` revoked, because `xmin` and `ctid` are an insertion-order oracle for anyone
+  holding SELECT, and no coarsening of a stored date survives one. Nothing reads the table.
+- **A `before delete` trigger on `profiles` can silently cancel the cascade** (D10). → Measured,
+  not reasoned: returning NULL leaves the `auth.users` row deleted and the `profiles` row alive,
+  raising nothing — `012` §KNOWN LIMIT's orphan state, reported to the rider as success. The
+  trigger returns `old` on every path, and `6.1`'s cascade assertion checks the `profiles` row is
+  gone rather than checking only that the retention row arrived.
 - **The free-tier project auto-pauses.** → A rider who cannot reach a paused project cannot
   delete their account, and "I tried and it failed" is the complaint that reaches a store
   reviewer. Pro before submission, which `docs/HANDOFF.md` already carries as an owner action.
@@ -400,6 +606,25 @@ deletion flow with no club transfer destroys other riders' postcards on its firs
 4. **The public `/legal/account-deletion` page**, which can land any time and is listed last
    because it is the only part with no dependency.
 
+**Steps 5 and 6 arrive after the flow shipped** (PD-102 completed 2026-08-19 and is in
+production), so they are corrections to a live, irreversible path rather than groundwork. Both
+are migrations only — no application code, no Edge Function change — and both are additive in
+`CLAUDE.md` §Supabase Rules' sequencing sense: no shipped bundle writes, reads or can observe either
+object, so neither side fails unsafe and neither is deploy-ordered against a build.
+
+5. **The deletion-in-progress marker** (D12, PD-175): one column, one `create or replace` on
+   `private.transfer_owned_clubs`, and the assertions. The column must exist before the function
+   references it, so if the two are split the column goes first; one file does both and the
+   question does not arise.
+6. **The consent retention table and its trigger** (D10, PD-458): one table with RLS on and no
+   policy, the `service_role` revoke, the `before delete` trigger, and the assertions. Lands after
+   step 5 only because the two are independent and the race is the older defect.
+
+**Take both numbers from `list_migrations` against BOTH projects and from
+`ls supabase/migrations/`, at the moment of writing.** `docs/HANDOFF.md` records that the file
+count and the highest applied number disagree, in both directions: a number free in the
+repository can already be taken in a project by a hand-applied row with no file behind it.
+
 **Verify against the real database, with a real account, before calling it done.** `npm test`
 proves the cascade; only a live run proves the Edge Function's JWT verification, the Storage
 delete and the sign-out. `docs/HANDOFF.md` records that three PRs once merged unverified because
@@ -419,7 +644,7 @@ owner only; **Designer** = the design owner; **Eng** = decidable in the work.
 | Q1 | What happens to a club whose owner deletes their account, given `clubs.owner_id` cascades and `postcards.club_id` cascades behind it? | **Transfer** to the longest-tenured admin, else the longest-tenured member; delete only if no member remains (D2). Never destroy another rider's postcards as a side effect of someone else's erasure. | **Yes** — it decides the migration's shape | PO |
 | Q2 | An ownership transfer violates `016`'s `clubs_*_path_owned` CHECKs, which pin the image path to `owner_id`. Null the paths, or re-point the CHECK at an uploader column? | **Null both paths and delete the objects.** The club falls back to initials. Keeping a departed rider's uid in a live path is the opposite of erasure. | No | Eng + Designer (the club loses its image) |
 | Q3 | An upcoming ride with a crew, whose organizer deletes. Cancel silently, or preserve? | **Cancel** — the ride vanishes with its organizer, and the confirmation screen names the count before the rider commits. Preserving needs a nullable organizer and a cancelled state, i.e. a different change. | No | PO |
-| Q4 | Consent evidence versus erasure: `terms_accepted_at` is what `012` calls evidence, and Art. 17 says erase it. | **Erase the profile row; retain one de-identified `consent_records` row** — salted hash of the uuid, terms version, timestamp, nothing else, no grants (D10). Adopting "retain nothing" later removes work rather than adding it. | **Yes, before launch** — not before build | PO (legal) |
+| Q4 | ~~Consent evidence versus erasure: `terms_accepted_at` is what `012` calls evidence, and Art. 17 says erase it.~~ **ANSWERED 2026-09-18 (PD-458).** | **Keep a de-identified record.** Erase the profile row; a `before delete` trigger writes one row carrying the terms version and a day-precision acceptance date and **no subject id at all** (D10). The salted hash this row used to recommend is **refused** — the id space is enumerable from `auth.users`, so a hash is a lookup table away from the id. | Closed | PO decided; the **caveat is the owner's and is recorded on PD-458** — this was reasoned by a session, not by a lawyer, and goes to counsel with the Terms page |
 | Q5 | Is there a grace period? | **No.** Immediate and final, matching the drawn copy "This action cannot be undone." A soft delete adds a predicate to every SELECT policy in the schema. | No | PO |
 | Q6 | Is the username released immediately for anyone else to take? | **Yes**, immediately — it is a UNIQUE column and the row is gone. Reserving it needs a table that outlives the profile, which is retention of an identifier we said we erased. | No | PO |
 | Q7 | ~~Re-authenticate before deleting? The `Done` frame draws no password field.~~ **ANSWERED 2026-08-14.** | **Require the password** (D6) — taken, and the deviation from the frame is blessed. Verified in the Edge Function, which must be redeployed *before* the client half or the gate is fail-open. | Closed | PO decided *whether*; **Designer still owns what the field looks like** — blessing the deviation does not draw the control (tasks 3.3) |
@@ -430,3 +655,6 @@ owner only; **Designer** = the design owner; **Eng** = decidable in the work.
 | Q12 | Background location tracks are on the roadmap and do not exist yet. | The table **may not be created without** a stated retention window and a stated deletion rule; this change writes the rule now so the table inherits it. A GPS track with no expiry is a permanent record of where someone was. | No | PO (window) + Eng |
 | Q13 | Should the deletion be rate limited or audited? | One deletion per session, no id parameter, and **no audit row in the database** — an audit trail of who deleted their account is a record of the people who asked to have no record. The function may log without a subject id. | No | PO (legal) + Eng |
 | Q14 | `profiles.terms_version` does not exist, so no consent record can name its terms. | **Add it**, defaulting to the current version string, and stamp it alongside `terms_accepted_at`. Cheap now; impossible to reconstruct later. | No | Eng, PO to supply the version string |
+| Q15 | How long are the retained consent rows kept? This capability's own rule says a table holding personal data states its window when it is created — and the whole claim about this one is that its rows are *not* personal data. | **Indefinitely**, and say so in the migration header rather than leaving the field blank. The rule exists so nobody has to guess; "no expiry, because the rows identify nobody, and the retention exists precisely to outlive the claim it may have to answer" is a stated window. Revisit with counsel alongside the Terms page. | No | PO (legal) |
+| Q16 | How long is the deletion-in-progress marker treated as fresh? | **15 minutes** (D12). A successful deletion takes the row with it, so a stale marker always means a failed run whose rider is still here — the window is what stops them being excluded from club succession for ever, and it is generous by orders of magnitude against a Storage sweep measured in seconds. Changing it is one `create or replace`. | No | Eng |
+| Q17 | Is the retained acceptance date coarse enough at four accounts? | **Day precision, and no deletion timestamp at all** (D10). The second half does the work; the first is what stops the stored value being a correlation key on its own. If real volumes stay this low for a year, revisit whether the rows should be aggregated rather than kept per deletion. | No | PO (legal) + Eng |
