@@ -585,9 +585,18 @@ Deno.serve(async (req: Request) => {
       counts[verdict.outcome]++
     } catch {
       /**
-       * Leaving the row `claimed` is the safe failure: `claim_push_batch`'s
-       * reclaim window puts it back in a later sweep. Throwing here would take
+       * Leaving the row `claimed` is the safe failure: `claim_push_batch`
+       * returns a row whose `claimed_at` has gone stale to `pending` before it
+       * picks candidates, so a later sweep takes it. Throwing here would take
        * the rest of this lane's deliveries with it.
+       *
+       * **That reclaim is load-bearing and did not exist until `reviewer`
+       * finding 1 (2026-09-19).** Without it this path was silent loss AND an
+       * immortal row — `claim_push_batch` selected only `pending` and
+       * `sweep_push_retention` deleted only `sent`/`suppressed`/`failed`, so
+       * nothing in the system could ever reach a `claimed` row again. If a
+       * future change narrows that reclaim, this comment becomes false and this
+       * catch becomes a leak.
        */
     }
   })

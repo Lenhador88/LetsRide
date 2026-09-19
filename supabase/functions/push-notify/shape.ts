@@ -165,8 +165,16 @@ export const BATCH_SIZE = 200
  * preference.** Each device costs a provider request, and each delivery one or
  * two RPCs on top; a full batch sequentially is well over a minute of wall time
  * for work the scheduler expects inside its one-minute interval. A latency
- * spike then kills the invocation halfway, leaving rows claimed with no
- * completion, which the age cut suppresses rather than sends.
+ * spike then kills the invocation halfway, leaving rows `claimed` with no
+ * completion.
+ *
+ * **What happens to those rows is `claim_push_batch`'s reclaim, and an earlier
+ * version of this comment said it was the age cut, which was wrong** —
+ * `reviewer` finding 1, 2026-09-19. The age cut is evaluated inside the
+ * `pending` candidate set, so it never sees a `claimed` row; before the reclaim
+ * existed, such a row was never delivered and never swept, which is silent loss
+ * plus an immortal row. Do not re-describe this as the age cut: the two comments
+ * that did are exactly why nobody looked again.
  *
  * Ten rather than "all of them" because both providers rate-limit, and a burst
  * of 200 is the shape that earns a 429 — correctly read as `transport`, so no
