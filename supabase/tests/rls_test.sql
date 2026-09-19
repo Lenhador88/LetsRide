@@ -3966,10 +3966,17 @@ select assert_eq(
 -- the function's own `current_user <> 'authenticated'` guard — so its presence
 -- is all the suite can honestly assert. It is defence in depth against a future
 -- re-grant, and this count is what notices if it is ever dropped as dead code.
+--
+-- ** 120 adds the THIRD, and it is a BEFORE DELETE one, which is why the count
+-- moved rather than the sentence. ** `retain_consent_record` copies the terms
+-- version and the day of acceptance into `private.consent_records` before the
+-- cascade from `auth.users` takes the row. It is the only DELETE trigger this
+-- table has ever carried, so a fourth appearing here is a new writer on the
+-- erasure path and wants reading, not re-counting.
 select assert_eq(
   (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
     where c.relname = 'profiles' and not t.tgisinternal),
-  2, 'profiles carries the 003/012 UPDATE trigger and 023''s INSERT one');
+  3, 'profiles carries the 003/012 UPDATE trigger, 023''s INSERT one and 120''s BEFORE DELETE one');
 
 -- The invariant every other section ends on. 023 changes no policy's role
 -- targeting and grants anon nothing.
@@ -37159,6 +37166,1200 @@ select assert_eq(
   (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname = 'current_terms_version'),
   0, '118: and it is still not published by PostgREST');
+
+
+-- ===========================================================================
+-- 119. A DELETION IN PROGRESS IS VISIBLE TO ANOTHER DELETION (PD-175)
+-- ===========================================================================
+-- 032 §3 states this race precisely and deliberately leaves it open: B's
+-- transfer RPC commits owning nothing, A's transfer RPC then picks B as
+-- successor for a club they share, and B's deleteUser cascades that club away
+-- with every postcard every other member posted into it.
+--
+-- 119 closes it with a marker — profiles.deletion_started_at, stamped by
+-- private.transfer_owned_clubs before it does anything else, and read by the
+-- successor select, which now refuses a candidate whose own marker is set and
+-- younger than 15 minutes.
+--
+-- ** WHAT THIS SUITE CAN AND CANNOT SEE, stated because 032 was explicit that
+-- it could see nothing here. ** It runs one psql session, so the two-process
+-- interleaving itself is out of reach — 032's own idempotency assertion has the
+-- same limit, and it is why the race survived review. What IS reachable, and is
+-- the whole of the fix's observable behaviour, is the predicate: given a marked
+-- candidate, is that candidate skipped. A marker set by hand in this session is
+-- indistinguishable to the successor select from one another transaction
+-- committed, because the select reads the column and not the lock.
+--
+-- ** VERIFIED BOTH WAYS — every revert below was RUN, not predicted: **
+--   * delete the `deletion_started_at is null or ...` conjunct ... 119.2 picks
+--     the marked rider, which IS the defect
+--   * delete the UPDATE at the top of the function ................ 119.1 reads
+--     false — the rider who owns nothing is never stamped
+--   * widen the window to `now() + interval '1 hour'`, so every marker reads
+--     stale ......................................................... 119.2 again
+--   * make 119.6's marked member eligible in isolation ............ 119.6 reads
+--     false: the club is handed to the rider who is mid-deletion
+--   * put `deletion_started_at` into a public security definer function's
+--     projection .................................................... 119.5
+--
+-- ** AND ONE REVERT THAT LOOKS LIKE A PASS, which is the useful entry. **
+-- Narrowing the window to zero — the obvious probe — leaves the suite GREEN,
+-- and it is not evidence the window does nothing. `now()` is the TRANSACTION
+-- timestamp: a marker written by the same transaction that reads it is EQUAL to
+-- `now()` and so still fails `< now()`. The real path never has that shape, the
+-- marker there being committed by another transaction and strictly older.
+-- ===========================================================================
+savepoint deletion_marker_119;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000119001', 'pd175_departing@example.com'),
+  ('00000000-0000-0000-0000-000000119002', 'pd175_alsodeleting@example.com'),
+  ('00000000-0000-0000-0000-000000119003', 'pd175_healthy@example.com'),
+  ('00000000-0000-0000-0000-000000119004', 'pd175_ownsnothing@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000000119001', 'pd175departing'),
+      ('00000000-0000-0000-0000-000000119002', 'pd175alsodeleting'),
+      ('00000000-0000-0000-0000-000000119003', 'pd175healthy'),
+      ('00000000-0000-0000-0000-000000119004', 'pd175ownsnothing')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0001190000d1', 'PD175 Shared MC', true,
+   '00000000-0000-0000-0000-000000119001');
+
+-- The rider who is ALSO deleting is an `admin`, so 029's ordering puts them
+-- FIRST — ahead of the healthy `member`. Without 119 they are the successor,
+-- which is the defect; with it they are skipped and the healthy rider inherits.
+-- A fixture where the marked rider sorted last would pass either way.
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0001190000d1', '00000000-0000-0000-0000-000000119002', 'admin'),
+  ('00000000-0000-0000-0000-0001190000d1', '00000000-0000-0000-0000-000000119003', 'member');
+
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0001190000d1'
+      and user_id = '00000000-0000-0000-0000-000000119002' and role = 'admin'),
+  1, '119.0: the fixture puts the rider who is also deleting AHEAD of the healthy one — admin sorts before member, so a green 119.2 cannot be an accident of ordering');
+select assert_eq(
+  (select deletion_started_at is null from profiles
+    where id = '00000000-0000-0000-0000-000000119002'),
+  true, '119.0: ... and nobody carries a marker before the transfer runs');
+
+-- ---------------------------------------------------------------------------
+-- 119.1  ** THE STAMP HAPPENS, AND IT DOES NOT NEED A CLUB **
+-- ---------------------------------------------------------------------------
+-- Unconditional and above the loop, because a rider who owns nothing still has
+-- to be skippable as somebody ELSE's successor — and for them the loop body
+-- never runs. A stamp written inside the loop would pass a test that only ever
+-- deleted club owners.
+select assert_eq(
+  (select count(*)::int from private.transfer_owned_clubs('00000000-0000-0000-0000-000000119004')),
+  0, '119.1: a rider who owns no club surrenders no object path ...');
+select assert_eq(
+  (select deletion_started_at is not null from profiles
+    where id = '00000000-0000-0000-0000-000000119004'),
+  true, '119.1: ** ... and is STILL stamped. ** The marker is above the club loop, so it exists for every departing rider and not only for the ones who own something. Move the UPDATE inside the loop and this reads false');
+
+-- ---------------------------------------------------------------------------
+-- 119.2  ** A CLUB IS NOT HANDED TO SOMEBODY WHO IS ALSO LEAVING **
+-- ---------------------------------------------------------------------------
+-- This is PD-175. 119.1 has just stamped nobody relevant; the marker below is
+-- the one that matters, and it is set through the same column the other
+-- deletion's transfer would have written.
+update profiles set deletion_started_at = now()
+ where id = '00000000-0000-0000-0000-000000119002';
+
+select assert_eq(
+  (select count(*)::int from private.transfer_owned_clubs('00000000-0000-0000-0000-000000119001')),
+  0, '119.2: the shared club carries no image path, so the transfer surrenders none ...');
+select assert_eq(
+  (select owner_id from clubs where id = '00000000-0000-0000-0000-0001190000d1'),
+  '00000000-0000-0000-0000-000000119003'::uuid,
+  '119.2: ** ... and the club goes to the HEALTHY rider, not the one who is mid-deletion. ** This is the race 032 §3 left open: drop the deletion_started_at conjunct from the successor select and this reads ...119002, whose own deleteUser then cascades the club and every other member''s postcards away');
+select assert_eq(
+  (select role::text from club_members
+    where club_id = '00000000-0000-0000-0000-0001190000d1'
+      and user_id = '00000000-0000-0000-0000-000000119003'),
+  'owner', '119.2: ... and the successor''s membership row says owner, so the club is genuinely theirs rather than orphaned with a stale role');
+
+rollback to savepoint deletion_marker_119;
+
+-- ---------------------------------------------------------------------------
+-- 119.3  ** A STALE MARKER DOES NOT EXCLUDE ANYONE — the recovery story **
+-- ---------------------------------------------------------------------------
+-- 032 named "a new way to be stuck if a run dies half way" as the cost of this
+-- mechanism, and the 15-minute window is the answer. A successful deletion
+-- takes the row with it, so a marker that outlives its run always belongs to a
+-- run that FAILED — and its rider is still here, still using the app, and must
+-- not be silently barred from inheriting a club for ever.
+--
+-- Same fixture, rebuilt: the savepoint above rolled the marker back with
+-- everything else, which is deliberate — 119.3 must not depend on 119.2's
+-- leftovers.
+savepoint stale_marker_119;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000119011', 'pd175_departing2@example.com'),
+  ('00000000-0000-0000-0000-000000119012', 'pd175_staleMarker@example.com'),
+  ('00000000-0000-0000-0000-000000119013', 'pd175_healthy2@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000000119011', 'pd175departing2'),
+      ('00000000-0000-0000-0000-000000119012', 'pd175stalemarker'),
+      ('00000000-0000-0000-0000-000000119013', 'pd175healthy2')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0001190000d2', 'PD175 Stale MC', true,
+   '00000000-0000-0000-0000-000000119011');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0001190000d2', '00000000-0000-0000-0000-000000119012', 'admin'),
+  ('00000000-0000-0000-0000-0001190000d2', '00000000-0000-0000-0000-000000119013', 'member');
+
+-- An hour old: four times the window, so this cannot turn on clock skew.
+update profiles set deletion_started_at = now() - interval '1 hour'
+ where id = '00000000-0000-0000-0000-000000119012';
+
+select assert_eq(
+  (select count(*)::int from private.transfer_owned_clubs('00000000-0000-0000-0000-000000119011')),
+  0, '119.3: no image path to surrender ...');
+select assert_eq(
+  (select owner_id from clubs where id = '00000000-0000-0000-0000-0001190000d2'),
+  '00000000-0000-0000-0000-000000119012'::uuid,
+  '119.3: ** ... and the rider carrying a STALE marker inherits normally. ** Their deletion failed and they are still here; excluding them for ever would be the "new way to be stuck" 032 warned the marker would introduce. Widen the conjunct to `deletion_started_at is null` alone and this reads ...119013');
+
+rollback to savepoint stale_marker_119;
+
+-- ---------------------------------------------------------------------------
+-- 119.4  THE MARKER IS NOT A COLUMN ANY CLIENT CAN SEE OR SET
+-- ---------------------------------------------------------------------------
+-- 025 made every authenticated grant on profiles column-scoped, so a new column
+-- is outside all three lists by construction and 119 writes no revoke. That is
+-- reasoning, and reasoning is what this assertion replaces: a later migration
+-- re-granting profiles at TABLE level would publish a deletion-in-progress flag
+-- to every signed-in rider with nothing else going red.
+select assert_eq(
+  (select bool_or(has_column_privilege(r, 'public.profiles', 'deletion_started_at', p))
+     from unnest(array['authenticated','anon']) r,
+          unnest(array['select','insert','update']) p),
+  false, '119.4: neither client role holds SELECT, INSERT or UPDATE on profiles.deletion_started_at — six combinations, none of them granted');
+
+-- ---------------------------------------------------------------------------
+-- 119.5  NO security definer ACCESSOR PROJECTS THE MARKER
+-- ---------------------------------------------------------------------------
+-- 119.4 covers the grant. This covers the OTHER route to a column a grant does
+-- not reach: an own-row `security definer` RPC runs as the owner, so anything
+-- it projects is readable by whoever may call it. my_onboarding_state() is the
+-- one a rider calls on every page load, and adding a column to its projection
+-- is a one-word change that no grant assertion would notice.
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.prosecdef and p.prosrc like '%deletion_started_at%'),
+  0, '119.5: no security definer function in public names deletion_started_at — the marker has exactly one reader and it is in `private`');
+
+-- ---------------------------------------------------------------------------
+-- 119.6  ** SKIPPING THE LAST CANDIDATE KEEPS THE CLUB, it does not delete it **
+-- ---------------------------------------------------------------------------
+-- The worry this answers: excluding a marked candidate could leave no successor
+-- and destroy a club holding somebody else's postcards — the very harm 119
+-- exists to prevent, reintroduced by its own fix. It does not, and the reason
+-- is that 107 (widened by 117) already changed that arm: with no successor the
+-- club is KEPT ownerless when any postcard in it is third-party. So the club
+-- reaches that arm one deletion earlier, with the postcards intact.
+--
+-- ** This is why 119 adds no last-resort pass preferring a marked candidate. **
+-- Such a pass would hand the club to a rider whose deletion lands moments
+-- later, and then it cascades away — strictly worse than ownerless.
+savepoint marked_last_candidate_119;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000119021', 'pd175_owner3@example.com'),
+  ('00000000-0000-0000-0000-000000119022', 'pd175_onlymarked@example.com'),
+  ('00000000-0000-0000-0000-000000119023', 'pd175_exmember@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000000119021', 'pd175owner3'),
+      ('00000000-0000-0000-0000-000000119022', 'pd175onlymarked'),
+      ('00000000-0000-0000-0000-000000119023', 'pd175exmember')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0001190000d3', 'PD175 Keepme MC', true,
+   '00000000-0000-0000-0000-000000119021');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0001190000d3', '00000000-0000-0000-0000-000000119022', 'member');
+-- By a rider who LEFT, so they hold no membership row: 107's third-party case.
+insert into postcards (id, author_id, club_id, image_path, caption, taken_place_name, taken_location_precision) values
+  ('00000000-0000-0000-0000-0001190000f3', '00000000-0000-0000-0000-000000119023',
+   '00000000-0000-0000-0000-0001190000d3',
+   'postcards/00000000-0000-0000-0000-000000119023/cccccccc-0000-4000-8000-000000119001.jpg',
+   'a third party''s photo in the club with one marked member', 'Zandvoort', 'place');
+
+update profiles set deletion_started_at = now()
+ where id = '00000000-0000-0000-0000-000000119022';
+
+select assert_eq(
+  (select count(*)::int from private.transfer_owned_clubs('00000000-0000-0000-0000-000000119021')),
+  0, '119.6: no image path to surrender ...');
+delete from profiles where id = '00000000-0000-0000-0000-000000119021';
+select assert_eq(
+  (select owner_id is null from clubs where id = '00000000-0000-0000-0000-0001190000d3'),
+  true, '119.6: ** ... and the club is KEPT OWNERLESS rather than handed to the marked rider or deleted. ** 107''s arm, reached one deletion earlier because 119 skipped the only candidate');
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-0001190000f3'),
+  1, '119.6: ** ... and the third party''s postcard is still there, ** which is the whole point of both 107 and 119');
+
+rollback to savepoint marked_last_candidate_119;
+
+-- ---------------------------------------------------------------------------
+-- 119.7  THE DELETE ARM IS REACHED UNCHANGED when there is nothing to preserve
+-- ---------------------------------------------------------------------------
+-- The other half of 119.6: no third-party postcard, so 032's delete arm runs
+-- exactly as before. 119 changes which deletion reaches it, never what it does.
+savepoint marked_last_candidate_delete_119;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000119031', 'pd175_owner4@example.com'),
+  ('00000000-0000-0000-0000-000000119032', 'pd175_onlymarked2@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000000119031', 'pd175owner4'),
+      ('00000000-0000-0000-0000-000000119032', 'pd175onlymarked2')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0001190000d4', 'PD175 Deleteme MC', true,
+   '00000000-0000-0000-0000-000000119031');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0001190000d4', '00000000-0000-0000-0000-000000119032', 'member');
+-- One private ride and one public one, so 032 §2's narrowing is re-asserted
+-- through this path rather than assumed to still hold.
+insert into rides (id, organizer_id, club_id, title, departure_at, meeting_point, is_public) values
+  ('00000000-0000-0000-0000-0001190000e1', '00000000-0000-0000-0000-000000119031',
+   '00000000-0000-0000-0000-0001190000d4', 'PD175 private ride',
+   timestamptz '2027-01-01 09:00:00+00', 'Zandvoort', false),
+  ('00000000-0000-0000-0000-0001190000e2', '00000000-0000-0000-0000-000000119031',
+   '00000000-0000-0000-0000-0001190000d4', 'PD175 public ride',
+   timestamptz '2027-01-01 09:00:00+00', 'Zandvoort', true);
+
+update profiles set deletion_started_at = now()
+ where id = '00000000-0000-0000-0000-000000119032';
+
+select assert_eq(
+  (select count(*)::int from private.transfer_owned_clubs('00000000-0000-0000-0000-000000119031')),
+  0, '119.7: no image path to surrender ...');
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001190000d4'),
+  0, '119.7: ** ... and with nothing third-party to preserve the club is DELETED, ** 032''s arm unchanged — 119 changes which deletion reaches it, never what it does');
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-0001190000e1'),
+  0, '119.7: ... its PRIVATE ride goes with it, 032 §2 ...');
+select assert_eq(
+  (select club_id is null from rides where id = '00000000-0000-0000-0000-0001190000e2'),
+  true, '119.7: ** ... and its PUBLIC ride SURVIVES with club_id NULL. ** 032 §2 narrowed this and 119 must not widen it back');
+
+rollback to savepoint marked_last_candidate_delete_119;
+
+-- ===========================================================================
+-- 120. CONSENT OUTLIVES THE RIDER (PD-458)
+-- ===========================================================================
+-- Deleting an account cascades profiles away, and with it terms_accepted_at and
+-- 030's terms_version — the evidence 012 spent a migration arguing for, and
+-- which 023 actively relies on. 120 keeps the version and the DAY of acceptance
+-- in private.consent_records, and keeps nothing that points at a person.
+--
+-- The writer is a BEFORE DELETE trigger on public.profiles rather than a step in
+-- the Edge Function, so the cascade from auth.users carries it and no deletion
+-- path can bypass it — 042 revoked the DELETE grant, so nothing but that cascade
+-- and the table owner reaches the row at all.
+--
+-- ** VERIFIED BOTH WAYS — each revert was RUN, not predicted: **
+--   * drop the `terms_accepted_at is not null` guard ..... 120.2 reads 2
+--   * add a `created_at timestamptz default now()` ........ 120.4 names it
+--   * drop the trigger ... goes red at the 023 section's profiles trigger
+--     COUNT, thousands of lines earlier, and the suite stops there — so 120.1's
+--     own bite is not what that revert demonstrates. Recorded this way round
+--     because the count reading 2 looks like an unrelated regression unless the
+--     reader knows 120 is what moved it to 3.
+--   * ** return NULL instead of OLD ** ... takes TWO runs to demonstrate, and
+--     the second is the one worth having. Blanket, it goes red at 029's
+--     counterfactual (line ~4642) — an earlier section whose own delete the
+--     trigger has just cancelled — and never reaches here. Scoped to 120.5's
+--     fixture id alone, ** 120.5 reads 1 **: auth.users lost its row, profiles
+--     kept its own, and nothing raised. Both runs were made.
+-- ===========================================================================
+savepoint consent_records_120;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000120001', 'pd458_consented@example.com'),
+  ('00000000-0000-0000-0000-000000120002', 'pd458_neveraccepted@example.com');
+reset role;
+
+update profiles
+   set username = 'pd458consented', location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-03-04 22:45:17+00',
+       terms_version           = '0-placeholder'
+ where id = '00000000-0000-0000-0000-000000120001';
+
+-- The rider who never accepted: 003 creates the profile row at signup, so this
+-- state is reachable for anyone who abandoned the wizard at the consent step.
+update profiles set terms_accepted_at = null, terms_version = null
+ where id = '00000000-0000-0000-0000-000000120002';
+
+select assert_eq(
+  (select count(*)::int from private.consent_records),
+  0, '120.0: the retention table is empty before anything is deleted, so every count below is this section''s own');
+
+-- ---------------------------------------------------------------------------
+-- 120.1  ** THE RECORD SURVIVES THE RIDER **
+-- ---------------------------------------------------------------------------
+delete from profiles where id = '00000000-0000-0000-0000-000000120001';
+select assert_eq(
+  (select count(*)::int from profiles where id = '00000000-0000-0000-0000-000000120001'),
+  0, '120.1: the rider is gone ...');
+select assert_eq(
+  (select count(*)::int from private.consent_records
+    where terms_version = '0-placeholder' and accepted_on = date '2026-03-04'),
+  1, '120.1: ** ... and exactly one record survives, carrying the version and the DAY it was accepted. ** Drop the trigger and this reads 0');
+
+-- ---------------------------------------------------------------------------
+-- 120.2  A RIDER WHO NEVER ACCEPTED LEAVES NOTHING BEHIND
+-- ---------------------------------------------------------------------------
+-- There was no consent, so a row would assert something that never happened —
+-- and an "unknown" row is a fabricated evidence record, which is 030's own
+-- ruling about backfilling a version, applied one level up.
+delete from profiles where id = '00000000-0000-0000-0000-000000120002';
+select assert_eq(
+  (select count(*)::int from private.consent_records),
+  1, '120.2: deleting a rider who never accepted the terms writes NOTHING — still the one row from 120.1. Drop the `terms_accepted_at is not null` guard and this reads 2');
+
+-- ---------------------------------------------------------------------------
+-- 120.3  private.consent_records IS UNREACHABLE, by schema and by grant
+-- ---------------------------------------------------------------------------
+-- 117.8's shape, and the two client roles fail for a different reason than
+-- service_role does: for them the schema is the barrier and PostgREST publishes
+-- public alone; for service_role — which holds USAGE on private and BYPASSES
+-- RLS — the barrier is the absent TABLE grant and nothing else.
+select assert_eq(
+  (select bool_or(has_table_privilege(r, 'private.consent_records', p))
+     from unnest(array['authenticated','anon','service_role']) r,
+          unnest(array['select','insert','update','delete']) p),
+  false, '120.3: no client role and not service_role holds any privilege on private.consent_records — twelve combinations, none of them granted');
+select assert_eq(
+  (select relrowsecurity from pg_class where oid = 'private.consent_records'::regclass),
+  true, '120.3: ... and RLS is on regardless, which CLAUDE.md asks of every new table — belt and braces, since service_role bypasses it and the client roles never reach the schema');
+
+-- ---------------------------------------------------------------------------
+-- 120.4  ** THE COLUMN SET IS THE POINT, so it is pinned rather than described **
+-- ---------------------------------------------------------------------------
+-- The header, the table comment and PD-458 all say the same thing: this table
+-- must hold no subject id, no hash of one, and no timestamp of the deletion
+-- itself. ** The trap is created_at. ** A `default now()` under a name that
+-- reads like ordinary bookkeeping records the deletion moment at full
+-- precision, and one row per deletion stamped to the microsecond is a join away
+-- from auth.users at these volumes — which re-identifies the very person the
+-- day-precision accepted_on exists to protect.
+--
+-- Pinned as an exact set rather than a count: a count passes when somebody
+-- swaps one column for another.
+select assert_eq(
+  (select string_agg(attname, ',' order by attname) from pg_attribute
+    where attrelid = 'private.consent_records'::regclass and attnum > 0 and not attisdropped),
+  'accepted_on,id,terms_version',
+  '120.4: private.consent_records holds exactly id, terms_version and accepted_on — no subject id, no hash of one, and NO created_at, which is the one that looks like bookkeeping and is a re-identification path');
+select assert_eq(
+  (select atttypid::regtype::text from pg_attribute
+    where attrelid = 'private.consent_records'::regclass and attname = 'accepted_on'),
+  'date', '120.4: ... and accepted_on is a DATE, not a timestamptz. Widening it to full precision restores the correlation with auth.users that day precision removes');
+
+-- ---------------------------------------------------------------------------
+-- 120.5  ** THE CASCADE PATH, which is the only one production uses **
+-- ---------------------------------------------------------------------------
+-- 120.1 deletes the profile row directly, which the table owner can do and no
+-- client can (042). The REAL path is delete-account calling deleteUser, so the
+-- row goes through the auth.users cascade — a different mechanism, and the one
+-- the whole design rests on.
+--
+-- ** The profile row is checked GONE, and that is not belt and braces. ** A
+-- BEFORE DELETE trigger that returns NULL instead of OLD silently CANCELS the
+-- delete: auth.users loses its row, profiles keeps its own, nothing raises, and
+-- the rider is told the deletion succeeded — 012 §KNOWN LIMIT's orphan state,
+-- reached through the very mechanism 120 introduces. An assertion that only
+-- counted the retention row would pass in exactly that state.
+savepoint consent_cascade_120;
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000120003', 'pd458_cascade@example.com');
+reset role;
+
+update profiles
+   set username = 'pd458cascade', location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-05-09 06:12:44+00',
+       terms_version           = '0-placeholder'
+ where id = '00000000-0000-0000-0000-000000120003';
+
+-- As the suite's own role, not auth_admin: the harness grants auth_admin INSERT
+-- on auth.users and not DELETE, and the role that performs the delete is
+-- irrelevant to what is being asserted — what matters is that the row goes
+-- through the FK cascade rather than through a direct delete on profiles.
+delete from auth.users where id = '00000000-0000-0000-0000-000000120003';
+
+select assert_eq(
+  (select count(*)::int from profiles where id = '00000000-0000-0000-0000-000000120003'),
+  0, '120.5: ** the profile row is GONE, through the auth.users cascade. ** Return NULL instead of OLD from the trigger and this reads 1 while every other assertion in this section still passes — the auth row deleted, the profile orphaned, and nothing raised');
+select assert_eq(
+  (select count(*)::int from private.consent_records where accepted_on = date '2026-05-09'),
+  1, '120.5: ... and the record was written by the CASCADE, not by a direct delete — which is the path delete-account actually takes');
+
+rollback to savepoint consent_cascade_120;
+
+-- ---------------------------------------------------------------------------
+-- 120.6  A NULL terms_version STILL WRITES A ROW — 030's meaning of NULL
+-- ---------------------------------------------------------------------------
+-- Different from 120.2 and the difference is the point. A NULL
+-- `terms_accepted_at` means no consent happened. A NULL `terms_version` means
+-- the consent happened and predates the column — 030 refused to backfill one
+-- precisely so that NULL would keep saying "genuinely unknown". Dropping the
+-- row here would invent a second meaning for absence.
+savepoint consent_null_version_120;
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000120004', 'pd458_nullversion@example.com');
+reset role;
+
+update profiles
+   set username = 'pd458nullver', location = 'Utrecht', home_country = 'NL',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-02-02 11:11:11+00',
+       terms_version           = null
+ where id = '00000000-0000-0000-0000-000000120004';
+
+delete from auth.users where id = '00000000-0000-0000-0000-000000120004';
+select assert_eq(
+  (select count(*)::int from private.consent_records
+    where accepted_on = date '2026-02-02' and terms_version is null),
+  1, '120.6: a consent with no version recorded still leaves a row, version NULL — 030''s four un-backfilled rows keep meaning "the version is genuinely unknown" rather than "no consent"');
+
+-- A second deletion adds nothing, and the reason is the EVENT rather than a
+-- dedupe key: there is no subject id to key on, and after the first delete
+-- there is no row left to delete.
+delete from auth.users where id = '00000000-0000-0000-0000-000000120004';
+select assert_eq(
+  (select count(*)::int from private.consent_records
+    where accepted_on = date '2026-02-02'),
+  1, '120.6: ... and deleting the same rider again writes no second row — the trigger fires on a DELETE and there is no row left to delete, which is the whole argument since there is no key to dedupe on');
+
+rollback to savepoint consent_null_version_120;
+
+-- ---------------------------------------------------------------------------
+-- 120.7  ** TRUNCATE IS THE ONE REAL BYPASS, and what keeps it out of reach **
+-- ---------------------------------------------------------------------------
+-- A TRUNCATE does not fire row-level delete triggers, so a rider who could
+-- truncate `profiles` would erase every consent record that was never written.
+-- `047` revoked TRUNCATE and `042` revoked DELETE; re-asserted here rather than
+-- cited, because this retention is the thing that now depends on them.
+select assert_eq(
+  (select bool_or(has_table_privilege(r, 'public.profiles', p))
+     from unnest(array['authenticated','anon']) r,
+          unnest(array['truncate','delete']) p),
+  false, '120.7: no client role holds TRUNCATE or DELETE on public.profiles — 047 and 042 — so the cascade this trigger hangs off is the only route to a profiles delete');
+
+-- ---------------------------------------------------------------------------
+-- 120.8  THE SCHEMA IS THE BARRIER FOR CLIENTS, THE GRANT FOR service_role
+-- ---------------------------------------------------------------------------
+-- 120.3 asserts the table grant. This asserts the other half, and the shape is
+-- counter-intuitive enough that 117 measured it rather than reasoning it:
+-- service_role DOES hold USAGE on `private`, which is exactly why the absent
+-- table grant has to be the thing doing the work.
+select assert_eq(
+  (select has_schema_privilege('anon', 'private', 'usage')
+       or has_schema_privilege('authenticated', 'private', 'usage')),
+  false, '120.8: neither client role holds USAGE on the private schema, so they cannot name the table at all');
+select assert_eq(
+  has_schema_privilege('service_role', 'private', 'usage'),
+  true, '120.8: ** service_role DOES hold USAGE on private ** — so the refusal in 120.3 rests on the absent TABLE grant, never on the schema and never on RLS, which it bypasses');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'private' and tablename = 'consent_records'),
+  0, '120.8: ... and the table carries no policy at all, which is deliberate: a policy would be the thing that granted reach');
+
+rollback to savepoint consent_records_120;
+
+-- ===========================================================================
+-- 121: push delivery — the outbox, the payload gate, the schedule (PD-303)
+-- ===========================================================================
+--
+-- Child C of PD-291, paired with 121_push_delivery.sql per openspec/config.yaml.
+-- Scoped to what 121 added: nothing here counts policies, triggers or advisors
+-- table-wide, because an assertion counting ALL of something on a shared table
+-- stops testing its own intent the moment a second surface lands there.
+--
+-- The one assertion the whole design rests on is 121.6 — the TEXTUAL PIN, and
+-- it covers TWO texts: `notifications` SELECT's qual AND the type CHECK.
+-- Pinning the qual alone is the trap, because the qual does not move when a
+-- type is added.
+
+\echo ''
+\echo '# 121 — push delivery: the outbox holds no copy, and the payload re-asks the whole policy'
+
+reset role;
+select set_config('test.uid', '', false);
+select set_config('request.jwt.claims', '', false);
+
+savepoint push_delivery_121;
+
+-- ---------------------------------------------------------------------------
+-- 121.1  No role holds ANY privilege on the outbox — service_role INCLUDED
+--        (task 3.2). Named by ROLE rather than attempted: this suite runs as
+--        the table owner, for whom neither the grant nor RLS applies, so an
+--        attempted SELECT would succeed here and prove the opposite.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select bool_or(has_table_privilege(r, 'public.push_deliveries', p))
+     from unnest(array['authenticated','anon']) r,
+          unnest(array['select','insert','update','delete']) p),
+  false, '121.1a: no client role holds SELECT, INSERT, UPDATE or DELETE on push_deliveries — the outbox is reached only through the RPCs');
+select assert_eq(
+  (select bool_or(has_table_privilege('service_role', 'public.push_deliveries', p))
+     from unnest(array['select','insert','update','delete']) p),
+  false, '121.1b: ** service_role holds nothing either ** — 076 §3''s restricted-readership criterion. The read half is the per-rider delivery log joined to notifications; the WRITE half is what decides it, because an UPDATE grant can flip a SUPPRESSED row back to pending and re-deliver a push the visibility gate refused');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'push_deliveries'
+      and grantee in ('anon', 'authenticated', 'service_role')),
+  0, '121.1c: ... and none of the three holds a grant of ANY kind on it, read off role_table_grants rather than inferred');
+
+-- ---------------------------------------------------------------------------
+-- 121.2  RLS on, and deliberately NO POLICY (task 3.2). Scoped to this table
+--        by name — a count over every table would stop meaning this the moment
+--        another table joined it.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select relrowsecurity from pg_class where oid = 'public.push_deliveries'::regclass),
+  true, '121.2a: RLS is enabled on push_deliveries, so the absence of policies denies rather than allows');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'push_deliveries'),
+  0, '121.2b: ... and push_deliveries carries NO policy at all — 026''s password_reset_grants shape, 078''s reasoning. A policy here would describe direct access that must not exist, and "add one" is the repair this assertion refuses');
+
+-- ---------------------------------------------------------------------------
+-- 121.3  ** THE OUTBOX HOLDS NO COPY (task 3.1). ** The column list is the
+--        requirement, so it is pinned rather than described: no payload
+--        column, no rendered string, no club, ride, postcard or rider name.
+--        database-enforced-integrity condition 1.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select string_agg(column_name, ',' order by ordinal_position)
+     from information_schema.columns
+    where table_schema = 'public' and table_name = 'push_deliveries'),
+  'id,notification_id,state,attempts,created_at,claimed_at,completed_at',
+  '121.3a: ** the outbox column list, pinned ** — ids and bookkeeping only. A `payload`, `body`, `title`, `club_name` or `last_error` column added later fails HERE, which is the only automated check condition 1 has');
+select assert_eq(
+  (select count(*)::int from information_schema.columns
+    where table_schema = 'public' and table_name = 'push_deliveries'
+      and data_type in ('text', 'character varying', 'jsonb', 'json')
+      and column_name <> 'state'),
+  0, '121.3b: ... and `state` is the ONLY text-ish column on the table, so there is nowhere for a rendered string to be parked under an innocent name');
+
+-- ---------------------------------------------------------------------------
+-- 121.4  The four delivery RPCs, BY ROLE (task 3.10a) — 031's shape. The suite
+--        runs as the owner, for whom neither the EXECUTE barrier nor the
+--        `private` USAGE barrier exists, so these name the role rather than
+--        calling anything.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select bool_and(has_function_privilege('service_role', f, 'execute'))
+     from unnest(array['public.push_payload_for(uuid)',
+                       'public.claim_push_batch(int)',
+                       'public.complete_push_delivery(uuid,text,text[])',
+                       'public.invalidate_push_device(text)']) f),
+  true, '121.4a: service_role CAN execute all four delivery RPCs — and they are in `public`, because service_role holds no EXECUTE in `private` and PostgREST routes only to public (031''s lesson, applied prospectively)');
+select assert_eq(
+  (select bool_or(has_function_privilege(r, f, 'execute'))
+     from unnest(array['authenticated','anon']) r,
+          unnest(array['public.push_payload_for(uuid)',
+                       'public.claim_push_batch(int)',
+                       'public.complete_push_delivery(uuid,text,text[])',
+                       'public.invalidate_push_device(text)',
+                       'public.sweep_push_retention()']) f),
+  false, '121.4b: neither authenticated nor anon can execute ANY of them — push_payload_for is a block oracle with copy attached, and claim_push_batch would let a rider silence their own notifications');
+select assert_eq(
+  has_function_privilege('service_role', 'public.sweep_push_retention()', 'execute'),
+  true, '121.4c: service_role can run the retention sweep, which is how the 60-day window becomes a mechanism rather than an intention');
+select assert_eq(
+  (select bool_or(has_function_privilege(r, 'private.push_delivery_tick()', 'execute'))
+     from unnest(array['authenticated','anon','service_role']) r),
+  false, '121.4d: ** the scheduled job is reachable by NOBODY, service_role included ** — its only caller is pg_cron, which runs as the superuser, so a grant to anything else would be a second route into the outbound call');
+
+-- ---------------------------------------------------------------------------
+-- 121.4b  All five public functions are definer with search_path PINNED.
+--         `proconfig` stores the pin as the literal search_path="" — matching
+--         on the unquoted form silently reads 0 and passes as "all unpinned".
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.prosecdef
+      and p.proconfig @> array['search_path=""']
+      and p.proname in ('push_payload_for','claim_push_batch','complete_push_delivery',
+                        'invalidate_push_device','sweep_push_retention')),
+  5, '121.4e: all five public delivery functions are security definer with search_path pinned to the empty string');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.prosecdef
+      and p.proconfig @> array['search_path=""']
+      and p.proname in ('can_read_profile','can_read_postcard','can_read_comment',
+                        'can_read_club_thread','enqueue_push_delivery','push_delivery_tick')),
+  6, '121.4f: ... and so are the six private ones 121 adds');
+select assert_eq(
+  (select bool_or(has_function_privilege(r, f, 'execute'))
+     from unnest(array['authenticated','anon','service_role']) r,
+          unnest(array['private.can_read_profile(uuid,uuid)',
+                       'private.can_read_postcard(uuid,uuid)',
+                       'private.can_read_comment(uuid,uuid)',
+                       'private.can_read_club_thread(uuid,uuid)']) f),
+  false, '121.4g: the four new candidate-relative predicates are reachable by NO role — each is a block oracle, and can_read_profile(x,y) going false for a rider with a username says x and y are blocked, which decision #2 forbids revealing by any gap, count or marker');
+
+-- ---------------------------------------------------------------------------
+-- 121.5  The enqueue trigger (task 3.3), and its ABSENT `when` CLAUSE.
+--        ** The absence is asserted, not assumed ** — an absent guard is
+--        indistinguishable from a forgotten one, so this is what records that
+--        a fan-out fires for EVERY writer while a gate skips privileged ones.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid = 'public.notifications'::regclass
+      and tgname = 'enqueue_push_delivery' and not tgisinternal),
+  1, '121.5a: the enqueue trigger exists on public.notifications');
+select assert_eq(
+  (select pg_get_triggerdef(oid) from pg_trigger
+    where tgrelid = 'public.notifications'::regclass and tgname = 'enqueue_push_delivery'),
+  'CREATE TRIGGER enqueue_push_delivery AFTER INSERT ON public.notifications FOR EACH ROW EXECUTE FUNCTION private.enqueue_push_delivery()',
+  '121.5b: ** and it carries NO `WHEN (...)` clause **, pinned textually because the absence is the decision — 023''s gate triggers all carry `when (current_user = ...)` and a fan-out must not');
+select assert_eq(
+  (select prosecdef from pg_proc where oid = 'private.enqueue_push_delivery()'::regprocedure),
+  true, '121.5c: the trigger function is security definer — 022 applied one thing and committed another, and the clause it lost was the security-relevant one');
+
+-- ---------------------------------------------------------------------------
+-- Fixtures. Own riders, own club, own ride, own postcard, so no count asserted
+-- earlier in this file moves.
+-- ---------------------------------------------------------------------------
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000121001', 'pushdeliver1@example.com'),
+  ('00000000-0000-0000-0000-000000121002', 'pushdeliver2@example.com');
+update profiles set username = 'pushdeliver1', location = 'Utrecht',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000121001';
+update profiles set username = 'pushdeliver2', location = 'Breda',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000121002';
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0001210c0001', 'Secret Riders 121', false, '00000000-0000-0000-0000-000000121002'),
+  ('00000000-0000-0000-0000-0001210c0002', 'Open Riders 121',   true,  '00000000-0000-0000-0000-000000121002');
+insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id, club_id) values
+  ('00000000-0000-0000-0000-0001210d0001', 'Dune run 121', 'Zandvoort',
+   timestamptz '2027-01-01 09:00:00+00', false,
+   '00000000-0000-0000-0000-000000121002', '00000000-0000-0000-0000-0001210c0002');
+insert into postcards (id, author_id, caption, image_path) values
+  ('00000000-0000-0000-0000-0001210a0001', '00000000-0000-0000-0000-000000121001', 'hello', 'p/121.jpg');
+insert into club_members (club_id, user_id) values
+  ('00000000-0000-0000-0000-0001210c0001', '00000000-0000-0000-0000-000000121001'),
+  ('00000000-0000-0000-0000-0001210c0002', '00000000-0000-0000-0000-000000121001');
+
+insert into notifications (id, user_id, actor_id, type, postcard_id) values
+  ('00000000-0000-0000-0000-0001210e0001', '00000000-0000-0000-0000-000000121001',
+   '00000000-0000-0000-0000-000000121002', 'postcard_liked', '00000000-0000-0000-0000-0001210a0001');
+insert into notifications (id, user_id, actor_id, type, club_id) values
+  ('00000000-0000-0000-0000-0001210e0002', '00000000-0000-0000-0000-000000121001',
+   '00000000-0000-0000-0000-000000121002', 'club_joined', '00000000-0000-0000-0000-0001210c0001'),
+  ('00000000-0000-0000-0000-0001210e0003', '00000000-0000-0000-0000-000000121001',
+   '00000000-0000-0000-0000-000000121002', 'club_joined', '00000000-0000-0000-0000-0001210c0002');
+insert into notifications (id, user_id, actor_id, type, ride_id, club_id) values
+  ('00000000-0000-0000-0000-0001210e0004', '00000000-0000-0000-0000-000000121001',
+   '00000000-0000-0000-0000-000000121002', 'ride_created_in_club',
+   '00000000-0000-0000-0000-0001210d0001', '00000000-0000-0000-0000-0001210c0002');
+
+-- ---------------------------------------------------------------------------
+-- 121.5d  The trigger wrote one outbox row per notification, scoped by id.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from push_deliveries
+    where notification_id in ('00000000-0000-0000-0000-0001210e0001',
+                              '00000000-0000-0000-0000-0001210e0002',
+                              '00000000-0000-0000-0000-0001210e0003',
+                              '00000000-0000-0000-0000-0001210e0004')),
+  4, '121.5d: the AFTER INSERT trigger wrote exactly one outbox row per notification — and it fired for the TABLE OWNER, which is the writer a `when (current_user = ...)` clause would have skipped');
+select assert_eq(
+  (select bool_and(state = 'pending' and attempts = 0) from push_deliveries
+    where notification_id = '00000000-0000-0000-0000-0001210e0001'),
+  true, '121.5e: ... born pending with zero attempts');
+
+-- ---------------------------------------------------------------------------
+-- 121.6  ** THE TEXTUAL PIN. THE ASSERTION THE WHOLE DESIGN RESTS ON. **
+--        push_payload_for restates `notifications` SELECT for a named
+--        recipient, and a restatement can go stale. 060 accepted the same risk
+--        with the same mitigation.
+--
+--        ** IT COVERS TWO TEXTS, AND THE SECOND IS THE ONE THAT MOVES. **
+--        Adding a sixth (or seventeenth) type changes notifications_type_check
+--        and notifications_subject_shape and does NOT change the SELECT qual at
+--        all — the column conjuncts already cover any new type that reuses the
+--        existing columns. So a pin on the qual alone stays green through
+--        exactly the change that leaves push_payload_for's copy dispatch with
+--        no arm, and 121 §6's `else` then raises in production instead of here.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select qual from pg_policies
+    where schemaname = 'public' and tablename = 'notifications' and cmd = 'SELECT'),
+  '((user_id = auth.uid()) AND (NOT private.is_blocked(auth.uid(), actor_id)) AND (EXISTS ( SELECT 1
+   FROM profiles ap
+  WHERE (ap.id = notifications.actor_id))) AND ((postcard_id IS NULL) OR (EXISTS ( SELECT 1
+   FROM postcards sp
+  WHERE (sp.id = notifications.postcard_id)))) AND ((comment_id IS NULL) OR (EXISTS ( SELECT 1
+   FROM postcard_comments sc
+  WHERE (sc.id = notifications.comment_id)))) AND ((ride_id IS NULL) OR (EXISTS ( SELECT 1
+   FROM rides sr
+  WHERE (sr.id = notifications.ride_id)))) AND ((club_id IS NULL) OR (EXISTS ( SELECT 1
+   FROM clubs scl
+  WHERE (scl.id = notifications.club_id))) OR ((type = ''club_join_request_declined''::text) AND private.club_takes_join_requests(club_id)) OR ((type = ''club_invited''::text) AND private.has_live_club_invite(club_id))) AND ((thread_id IS NULL) OR (EXISTS ( SELECT 1
+   FROM club_threads st
+  WHERE (st.id = notifications.thread_id)))))',
+  '121.6a: ** notifications SELECT is TEXTUALLY what push_payload_for restates. ** FIVE subject conjuncts, and the club one carries the two type-keyed escape arms a declined requester and an invitee need. If this fails, 121 §6''s gate has to move in the SAME migration — a conjunct added here and not there is a push carrying content its recipient can no longer read');
+select assert_eq(
+  (select pg_get_constraintdef(oid) from pg_constraint
+    where conrelid = 'public.notifications'::regclass
+      and conname = 'notifications_type_check'),
+  'CHECK ((type = ANY (ARRAY[''postcard_liked''::text, ''postcard_commented''::text, ''ride_joined''::text, ''club_joined''::text, ''ride_created_in_club''::text, ''ride_invited''::text, ''ride_invite_accepted''::text, ''ride_invite_declined''::text, ''club_join_requested''::text, ''club_join_request_approved''::text, ''club_join_request_declined''::text, ''club_waved''::text, ''club_invited''::text, ''club_invite_declined''::text, ''club_thread_replied''::text, ''club_thread_waved''::text])))',
+  '121.6b: ** and the TYPE LIST is pinned too, which is the half that actually moves. ** A seventeenth type turns this red until push_payload_for''s copy dispatch has an arm for it. Pinning only the qual above reads as complete and is the exact hole child D would have fallen into — the qual does not change when a type is added');
+
+-- ---------------------------------------------------------------------------
+-- 121.6c  The four policies the NEW predicates restate, pinned the same way —
+--         060.1/060.1b's shape, one per helper. A policy rewritten without its
+--         helper is a payload gate that no longer mirrors anything.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select qual from pg_policies where schemaname='public' and tablename='profiles' and cmd='SELECT'),
+  '((auth.uid() = id) OR ((username IS NOT NULL) AND (NOT private.is_blocked(auth.uid(), id))))',
+  '121.6c: profiles SELECT is textually what private.can_read_profile restates — the ACTOR conjunct fires on every notification whatever its type, because every copy begins with a username');
+select assert_eq(
+  (select qual from pg_policies where schemaname='public' and tablename='postcards' and cmd='SELECT'),
+  '((author_id = auth.uid()) OR ((NOT private.is_blocked(auth.uid(), author_id)) AND ((club_id IS NULL) OR private.is_club_member(club_id)) AND (NOT (EXISTS ( SELECT 1
+   FROM postcard_hides h
+  WHERE ((h.postcard_id = postcards.id) AND (h.user_id = auth.uid())))))))',
+  '121.6d: postcards SELECT is textually what private.can_read_postcard restates — note the author arm is FIRST and unconditional, which is what keeps an author reading notifications about a postcard they hid');
+select assert_eq(
+  (select qual from pg_policies where schemaname='public' and tablename='postcard_comments' and cmd='SELECT'),
+  '((author_id = auth.uid()) OR ((EXISTS ( SELECT 1
+   FROM postcards p
+  WHERE (p.id = postcard_comments.postcard_id))) AND (NOT private.is_blocked(auth.uid(), author_id))))',
+  '121.6e: postcard_comments SELECT is textually what private.can_read_comment restates — its EXISTS runs under the CALLER''s row security, which is why the helper calls can_read_postcard and not a bare existence check');
+select assert_eq(
+  (select qual from pg_policies where schemaname='public' and tablename='club_threads' and cmd='SELECT'),
+  '((EXISTS ( SELECT 1
+   FROM clubs c
+  WHERE (c.id = club_threads.club_id))) AND private.is_club_member(club_id) AND ((author_id = auth.uid()) OR (NOT private.is_blocked(auth.uid(), author_id))))',
+  '121.6f: club_threads SELECT is textually what private.can_read_club_thread restates — the fifth subject column, which the proposal predates and a four-conjunct gate would have missed entirely');
+
+-- ---------------------------------------------------------------------------
+-- 121.6g  The gate is PER COLUMN and not a `case type` dispatch — read off the
+--         function's own source, because that structural property is what D5
+--         is about and no behavioural test states it.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select prosrc like '%can_read_postcard%' and prosrc like '%can_read_comment%'
+      and prosrc like '%can_read_ride%'     and prosrc like '%can_read_club(%'
+      and prosrc like '%can_read_club_thread%' and prosrc like '%can_read_profile%'
+     from pg_proc where oid = 'public.push_payload_for(uuid)'::regprocedure),
+  true, '121.6g: push_payload_for calls all SIX candidate-relative predicates — one per subject column plus the actor. A gate missing one is a push about a resource its recipient cannot open');
+
+-- ---------------------------------------------------------------------------
+-- 121.7  The happy path, and then every way the gate must refuse (3.10b–e).
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select body from push_payload_for('00000000-0000-0000-0000-0001210e0001')),
+  'liked your postcard.',
+  '121.7a: the happy path renders the string the recipient''s own screen would have drawn — src/components/notifications/copy.ts, arm for arm');
+select assert_eq(
+  (select title from push_payload_for('00000000-0000-0000-0000-0001210e0001')),
+  'pushdeliver2',
+  '121.7b: ... titled with the actor, who is a rendered resource on every row');
+
+savepoint payload_block_121;
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000121001', '00000000-0000-0000-0000-000000121002');
+select assert_eq(
+  (select count(*)::int from push_payload_for('00000000-0000-0000-0000-0001210e0001')),
+  0, '121.7c: (3.10b) a block created AFTER the notification suppresses the push — recipient blocks actor');
+rollback to savepoint payload_block_121;
+
+savepoint payload_block_rev_121;
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000121002', '00000000-0000-0000-0000-000000121001');
+select assert_eq(
+  (select count(*)::int from push_payload_for('00000000-0000-0000-0000-0001210e0001')),
+  0, '121.7d: ... and with the two riders EXCHANGED, because the blocks row is directional and its effect is symmetric — one call to private.is_blocked covers both and this is what proves it');
+rollback to savepoint payload_block_rev_121;
+
+savepoint payload_actor_121;
+update profiles set username = null where id = '00000000-0000-0000-0000-000000121002';
+select assert_eq(
+  (select count(*)::int from push_payload_for('00000000-0000-0000-0000-0001210e0001')),
+  0, '121.7e: (3.10e) an unresolvable actor suppresses the push — and this is NOT redundant with the block conjunct: a rider can null their own username in one request, which is a second way out of profiles SELECT that has nothing to do with blocking');
+rollback to savepoint payload_actor_121;
+
+-- The recipient leaves both clubs. The PRIVATE one must disappear and the
+-- PUBLIC one must not — asserted separately, because one assertion cannot say
+-- which arm did the work.
+savepoint payload_left_121;
+delete from club_members where user_id = '00000000-0000-0000-0000-000000121001';
+select assert_eq(
+  (select count(*)::int from push_payload_for('00000000-0000-0000-0000-0001210e0002')),
+  0, '121.7f: (3.10c) a rider who LEFT A PRIVATE CLUB gets no push about it');
+select assert_eq(
+  (select body from push_payload_for('00000000-0000-0000-0000-0001210e0003')),
+  'joined club Open Riders 121.',
+  '121.7g: ... and a rider who left a PUBLIC club still does — asserted separately from 121.7f, because a single assertion cannot say which arm refused');
+select assert_eq(
+  (select count(*)::int from push_payload_for('00000000-0000-0000-0000-0001210e0004')),
+  0, '121.7h: ** (3.10d) a PUBLIC club with a NON-PUBLIC ride, recipient having left the club: nothing. ** Both conjuncts are required and neither is derived from the other — 036 §3 forbids "ride visibility implies club visibility" by name, and the per-column shape is what makes both fire without anyone remembering that they must');
+rollback to savepoint payload_left_121;
+
+-- ---------------------------------------------------------------------------
+-- 121.7i  ** THE PRIVATE CLUB'S NAME DOES NOT LEAVE THE DATABASE. ** The two
+--         type-keyed escape arms in the policy admit a notification about a
+--         club the recipient CANNOT read. Their own screen renders "a club",
+--         because the embed does not resolve. So must the push — otherwise
+--         this transmits a private club's name in cleartext to Apple or Google
+--         for a rider whose own device shows nothing.
+-- ---------------------------------------------------------------------------
+savepoint payload_invite_121;
+delete from club_members where user_id = '00000000-0000-0000-0000-000000121001';
+insert into club_invites (club_id, invitee_id, inviter_id) values
+  ('00000000-0000-0000-0000-0001210c0001', '00000000-0000-0000-0000-000000121001',
+   '00000000-0000-0000-0000-000000121002');
+select assert_eq(
+  (select pl.body from notifications n
+     cross join lateral push_payload_for(n.id) pl
+    where n.type = 'club_invited'
+      and n.user_id = '00000000-0000-0000-0000-000000121001'
+      and n.club_id = '00000000-0000-0000-0000-0001210c0001'),
+  'invited you to a club.',
+  '121.7i: ** a club_invited push for a PRIVATE club names no club. ** The escape arm in the policy lets the row through; can_read_club still says no, so the name is never read and the copy falls back to exactly what the rider''s own screen draws');
+rollback to savepoint payload_invite_121;
+
+-- ---------------------------------------------------------------------------
+-- 121.8  (3.10f2) ** AN UNKNOWN TYPE RAISES. ** The CHECK is what normally
+--        stops one existing, so it is dropped inside a savepoint to reach the
+--        arm at all — the two halves fail on DIFFERENT inputs, and this input
+--        passes the visibility gate.
+-- ---------------------------------------------------------------------------
+savepoint unknown_type_121;
+alter table notifications drop constraint notifications_type_check;
+alter table notifications drop constraint notifications_subject_shape;
+insert into notifications (id, user_id, actor_id, type, postcard_id) values
+  ('00000000-0000-0000-0000-0001210e0009', '00000000-0000-0000-0000-000000121001',
+   '00000000-0000-0000-0000-000000121002', 'ride_upcoming', '00000000-0000-0000-0000-0001210a0001');
+select assert_rejected(
+  $$select * from push_payload_for('00000000-0000-0000-0000-0001210e0009')$$,
+  '23514',
+  '121.8: ** an unknown type RAISES rather than returning NULL copy ** — 036''s `else false` reasoning one function along. A bare CASE with no ELSE returns NULL, and a NULL-copy push is a crash in the sender or an empty notification on a lock screen');
+rollback to savepoint unknown_type_121;
+
+-- ---------------------------------------------------------------------------
+-- 121.9  (3.10f3) A notification the rider has ALREADY READ is not claimed.
+--        With a one-minute interval this is the ordinary case, not an edge one.
+-- ---------------------------------------------------------------------------
+savepoint claim_read_121;
+delete from push_deliveries;          -- inside a savepoint; the claim is oldest-first and other fixtures would fill the batch
+insert into push_deliveries (notification_id) values ('00000000-0000-0000-0000-0001210e0001');
+update notifications set read_at = now() where id = '00000000-0000-0000-0000-0001210e0001';
+select assert_eq(
+  (select count(*)::int from claim_push_batch(50)),
+  0, '121.9a: (3.10f3) a notification with read_at set returns no device pairs');
+select assert_eq(
+  (select state from push_deliveries where notification_id = '00000000-0000-0000-0000-0001210e0001'),
+  'suppressed',
+  '121.9b: ... and its outbox row is SUPPRESSED rather than failed — a rider who was in the app when the row landed and tapped it must not get a push about it forty seconds later');
+rollback to savepoint claim_read_121;
+
+-- ---------------------------------------------------------------------------
+-- 121.10  (3.10f4) The AGE CUT. Older than six hours is suppressed, not sent.
+--         A size bound alone makes a resumed free-tier project deliver a week
+--         of notifications in installments.
+-- ---------------------------------------------------------------------------
+savepoint claim_age_121;
+delete from push_deliveries;
+insert into push_deliveries (notification_id, created_at)
+  values ('00000000-0000-0000-0000-0001210e0001', now() - interval '7 hours');
+insert into push_devices (user_id, installation_id, token, platform) values
+  ('00000000-0000-0000-0000-000000121001', '00012100-0000-4000-8000-000000000001', 'TOK-121-1', 'ios');
+select assert_eq(
+  (select count(*)::int from claim_push_batch(50)),
+  0, '121.10a: (3.10f4) a row older than the six-hour age cut returns no device pairs, even though the recipient HAS a device');
+select assert_eq(
+  (select state from push_deliveries where notification_id = '00000000-0000-0000-0000-0001210e0001'),
+  'suppressed',
+  '121.10b: ... and it is SUPPRESSED rather than sent — timeliness is the whole value of this feature, so a backlog is dropped rather than delivered late');
+rollback to savepoint claim_age_121;
+
+-- ---------------------------------------------------------------------------
+-- 121.11  (3.10g) A row is claimed AT MOST ONCE, and (3.10h) a recipient with
+--         no devices COMPLETES rather than failing.
+-- ---------------------------------------------------------------------------
+savepoint claim_once_121;
+delete from push_deliveries;
+insert into push_deliveries (notification_id) values ('00000000-0000-0000-0000-0001210e0001');
+insert into push_devices (user_id, installation_id, token, platform) values
+  ('00000000-0000-0000-0000-000000121001', '00012100-0000-4000-8000-000000000001', 'TOK-121-1', 'ios');
+select assert_eq(
+  (select count(*)::int from claim_push_batch(50)),
+  1, '121.11a: one claim returns one (delivery, device) pair');
+select assert_eq(
+  (select count(*)::int from claim_push_batch(50)),
+  0, '121.11b: ** (3.10g) a second claim returns NOTHING. ** The CLAIM is what guarantees at-most-once — a retried batch, an overlapping run or a function that timed out after sending must not produce a second push, and no check the sender performs afterwards can provide that');
+select assert_eq(
+  (select prosrc like '%skip locked%' from pg_proc
+    where oid = 'public.claim_push_batch(int)'::regprocedure),
+  true, '121.11c: ... and it does it with `for update skip locked`, asserted from the source because a single-session suite cannot run two claims concurrently — this is the half of 3.10g a behavioural test cannot reach');
+rollback to savepoint claim_once_121;
+
+savepoint claim_tokenless_121;
+delete from push_deliveries;
+delete from push_devices where user_id = '00000000-0000-0000-0000-000000121001';
+insert into push_deliveries (notification_id) values ('00000000-0000-0000-0000-0001210e0001');
+select assert_eq(
+  (select count(*)::int from claim_push_batch(50)),
+  0, '121.11d: (3.10h) a recipient with zero devices returns no pairs');
+select assert_eq(
+  (select state from push_deliveries where notification_id = '00000000-0000-0000-0000-0001210e0001'),
+  'sent', '121.11e: ... and the row COMPLETES rather than failing — most riders will have no token for most of this feature''s life, so this is the ordinary outcome and not an error');
+rollback to savepoint claim_tokenless_121;
+
+-- ---------------------------------------------------------------------------
+-- 121.11f  ** A ROW STRANDED IN `claimed` IS RECLAIMED. ** The defect this
+--          closes: claim_push_batch originally selected `pending` alone and
+--          sweep_push_retention deletes terminal rows only, so an invocation
+--          killed between the claim and complete_push_delivery — an Edge
+--          Function wall-clock timeout part-way through a batch, the EXPECTED
+--          failure under load — lost that push silently AND left a row nothing
+--          could ever delete, against §9b's own promise that the outbox never
+--          becomes a permanent parallel log of every interaction in the app.
+--
+--          Not covered by any of the sixty-one assertions that shipped with
+--          121: every one of them drove a row to a terminal state, so `claimed`
+--          had no fate to test and the gap was invisible from inside the suite.
+-- ---------------------------------------------------------------------------
+savepoint claim_reclaim_121;
+delete from push_deliveries;
+insert into push_devices (user_id, installation_id, token, platform) values
+  ('00000000-0000-0000-0000-000000121001', '00012100-0000-4000-8000-000000000001', 'TOK-121-1', 'ios');
+insert into push_deliveries (notification_id, state, attempts, claimed_at)
+  values ('00000000-0000-0000-0000-0001210e0001', 'claimed', 1, now() - interval '11 minutes');
+select assert_eq(
+  (select count(*)::int from claim_push_batch(50)),
+  1, '121.11f: ** a row left `claimed` for eleven minutes is RECLAIMED and comes back out of claim_push_batch. ** Before the reclaim this returned 0 for ever: the row was not `pending`, so the claim never saw it, and not terminal, so the sweep never deleted it');
+select assert_eq(
+  (select attempts from push_deliveries where notification_id = '00000000-0000-0000-0000-0001210e0001'),
+  2, '121.11g: ... and it re-enters the ORDINARY path — attempts advances, so a row that strands every time is still bounded. The age cut is what stops the loop: at ten minutes a reclaim, a row stops being claimable after six hours, so 36 reclaims at most against the attempts CHECK ceiling of 50');
+rollback to savepoint claim_reclaim_121;
+
+-- ---------------------------------------------------------------------------
+-- 121.11h  ** AND A ROW CLAIMED JUST NOW IS NOT. ** The other half, and the one
+--          that matters more: nothing distinguishes a dead invocation from a
+--          slow one except elapsed time — the claim's row lock is released when
+--          claim_push_batch returns, not held across the send — so a window
+--          shorter than a live invocation double-sends every push under load.
+-- ---------------------------------------------------------------------------
+savepoint claim_fresh_121;
+delete from push_deliveries;
+insert into push_devices (user_id, installation_id, token, platform) values
+  ('00000000-0000-0000-0000-000000121001', '00012100-0000-4000-8000-000000000001', 'TOK-121-1', 'ios');
+insert into push_deliveries (notification_id, state, attempts, claimed_at)
+  values ('00000000-0000-0000-0000-0001210e0001', 'claimed', 1, now() - interval '9 minutes');
+select assert_eq(
+  (select count(*)::int from claim_push_batch(50)),
+  0, '121.11h: a row claimed nine minutes ago is NOT reclaimed — inside the ten-minute window an invocation is assumed alive, because the alternative is re-sending a push a live run is in the middle of sending');
+select assert_eq(
+  (select state from push_deliveries where notification_id = '00000000-0000-0000-0000-0001210e0001'),
+  'claimed', '121.11i: ... and it is left exactly as it was, rather than being swept, failed or completed out from under the run that holds it');
+rollback to savepoint claim_fresh_121;
+
+-- ---------------------------------------------------------------------------
+-- 121.11j  ** THE AGE CUT GOVERNS A RECLAIMED ROW, which is what makes two
+--          comments true rather than deleted. ** Both this migration and the
+--          sender say "the age cut suppresses rather than sends"; before the
+--          reclaim the age cut was evaluated INSIDE the pending-only candidate
+--          set and never saw a `claimed` row at all, so the mechanism was named
+--          in two places and present in none. A stranded row that is also stale
+--          must come back and then be SUPPRESSED, not sent.
+-- ---------------------------------------------------------------------------
+savepoint claim_reclaim_stale_121;
+delete from push_deliveries;
+insert into push_devices (user_id, installation_id, token, platform) values
+  ('00000000-0000-0000-0000-000000121001', '00012100-0000-4000-8000-000000000001', 'TOK-121-1', 'ios');
+insert into push_deliveries (notification_id, state, attempts, created_at, claimed_at)
+  values ('00000000-0000-0000-0000-0001210e0001', 'claimed', 1,
+          now() - interval '7 hours', now() - interval '11 minutes');
+select assert_eq(
+  (select count(*)::int from claim_push_batch(50)),
+  0, '121.11j: a stranded row that is ALSO past the six-hour age cut is reclaimed and then suppressed rather than sent — it comes back onto the ordinary path and the ordinary path decides');
+select assert_eq(
+  (select state from push_deliveries where notification_id = '00000000-0000-0000-0000-0001210e0001'),
+  'suppressed', '121.11k: ... reaching a TERMINAL state, so the sweep can now delete it — which is the half of §9b''s promise that a stranded row was breaking');
+rollback to savepoint claim_reclaim_stale_121;
+
+-- ---------------------------------------------------------------------------
+-- 121.12  complete_push_delivery: the three outcomes, the retry ceiling, and
+--         the token touch. ** NO OUTCOME HERE DELETES A TOKEN ** — folding a
+--         transport error into the dead-token branch silently unsubscribes
+--         every rider on whichever platform is having an outage, which is
+--         search-places' classifier bug one system over.
+-- ---------------------------------------------------------------------------
+savepoint complete_121;
+delete from push_deliveries;
+insert into push_deliveries (notification_id, state, attempts, claimed_at)
+  values ('00000000-0000-0000-0000-0001210e0001', 'claimed', 1, now());
+insert into push_devices (user_id, installation_id, token, platform, last_seen_at) values
+  ('00000000-0000-0000-0000-000000121001', '00012100-0000-4000-8000-000000000001', 'TOK-121-1', 'ios',
+   timestamptz '2026-01-01 00:00:00+00');
+select assert_eq(
+  complete_push_delivery((select id from push_deliveries limit 1), 'retry'),
+  'pending', '121.12a: a TRANSPORT failure returns the row to pending — backoff is the schedule interval');
+select assert_eq(
+  (select count(*)::int from push_devices where installation_id = '00012100-0000-4000-8000-000000000001'),
+  1, '121.12b: ** and it deletes NO token **, which is the whole of the classifier requirement on this side of the wire');
+update push_deliveries set attempts = 5, state = 'claimed';
+select assert_eq(
+  complete_push_delivery((select id from push_deliveries limit 1), 'retry'),
+  'failed', '121.12c: at the fifth attempt a retry becomes failed — bounded retries, per event-fanout-integrity');
+select assert_eq(
+  complete_push_delivery((select id from push_deliveries limit 1), 'sent',
+                         array['00012100-0000-4000-8000-000000000001']),
+  'sent', '121.12d: a delivered push completes the row');
+select assert_eq(
+  (select last_seen_at > timestamptz '2026-01-01 00:00:00+00' from push_devices
+    where installation_id = '00012100-0000-4000-8000-000000000001'),
+  true, '121.12e: ... and advances last_seen_at on exactly the installations reported delivered, so the 60-day window measures DEVICE REACHABILITY rather than app usage and a rider on a three-week holiday is not silently unsubscribed');
+select assert_rejected(
+  $$select complete_push_delivery((select id from push_deliveries limit 1), 'nonsense')$$,
+  '23514', '121.12f: an unknown outcome is refused with 23514 rather than silently writing an impossible state');
+select assert_eq(
+  (select count(*)::int from push_devices where installation_id = '00012100-0000-4000-8000-000000000001'),
+  1, '121.12g: no outcome above removed the device row — only invalidate_push_device does that');
+select invalidate_push_device('00012100-0000-4000-8000-000000000001');
+select assert_eq(
+  (select count(*)::int from push_devices where installation_id = '00012100-0000-4000-8000-000000000001'),
+  0, '121.12h: ... and invalidate_push_device does, which is the ONLY route from a provider''s permanent refusal to a deleted token (078''s third of four ways a row dies)');
+rollback to savepoint complete_121;
+
+-- ---------------------------------------------------------------------------
+-- 121.13  Retention (task 3.9): 60 days for a device, 7 for a terminal outbox
+--         row. 036 refused to write a number because nothing could enforce one;
+--         this is the mechanism that discharges it.
+-- ---------------------------------------------------------------------------
+savepoint sweep_121;
+delete from push_deliveries;
+insert into push_devices (user_id, installation_id, token, platform, last_seen_at) values
+  ('00000000-0000-0000-0000-000000121001', '00012100-0000-4000-8000-000000000002', 'TOK-OLD', 'ios',
+   now() - interval '61 days'),
+  ('00000000-0000-0000-0000-000000121002', '00012100-0000-4000-8000-000000000003', 'TOK-NEW', 'ios',
+   now() - interval '59 days');
+insert into push_deliveries (notification_id, state, completed_at) values
+  ('00000000-0000-0000-0000-0001210e0001', 'sent', now() - interval '8 days'),
+  ('00000000-0000-0000-0000-0001210e0002', 'suppressed', now() - interval '6 days');
+select sweep_push_retention();
+select assert_eq(
+  (select count(*)::int from push_devices where installation_id = '00012100-0000-4000-8000-000000000002'),
+  0, '121.13a: a device idle 61 days is swept — the fourth of the four ways a push_devices row dies, and the one 078 could only state');
+select assert_eq(
+  (select count(*)::int from push_devices where installation_id = '00012100-0000-4000-8000-000000000003'),
+  1, '121.13b: ... and one idle 59 days is NOT — the window is 60, long enough that a rider on holiday keeps their registration');
+select assert_eq(
+  (select count(*)::int from push_deliveries where notification_id = '00000000-0000-0000-0000-0001210e0001'),
+  0, '121.13c: a terminal outbox row completed 8 days ago is swept, so the outbox never becomes a permanent parallel log of every interaction in the app');
+select assert_eq(
+  (select count(*)::int from push_deliveries where notification_id = '00000000-0000-0000-0000-0001210e0002'),
+  1, '121.13d: ... and one completed 6 days ago is not');
+rollback to savepoint sweep_121;
+
+-- ---------------------------------------------------------------------------
+-- 121.14  (3.23a) ** THE SCHEDULED JOB IS APPLY-CLEAN AND FIRES NOTHING HERE. **
+--         docs/ENVIRONMENTS.md §Scheduled jobs: a pg_cron job written in a
+--         migration replicates to DEV and fires there, and the mitigation has
+--         to be something the chain CANNOT replicate. Vault secrets are that
+--         thing. This suite runs on plain Postgres with no pg_cron, no pg_net
+--         and no supabase_vault, which is also the state of both hosted
+--         projects today — so the job must exist, be callable, and do nothing.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = 'push_delivery_tick'),
+  1, '121.14a: the scheduled job exists, IN THE MIGRATION CHAIN rather than outside it — a job scheduled outside the chain is invisible to db:drift, to this suite and to review, so no later session could find out it exists');
+select assert_eq(
+  (select count(*)::int from pg_namespace where nspname in ('cron', 'net')),
+  0, '121.14b: ** and neither pg_cron nor pg_net is installed here **, so 121 applied cleanly without them — every reference to cron., net. and vault. in that file is inside dynamic SQL behind a catalogue check. Installing them is an owner action (task 3.22)');
+select assert_eq(
+  (select prosrc like '%vault.decrypted_secrets%' and prosrc like '%push_delivery_project_ref%'
+     from pg_proc where oid = 'private.push_delivery_tick()'::regprocedure),
+  true, '121.14c: the job reads a per-project key from Vault before it does anything — the gate the migration chain cannot replicate, so an unconfigured project posts nowhere');
+select private.push_delivery_tick();
+select assert_eq(
+  true, true,
+  '121.14d: ** and calling it with no Vault, no pg_net and no pg_cron RETURNS WITHOUT RAISING ** — the statement above is the assertion; a job that threw here would fail every run on a project the owner has not configured, which is both hosted projects today');
+
+reset role;
+rollback to savepoint push_delivery_121;
 
 
 rollback;

@@ -19,23 +19,21 @@ git diff --stat origin/development -- docs/HANDOFF.md   # is this file itself un
 
 ## Position
 
-**Updated 2026-09-08.** Prune the lines that are no longer true when you land work; do not add
+**Updated 2026-09-19.** Prune the lines that are no longer true when you land work; do not add
 history.
 
 - **`development` is the default branch and deploys to DEV** (`app-dev.letsride.social`);
   `main` is production (`app.letsride.social`). `development` is normally ahead of `main`, and
   that is the steady state.
-- **Migrations: 117 files; DEV at `118`, PROD at `116`** — `117` is PD-398's; `118` came from
-  another branch, applied but unmerged, so **take the next number from `list_migrations`, never
-  from the file count**. DEV answers 121 rows: three hand-applied with no file, PROD none. `115` grants `anon` EXECUTE on one function — the first
-  exception to decision #1 — so its advisor class
-  (`anon_security_definer_function_executable`) is now on both projects rather than DEV alone.
-  `docs/reference/migrations.md` §Applied state has the per-file log.
-- **Edge Functions: the two projects DISAGREE, and that is the resting state after a merge.**
-  `resolve-ride-location` is DEV `v8` (2026-09-07T20:42Z) / PROD `v6` (the 2026-09-06T22:20Z
-  dispatch), and the `ezbr_sha256` differs. The next promotion to `main` levels them. Read the
-  `deploy` job's conclusion, never the run's — without the token the job skips and the run is
-  still green.
+- **Migrations: 120 files; DEV at `121`, PROD at `116`** — `118` is applied to DEV from a branch
+  that never merged, so **take the next number from `list_migrations`, never from the file
+  count**. DEV answers 124 rows, three hand-applied with no file; PROD none.
+  `docs/reference/migrations.md` §Applied state has the per-file log and §Security advisors the
+  advisor counts.
+- **Edge Functions: the three deployed ones AGREE across both projects** — identical
+  `ezbr_sha256` (measured 2026-09-19); equality is not currency, and **`push-notify` is on
+  neither**. Read the `deploy` job's conclusion, never the run's: without the token the job
+  skips and the run is still green.
 - **The walk is green on DEV** as both fixture accounts (2026-09-06 baselines in
   `docs/reference/running-locally.md` §The walk). In CI it is still **skipped** — the Actions
   secrets name PROD and `WALK_CI` is unset (see §Blocked on the owner).
@@ -61,14 +59,16 @@ history.
   Every walk run spends two credits.
 - **Universal links are built and UNVERIFIED** (PD-205) — Apple fetches the association file onto
   a device, so a simulator settles nothing. `docs/reference/native-shell.md` §Universal links has
-  the device checks and the owner action. **PD-205 stays open**: the Android half needs a
-  signing fingerprint that cannot exist until `android/` does.
-- **Push, `openspec/changes/deliver-push-notifications`:** child B is complete (#438, #446) and
-  **unverified on a device** — tasks 2.15–2.19a wait on a provisioning profile with the Push
-  capability, an owner action. **Child C (PD-303) is the sender**, blocked on the
-  APNs `.p8` and the FCM service account. PD-291 stays open until C lands.
+  the device checks and the owner action. **It stays open**: the Android half needs a signing
+  fingerprint that cannot exist until `android/` does.
+- **Push (`openspec/changes/deliver-push-notifications`): child C (PD-303) is built and delivers
+  nothing yet** — `121` + `push-notify/` are merged and **inert** until four owner steps run in
+  `121`'s stated order (`pg_cron`+`pg_net`, the two provider secrets, deploy, *then* schedule);
+  the job is Vault-gated per project, so it no-ops on both today. Child B (#438, #446) is
+  unverified on a device — 2.15–2.19a want a Push-capable provisioning profile. PD-291 stays
+  open until a phone has received one.
 - **PD-454's proposal is merged, not its build** — the change stays under `openspec/changes/`;
-  its migrations (not `118` — taken) and both surfaces are their own PR.
+  its migrations and both surfaces are their own PR.
 - **PD-385 is open on purpose**: 9 DEV rides carry a coordinate and no tile, repairable only by
   their own organizers.
 
@@ -111,8 +111,10 @@ live), so read `src/` and `supabase/migrations/`, matching a migration by SUBJEC
 filename its proposal guessed. **The tool accepting a change is not evidence it shipped**: three
 it accepts are verified NOT BUILT and must not be archived —
 `place-backdated-postcards-on-the-timeline`, `postcard-audience-follows-its-entry-point` and
-`page-the-club-timeline-on-scroll`. `add-account-deletion` (open decision, collides with
-`enforce-creator-membership`) and `enforce-ride-capacity` (PD-436) also stay open.
+`page-the-club-timeline-on-scroll`. `enforce-ride-capacity` (PD-436) stays open, and so does
+`add-account-deletion`: Q4 answered, tasks remain, it collides with `enforce-creator-membership`,
+and **its spec still records the pre-PD-98 succession answer, which must be fixed before it
+archives.**
 
 ## Test accounts
 

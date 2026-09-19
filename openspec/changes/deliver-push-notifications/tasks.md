@@ -247,100 +247,100 @@ rest is not, and every box that is not carries `[device]`.**
 
 ### 3a. The SQL
 
-- [ ] 3.1 `079_push_delivery.sql` — `public.push_deliveries`: `notification_id` (`references
+- [x] 3.1 `079_push_delivery.sql` — `public.push_deliveries`: `notification_id` (`references
   public.notifications(id) on delete cascade`, unique), `state text` with a CHECK over
   `('pending','claimed','sent','suppressed','failed')`, `attempts int`, `claimed_at`,
   `completed_at`. **No payload column, no rendered-copy column, no club or ride name** —
   `database-enforced-integrity`'s modified requirement makes that a rule rather than a preference.
-- [ ] 3.2 RLS enabled, no client grants, no policy. Same shape and same reasoning as `push_devices`.
+- [x] 3.2 RLS enabled, no client grants, no policy. Same shape and same reasoning as `push_devices`.
   Expect a second `rls_enabled_no_policy` advisor.
-- [ ] 3.3 The `AFTER INSERT` trigger on `notifications`, writing one row. **No
+- [x] 3.3 The `AFTER INSERT` trigger on `notifications`, writing one row. **No
   `WHEN (CURRENT_USER = …)` clause**, and a comment recording that the absence is deliberate — per
   the standing requirement that an absent guard is indistinguishable from a forgotten one. It
   performs no readability check; the sender does that.
-- [ ] 3.4 `private.can_read_postcard(candidate uuid, target uuid)`,
+- [x] 3.4 `private.can_read_postcard(candidate uuid, target uuid)`,
   `private.can_read_comment(...)`, `private.can_read_profile(...)` — completing the family `060`
   started, in exactly `can_read_ride`'s shape: candidate as an argument, `security definer`,
   `search_path` pinned, revoked from `public`/`anon`/`authenticated`, and a comment naming the
   policy each restates and where that policy's qual is pinned in the suite.
-- [ ] 3.5 `public.push_payload_for(notification_id uuid)` — `security definer`, **granted to
+- [x] 3.5 `public.push_payload_for(notification_id uuid)` — `security definer`, **granted to
   `service_role` alone**, revoked from `public`, `anon` and `authenticated`. Two separable halves:
-  - [ ] 3.5a **The visibility gate, per COLUMN**, mirroring `036` §3's own qual — four
+  - [x] 3.5a **The visibility gate, per COLUMN**, mirroring `036` §3's own qual — four
     `<column> is null or …` conjuncts plus the recipient scope, the block check and
     `can_read_profile`. **Not** a `case type` dispatch: a sixth type changes the type CHECK and
     leaves the SELECT qual alone, so a type-keyed gate diverges on exactly the event 4.1 files.
     `ride_created_in_club` then requires both conjuncts without anyone remembering that it does.
-  - [ ] 3.5b **The copy dispatch, per type**, with an `else` arm that **raises** — `036:151-155`'s
+  - [x] 3.5b **The copy dispatch, per type**, with an `else` arm that **raises** — `036:151-155`'s
     reasoning one function along: a bare `CASE` with no `ELSE` returns NULL for an unmatched type,
     and NULL copy is a crash in the sender or an empty notification on a lock screen.
-  - [ ] 3.5c Returns nothing when the gate refuses; returns ids plus rendered strings and stores
+  - [x] 3.5c Returns nothing when the gate refuses; returns ids plus rendered strings and stores
     none of them.
-- [ ] 3.6 `public.claim_push_batch(batch_size int)` — `security definer`, granted to
+- [x] 3.6 `public.claim_push_batch(batch_size int)` — `security definer`, granted to
   `service_role` alone. Claims atomically (`for update skip locked`) so an overlapping run cannot
   double-send, and returns the recipient's devices with each row. **Two filters beyond `pending`:**
-  - [ ] 3.6a `and n.read_at is null` — a rider who was in the app when the row landed and tapped it
+  - [x] 3.6a `and n.read_at is null` — a rider who was in the app when the row landed and tapped it
     must not get a push about it forty seconds later. With a one-minute interval this is the
     ordinary case, not an edge one.
-  - [ ] 3.6b An **age cut**: rows older than a few hours are marked `suppressed`, not sent. The
+  - [x] 3.6b An **age cut**: rows older than a few hours are marked `suppressed`, not sent. The
     free tier auto-pauses after ~7 days idle, and a size bound alone means a resumed project
     delivers a week of notifications in installments. Stated in the header beside the interval.
-- [ ] 3.7 `public.complete_push_delivery(...)` / `public.invalidate_push_device(installation_id
+- [x] 3.7 `public.complete_push_delivery(...)` / `public.invalidate_push_device(installation_id
   text)` — `security definer`, `service_role` alone. The second is the only route by which a
   provider refusal removes a device row.
-- [ ] 3.8 **`031`'s lesson, applied prospectively.** Every function the Edge Function calls is in
+- [x] 3.8 **`031`'s lesson, applied prospectively.** Every function the Edge Function calls is in
   `public` — never `private` — because `service_role` holds no EXECUTE in `private` and PostgREST
   routes only to `public`, so `.schema('private')` is refused before it reaches Postgres.
-- [ ] 3.9 The retention sweep: tokens idle 60 days, and completed/suppressed outbox rows older
+- [x] 3.9 The retention sweep: tokens idle 60 days, and completed/suppressed outbox rows older
   than 7 days. A `security definer` function granted to `service_role`, called by the same job.
-- [ ] 3.10 **Assertions in `supabase/tests/rls_test.sql`**, paired per `openspec/config.yaml`:
-  - [ ] 3.10a `has_function_privilege('service_role', …, 'EXECUTE')` true for each of the four
+- [x] 3.10 **Assertions in `supabase/tests/rls_test.sql`**, paired per `openspec/config.yaml`:
+  - [x] 3.10a `has_function_privilege('service_role', …, 'EXECUTE')` true for each of the four
     delivery RPCs, and `('authenticated', …)` and `('anon', …)` false for each. **Named by role,
     not exercised** — `031`'s shape.
-  - [ ] 3.10b Blocking, both directions, created *after* the notification: `push_payload_for`
+  - [x] 3.10b Blocking, both directions, created *after* the notification: `push_payload_for`
     returns nothing. Asserted with the two riders exchanged.
-  - [ ] 3.10c A rider who left a **private** club: nothing. A rider who left a **public** club:
+  - [x] 3.10c A rider who left a **private** club: nothing. A rider who left a **public** club:
     still a payload — asserted separately, because one assertion cannot say which arm did the work.
-  - [ ] 3.10d `ride_created_in_club` with a public club and a non-public ride, recipient having
+  - [x] 3.10d `ride_created_in_club` with a public club and a non-public ride, recipient having
     left the club: nothing. **Not** replaced by an assertion relying on ride-visibility implying
     club-visibility.
-  - [ ] 3.10e An unresolvable actor: nothing.
-  - [ ] 3.10f The **textual pin**, covering **two** texts — `notifications` SELECT's qual **and**
+  - [x] 3.10e An unresolvable actor: nothing.
+  - [x] 3.10f The **textual pin**, covering **two** texts — `notifications` SELECT's qual **and**
     `notifications_type_check` — pinned against `push_payload_for`'s two halves, in the manner
     `060` pinned `clubs` SELECT at §060.1b. This is the assertion the whole design rests on.
     Pinning the qual alone is the trap: it does not move when a type is added, so it would stay
     green through exactly the change 4.1 makes.
-  - [ ] 3.10f2 An unknown `type` makes `push_payload_for` **raise** rather than return NULL copy.
-  - [ ] 3.10f3 A notification with `read_at` set is not claimed.
-  - [ ] 3.10f4 A notification older than the age cut is claimed and marked `suppressed`, not sent.
-  - [ ] 3.10g `claim_push_batch` claims each row at most once under concurrent calls.
-  - [ ] 3.10h A recipient with zero tokens completes rather than fails.
-- [ ] 3.11 `npm test` green; label sets compared, not counts.
+  - [x] 3.10f2 An unknown `type` makes `push_payload_for` **raise** rather than return NULL copy.
+  - [x] 3.10f3 A notification with `read_at` set is not claimed.
+  - [x] 3.10f4 A notification older than the age cut is claimed and marked `suppressed`, not sent.
+  - [x] 3.10g `claim_push_batch` claims each row at most once under concurrent calls.
+  - [x] 3.10h A recipient with zero tokens completes rather than fails.
+- [x] 3.11 `npm test` green; label sets compared, not counts. **3980 assertions, 0 failures, 61 of them `121`** — and CI's `RLS Policy Tests` job agrees on Postgres 17. **The first draft of this line said the suite could not run here and that was false**: Postgres 16 ships in this image, `initdb` into `/tmp` plus `pg_ctl` is three commands, and the whole suite takes 13 seconds (`docs/reference/running-locally.md`, the RLS suite row). Every behavioural claim was ALSO exercised against DEV in rolled-back transactions, and all eleven function bodies plus seven pinned literals diffed by md5 against the applied objects.
 
 ### 3b. The Edge Function
 
-- [ ] 3.12 `supabase/functions/push-notify/index.ts`. **It issues no `.from()`** — a grep of the
+- [x] 3.12 `supabase/functions/push-notify/index.ts`. **It issues no `.from()`** — a grep of the
   file returns zero, and the header says why: a service-role key reaching arbitrary tables makes
   every policy in this repo decorative.
-- [ ] 3.13 The caller check: verify the JWT's **signature**, then require `role: service_role`.
+- [x] 3.13 The caller check: verify the JWT's **signature**, then require `role: service_role`.
   `verify_jwt: true` is not this check — any signed-in rider's access token satisfies it, exactly
   as the publishable key satisfies a decode-only check. Header states which of
   `delete-account`'s four rules apply, which is replaced, and by what (design D11).
-- [ ] 3.14 APNs: JWT signed with the `.p8` over ES256, `apns-topic` = the bundle id, the host read
+- [x] 3.14 APNs: JWT signed with the `.p8` over ES256, `apns-topic` = the bundle id, the host read
   from a secret rather than a build constant (0.4).
-- [ ] 3.15 FCM v1: OAuth from the service account, one message per token.
-- [ ] 3.16 **The failure classifier — three outcomes, and it is the thing most likely to be wrong.**
+- [x] 3.15 FCM v1: OAuth from the service account, one message per token.
+- [x] 3.16 **The failure classifier — three outcomes, and it is the thing most likely to be wrong.**
   Delivered / token-is-dead / transport. `search-places` is the worked example of getting one
   wrong: `isPolicyRefusal` matched `42501` only, the gate raises `23514`, and a refusal fell to the
   outage branch. Folding a transport error into the dead-token branch here silently unsubscribes
   every rider on whichever platform is having an outage, and nothing reports it.
-- [ ] 3.17 Bounded batch, bounded retries, backoff. `event-fanout-integrity`'s "bounded and not
+- [x] 3.17 Bounded batch, bounded retries, backoff. `event-fanout-integrity`'s "bounded and not
   assumed small", one table further down.
-- [ ] 3.18 `src/__tests__/no-service-role-key.test.ts` — detectors for a PEM private key block and
+- [x] 3.18 `src/__tests__/no-service-role-key.test.ts` — detectors for a PEM private key block and
   a Google service-account JSON, **each proving it still catches a real key of that format**, per
   the file's own self-check convention.
-- [ ] 3.19 **Nothing type-checks this file.** `tsconfig.json` excludes `supabase/functions`.
+- [x] 3.19 **Nothing type-checks this file.** `tsconfig.json` excludes `supabase/functions`.
   Stated in the PR body, not discovered in review.
-- [ ] 3.19a **`/legal/privacy` names Apple and Google as sub-processors**, in the existing *"Who
+- [x] 3.19a **`/legal/privacy` names Apple and Google as sub-processors**, in the existing *"Who
   processes your data today"* section, alongside Supabase, Vercel and Geoapify, with what each
   receives: another rider's username, a club's name, a ride's title, the provider token and the
   installation identifier. **This ships in this child, not as a follow-up** — the disclosure
@@ -362,10 +362,10 @@ rest is not, and every box that is not carries `[device]`.**
   `pg_net` is specific to running it **inside a rider's transaction**, where it cannot raise and
   parks failures in `net._http_response`; from a cron job outside every rider's write it has none
   of those properties. Do not read D2 as a blanket prohibition — child C stalls on that reading.
-- [ ] 3.23 **[owner]** Deploy `push-notify` to DEV, exercise, then PROD. `deploy_edge_function` is
+- [ ] 3.23 **[owner]** Deploy `push-notify` to DEV, exercise, then PROD. **Exercising it means one `curl` before the schedule starts, and it settles a question nothing in this repo can** (`reviewer` finding 5, 2026-09-19): the gateway runs `verify_jwt` in front of a caller presenting a possibly non-JWT `sb_secret_…` key, and whether it forwards one is a property of Supabase's edge runtime. If it refuses, the schedule 401s every minute and delivers nothing **off a deploy that looks green**. `curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/functions/v1/push-notify" -H "Authorization: Bearer $SERVICE_ROLE_KEY"` must answer `200`, never `401`. `deploy_edge_function` is
   on the `deny` list and there is no `supabase` CLI in the container, so this is an owner action
   on every change under `supabase/functions/` — the function is drift from the moment it merges.
-- [ ] 3.23a **Write the scheduled job gated on Vault — `docs/ENVIRONMENTS.md` §Scheduled jobs,
+- [x] 3.23a **Write the scheduled job gated on Vault — `docs/ENVIRONMENTS.md` §Scheduled jobs,
   discharged by name.** That section is a standing instruction aimed directly at this change: a
   `pg_cron` job written in a migration **replicates to DEV and fires there**, and `pg_net` carries
   the same hazard for outbound HTTP. The job SHALL read a per-project key from `supabase_vault` —
@@ -398,6 +398,20 @@ rest is not, and every box that is not carries `[device]`.**
 ---
 
 ## 4. Filed rather than built
+
+- [ ] 4.0 **A reply in a RIDE thread notifies nobody** — found building child C, 2026-09-19, and
+  out of its scope. `108` copied the club's threads onto rides and left the notification behind:
+  `club_thread_replied` exists, there is no ride equivalent in `notifications_type_check`, and
+  `ride_thread_messages` carries only `enforce_participation_gate` and
+  `touch_ride_thread_activity` where `club_thread_messages` has a fan-out. So the gap is in-app
+  first and push second — there is no row to deliver. Adding a type is 4.1's shape (two CHECKs,
+  the `else false` arm, a copy arm, a path arm, an RLS assertion), and the recipient set is a real
+  domain question — every crew member, or the thread's participants — so it wants a proposal.
+- [ ] 4.0a **`club_thread_waved` is unwritable but still in the CHECK.** `101` dropped the table
+  and both fan-outs, and measured on DEV no function's `prosrc` names the type. `121` keeps a copy
+  arm for it deliberately: the type survives in the constraint, old rows survive with it, and the
+  `else` that raises would take a whole delivery run down. Removing the type is a migration with a
+  backfill question, not a tidy-up.
 
 - [ ] 4.1 **Child D — *"Your ride is tomorrow" — the first scheduled notification*.** Design D10
   settles the shape so that change does not re-decide it: it writes a `notifications` row first;
