@@ -30,7 +30,7 @@ npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 10 pre-existing warnings, 0 errors
                                       #   9 <img>, plus one unused 'joined' in ClubCard.tsx
-npm run test:unit                     # 4073/4073 across 181 files
+npm run test:unit                     # 4079/4079 across 183 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 45 static routes
 node scripts/native/assert-web-build.mjs   # that build was the web app, not the bundle
