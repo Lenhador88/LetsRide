@@ -205,6 +205,52 @@ outage** — the reason to carry the example is that the same ordering mistake o
 PROD is rider-visible for the length of a build, and nothing would have told us
 there either.
 
+## The moderation digest — the database is the instrument, not the mail
+
+PD-457's digest is an alerting channel, so *"did it fail"* has to be answerable without trusting
+the thing that failed. **It is, and it does not depend on log retention at all**: the sweep marks
+its own bookkeeping in `public.moderation_digest_entries`, so the state is a query rather than a
+search. Run these as the table owner at the Supabase dashboard — no client role holds any grant on
+that table, `service_role` included.
+
+```sql
+-- Anything claimed and never sent. On a healthy hour this is empty or
+-- momentarily non-empty; a row older than the reclaim window is the signal.
+select source, count(*), min(created_at) as oldest, max(attempts) as attempts
+  from public.moderation_digest_entries
+ where sent_at is null
+ group by source order by 1;
+
+-- The one state a person has to clear: the attempt cap is spent and the entry
+-- is still unsent, so nothing will pick it up again on its own.
+select * from public.moderation_digest_entries
+ where sent_at is null and attempts >= 5
+ order by created_at;
+```
+
+**Re-arming a capped entry is `update … set attempts = 0, claimed_at = null` on those rows**, after
+fixing whatever spent the cap. The usual cause is the one §`send-moderation-digest`'s secrets in
+`docs/ENVIRONMENTS.md` describes: a deployed function with no provider key, which burns an attempt
+per claimed entry and marks nothing sent.
+
+**Nothing is lost while this is broken, and that is the design rather than luck.** No outcome
+deletes an entry and no outcome marks a failed send as sent, so the worst state this feature
+reaches is *no worse than not having built it* — the reports sit in the `private.*_report_queue`
+views exactly as they did before, and the digest resumes from where it stopped.
+
+**Three things this does NOT tell you**, so that the absence is not mistaken for health:
+
+- **Whether the mail was read.** `sent_at` means a provider accepted it. *Mailed is not handled* —
+  the table deliberately carries no `resolved_at`, because a column nothing updates becomes a
+  number nobody rechecks.
+- **Why a send failed.** No error text is stored anywhere, deliberately: a provider's error body
+  can echo the payload it rejected, so a column for it is a payload column with a different name.
+  The HTTP status is in the function's own response body, and from a `pg_cron` tick that lands in
+  `net._http_response` on a short retention.
+- **Whether the schedule is running at all.** An empty unsent set is ambiguous between *everything
+  was mailed* and *nothing ever ran*. `select * from cron.job` is the check, and it is the one
+  question this table cannot answer.
+
 ## Client-side error reporting — DECIDED and shipped, PD-315
 
 **Sentry**, on the Monitoring & Analytics Notion page, built 2026-09-01. This

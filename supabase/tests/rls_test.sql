@@ -39680,6 +39680,609 @@ reset role;
 rollback to savepoint comment_reports_123;
 
 
+
+-- ===========================================================================
+-- 124: the moderation digest — the marker, the claim, the completion (PD-457)
+-- ===========================================================================
+--
+-- Paired with 124_reports_reach_a_human.sql per openspec/config.yaml. Scoped to
+-- what 124 added: nothing here counts policies, grants or columns table-wide on
+-- a table 124 did not create, because an assertion counting ALL of something on
+-- a shared table stops testing its own intent the moment a second surface lands
+-- there.
+--
+-- ** THE ONE ASSERTION THE WHOLE DESIGN RESTS ON IS 124.6 — THE PROJECTION PIN,
+-- AND IT HAS TWO HALVES. ** There is no viewer to test a predicate against in
+-- this feature: the digest's reader is the project owner, who can already read
+-- every row. So the containment is an enumerated list of columns, and a pin on
+-- the function signature ALONE is not enough — the function returns `p.*` from
+-- a view, so the view's column list is where a widening would actually land.
+--
+-- ** AND ON THE TWO service_role TABLE ASSERTIONS, WHICH CANNOT FAIL LOCALLY. **
+-- 076's note applies unchanged: the privilege they revoke is installed by the
+-- hosted project's `pg_default_acl`, which this scratch database has none of, so
+-- deleting the revoke from 124 leaves them green. They state the intent; 124
+-- §Verification against the hosted project is the measurement. 124.1d is the
+-- anti-vacuity probe that proves the predicate can read a real grant.
+
+\echo ''
+\echo '# 124 — the moderation digest: the marker holds no copy, and the projection is the whole security model'
+
+reset role;
+select set_config('test.uid', '', false);
+select set_config('request.jwt.claims', '', false);
+
+savepoint moderation_digest_124;
+
+-- ---------------------------------------------------------------------------
+-- 124.1  No role holds ANY privilege on the marker — service_role INCLUDED
+--        (task 2.1, 2.2). Named by ROLE rather than attempted: this suite runs
+--        as the table owner, for whom neither the grant nor RLS applies, so an
+--        attempted SELECT would succeed here and prove the opposite.
+--
+--        Both of CLAUDE.md's accepted forms are used, and which is which
+--        matters because a grep for one finds none of the other:
+--          124.1a/b — has_table_privilege, per grantee
+--          124.1c   — a grantee-scoped role_table_grants COUNT
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select bool_or(has_table_privilege(r, 'public.moderation_digest_entries', p))
+     from unnest(array['authenticated','anon']) r,
+          unnest(array['select','insert','update','delete']) p),
+  false, '124.1a: no client role holds SELECT, INSERT, UPDATE or DELETE on moderation_digest_entries — the marker is reached only through the two RPCs, and the revoke is not a no-op because this project grants a new public table to both roles by default');
+select assert_eq(
+  (select bool_or(has_table_privilege('service_role', 'public.moderation_digest_entries', p))
+     from unnest(array['select','insert','update','delete']) p),
+  false, '124.1b: ** service_role holds nothing either ** (intent locally; 124 §Verification against the hosted project is the measurement). What the revoke genuinely buys is in 124 §0d: no accidental .from(), and an API surface of exactly two named functions. It does NOT prevent suppression by a holder of the key — complete_moderation_digest hands that capability back by name — and 124 §0d replaces the proposal''s claim that it did');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'moderation_digest_entries'
+      and grantee in ('anon', 'authenticated', 'service_role')),
+  0, '124.1c: ... and none of the three holds a grant of ANY kind on it, read off role_table_grants rather than inferred — CLAUDE.md''s second accepted form, grantee-scoped so postgres''s ownership does not read high');
+
+-- ANTI-VACUITY, 047 §Verification's and 076's method: grant inside a savepoint,
+-- watch the predicate flip, roll it back. Without this, 124.1b is true of a
+-- database where the revoke never ran AND of one where the object name is
+-- misspelled, and the two are indistinguishable.
+savepoint digest_acl_probe_124;
+grant select on public.moderation_digest_entries to service_role;
+select assert_eq(
+  has_table_privilege('service_role', 'public.moderation_digest_entries', 'select'),
+  true, '124.1d ANTI-VACUITY: the marker assertion CAN read a real grant, so its false is a measurement of the ACL rather than a misspelled object name');
+rollback to savepoint digest_acl_probe_124;
+select assert_eq(
+  has_table_privilege('service_role', 'public.moderation_digest_entries', 'select'),
+  false, '124.1e: ... and the probe left nothing behind');
+
+-- ---------------------------------------------------------------------------
+-- 124.2  RLS on, and deliberately NO POLICY (task 2.3). Scoped to this table.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select relrowsecurity from pg_class
+    where oid = 'public.moderation_digest_entries'::regclass),
+  true, '124.2a: RLS is enabled on moderation_digest_entries, so the absence of policies DENIES rather than allows');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'moderation_digest_entries'),
+  0, '124.2b: ... and the marker carries NO policy at all — 026''s password_reset_grants shape for the fourth time. A policy here would describe direct access that must not exist, and "add one" is the repair this assertion refuses');
+
+-- ---------------------------------------------------------------------------
+-- 124.3  ** THE MARKER HOLDS NO COPY (task 1.3). ** The column list is the
+--         only automated check that D3's rule survives contact with a later
+--         session wanting to keep a provider error "for debugging".
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select string_agg(column_name, ', ' order by ordinal_position)
+     from information_schema.columns
+    where table_schema = 'public' and table_name = 'moderation_digest_entries'),
+  'id, source, postcard_report_id, club_thread_report_id, ride_thread_report_id, postcard_comment_report_id, feedback_id, attempts, created_at, claimed_at, sent_at',
+  '124.3a: ** the marker''s column list, pinned ** — ids, one FK per source, and bookkeeping. A `note`, `reason`, `body`, `caption`, `subject_title`, `rendered_mail` or `last_error` column added later fails HERE. A provider''s error body can echo the payload it rejected, so a column for it is a payload column with a different name');
+select assert_eq(
+  (select count(*)::int from information_schema.columns
+    where table_schema = 'public' and table_name = 'moderation_digest_entries'
+      and data_type in ('text', 'character varying', 'character')),
+  1, '124.3b: ... and `source` is the ONLY text column on the table, so there is nowhere for a rendered string or a reporter''s note to be parked under an innocent name');
+select assert_eq(
+  (select count(*)::int from information_schema.columns
+    where table_schema = 'public' and table_name = 'moderation_digest_entries'
+      and column_name in ('resolved_at', 'handled_at', 'reviewed_at', 'actioned_at')),
+  0, '124.3c: ** and there is no resolved_at, by any spelling ** — 076:313 and 094:624 both refuse one and this change keeps it refused. The marker says `this was mailed`, never `this was handled`; the other column makes the dashboard queue a workflow with two writers, which is a moderation product and not this');
+
+-- ---------------------------------------------------------------------------
+-- 124.4  The two RPCs BY ROLE (task 2.4), the tick by NOBODY (task 2.5), and
+--         both public functions definer with search_path pinned. 031's shape:
+--         the suite runs as the owner, for whom no barrier exists, so a role
+--         assertion is the only thing that can say anything here.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select bool_and(has_function_privilege('service_role', f, 'execute'))
+     from unnest(array['public.claim_moderation_digest(int)',
+                       'public.complete_moderation_digest(uuid[],text)']) f),
+  true, '124.4a: service_role CAN execute both digest RPCs — and they are in `public`, because service_role holds no EXECUTE in `private` and PostgREST routes only to public (031''s lesson, applied prospectively as 121 did)');
+select assert_eq(
+  (select bool_or(has_function_privilege(r, f, 'execute'))
+     from unnest(array['public','anon','authenticated']) r,
+          unnest(array['public.claim_moderation_digest(int)',
+                       'public.complete_moderation_digest(uuid[],text)']) f),
+  false, '124.4b: neither public, anon nor authenticated can execute EITHER of them — a client that could claim could suppress its own report by burning its attempts, and a client that could complete could stamp sent_at on a report no mail ever named');
+select assert_eq(
+  (select bool_or(has_function_privilege(r, 'private.moderation_digest_tick()', 'execute'))
+     from unnest(array['public','anon','authenticated','service_role']) r),
+  false, '124.4c: ** the scheduled job is reachable by NOBODY, service_role included ** — its only caller is pg_cron, which runs as the superuser, so a grant to anything else would be a second route into the outbound call');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('claim_moderation_digest', 'complete_moderation_digest')
+      and p.prosecdef
+      and p.proconfig @> array['search_path=""']),
+  2, '124.4d: both public digest functions are security definer with search_path pinned to the EMPTY STRING — stored with the quotes, and an assertion matching the unquoted form reads 0 and passes as "unpinned" (121''s footer)');
+select assert_eq(
+  (select p.prosecdef and p.proconfig @> array['search_path=""']
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = 'moderation_digest_tick'),
+  true, '124.4e: ... and so is the tick, which matters because 022 applied one thing and committed another and the clause it lost was the security-relevant one');
+
+-- ---------------------------------------------------------------------------
+-- 124.5  ** THE SOURCE LIST. ** Pinned because it is the same list written in
+--         five places in the migration AND a sixth in
+--         send-moderation-digest/shape.ts's SWEPT_SOURCES, with nothing
+--         automatic between the SQL and the TypeScript — Deno cannot reach the
+--         database and this suite cannot reach that file.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select pg_get_constraintdef(oid) from pg_constraint
+    where conname = 'moderation_digest_entries_source_check'),
+  'CHECK ((source = ANY (ARRAY[''postcard_report''::text, ''club_thread_report''::text, ''ride_thread_report''::text, ''postcard_comment_report''::text, ''feedback''::text])))',
+  '124.5a: ** the five source kinds, pinned, in digest order. ** This list must equal SWEPT_SOURCES in send-moderation-digest/shape.ts. A kind there and absent here is a source the digest promises to sweep and does not — which trains its reader that no mail means no report, the one reading that makes an alerting channel worse than none');
+select assert_eq(
+  (select count(*)::int from information_schema.columns
+    where table_schema = 'public' and table_name = 'moderation_digest_entries'
+      and column_name like '%\_id'),
+  5, '124.5b: ... and there are exactly FIVE source FK columns, so a sixth source added to the CHECK without its own FK, its own unique index and its own union branch fails here rather than inserting a row that names a kind nothing can join');
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where conrelid = 'public.moderation_digest_entries'::regclass
+      and contype = 'f' and confdeltype = 'c'),
+  5, '124.5c: ... and every one of the five FKs is ON DELETE CASCADE, which is the WHOLE retention answer for this table: a marker dies with its source row, which dies with its subject or its author (029). There is no scheduled deletion and nothing else deletes a marker');
+select assert_eq(
+  (select count(*)::int from pg_index i
+     join pg_class c on c.oid = i.indexrelid
+    where i.indrelid = 'public.moderation_digest_entries'::regclass
+      and i.indisunique and i.indnatts = 1
+      and c.relname <> 'moderation_digest_entries_pkey'),
+  5, '124.5d: ... and each has its own single-column UNIQUE index — two jobs each: a source row is entered at most once however many times the sweep runs (which is what makes the claim''s insert safe to re-run for ever), and each cascade has a leading-column index to delete through (029''s standing rule)');
+
+-- ---------------------------------------------------------------------------
+-- 124.6  ** THE PROJECTION PIN. THE ASSERTION THE WHOLE DESIGN RESTS ON.
+--         TWO HALVES, AND NEITHER IS SUFFICIENT ALONE (task 2.6). **
+--
+--         ** IF THIS FAILS, DO NOT RE-PIN THE STRING. ** The projection is
+--         design.md D5's contract and it is the entire security model of this
+--         change: a privileged role assembles the mail, there is no viewer to
+--         test a predicate against, and once a provider accepts, whatever left
+--         is outside every cascade in this system permanently — no block,
+--         take-down, account deletion or erasure request removes a line from a
+--         mailbox (124 §0f). Adding a column here is deciding that one more
+--         thing about a rider may live for ever in a third-party mail
+--         provider's storage. That is a proposal, reviewed, with the column
+--         named — then this pin moves. Moving the pin first is the whole
+--         failure inverted.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  pg_get_function_result('public.claim_moderation_digest(int)'::regprocedure),
+  'TABLE(entry_id uuid, source text, source_id uuid, created_at timestamp with time zone, reason text, note text, reports_on_subject integer, reports_on_author integer, body text, app_version text, route text, has_session_replay boolean)',
+  '124.6a: ** the projection, pinned on the function signature. ** Twelve columns and no more. No reporter_id even as a uuid, no author id, no username, no profiles column of any kind, no caption, no image_path, no signed URL, no club or thread identity, no message or comment text, no feedback author, and no posthog_session_id — has_session_replay is the boolean that keeps 096 §3''s value as "there is footage, go and look". The counts are reports_on_subject and reports_on_author and NEVER open_*: there is no resolved_at in this schema, so "open" would be a qualifier with nothing behind it and the author count is a history rather than a backlog');
+select assert_eq(
+  (select string_agg(column_name, ', ' order by ordinal_position)
+     from information_schema.columns
+    where table_schema = 'private'
+      and table_name = 'moderation_digest_projection'),
+  'entry_id, source, source_id, created_at, reason, note, reports_on_subject, reports_on_author, body, app_version, route, has_session_replay',
+  '124.6b: ** and pinned on the VIEW, which is the half that actually moves. ** claim_moderation_digest returns `p.*`, so a column added to the view lands in the signature by itself and 124.6a follows it without complaint. Pinning only the signature reads as complete and is the exact hole a `select *` convenience would fall through');
+select assert_eq(
+  (select count(*)::int from pg_depend d
+     join pg_rewrite r on r.oid = d.objid
+     join pg_class v on v.oid = r.ev_class
+     join pg_class t on t.oid = d.refobjid
+     join pg_namespace n on n.oid = t.relnamespace
+    where v.relname = 'moderation_digest_projection'
+      and n.nspname = 'public' and t.relname = 'profiles'),
+  0, '124.6c: ** the projection does not reference public.profiles AT ALL **, read off the dependency catalogue rather than the column list. That is what makes "the mail names no person" structural: no username, no avatar path, no home town and no home country can be reached from it without a new join, which fails 124.6b as well');
+select assert_eq(
+  (select to_regclass('public.moderation_digest_projection') is null),
+  true, '124.6d: ... and the projection is NOT in public, where PostgREST would publish it to every signed-in rider — 076''s assertion for the queue views, which is the one that catches the whole thing being built in the wrong schema');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'private' and table_name = 'moderation_digest_projection'
+      and grantee in ('anon', 'authenticated', 'service_role')),
+  0, '124.6e: ... and no client role holds a grant on it, service_role included. service_role DOES hold USAGE on `private` (031 granted it, 117 measured it), so the absent TABLE grant is the thing doing the work here and not the schema');
+
+-- ---------------------------------------------------------------------------
+-- 124.7  ** THE ATTEMPT IS COUNTED AT HAND-OUT, NOT ON THE COMPLETION PATH
+--         (124 §0b). ** The defect this closes is unbounded and silent: a
+--         sender that dies AFTER the provider accepted and BEFORE completing
+--         never calls complete_moderation_digest, so a counter only that path
+--         advanced never moves, the reclaim window frees the same entries, and
+--         the same batch re-mails EVERY HOUR FOR EVER with the cap never
+--         engaging. Every individual run looks correct. An earlier revision of
+--         the proposal put the increment on the completion path.
+-- ---------------------------------------------------------------------------
+savepoint digest_claim_124;
+-- Fixtures of 124's own, on 121's model. The seeded riders and postcards are
+-- NOT used: both counts below are over every report ever filed on a subject and
+-- on its author, so a fixture sharing an author with anything else in this suite
+-- would make them depend on what ran before this block.
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000124001', 'digestauthor@example.com'),
+  ('00000000-0000-0000-0000-000000124002', 'digestreporter1@example.com'),
+  ('00000000-0000-0000-0000-000000124003', 'digestreporter2@example.com');
+insert into postcards (id, author_id, caption, image_path) values
+  ('00001240-0000-4000-8000-0000000c0001', '00000000-0000-0000-0000-000000124001',
+   'the reported one', 'p/124a.jpg'),
+  ('00001240-0000-4000-8000-0000000c0002', '00000000-0000-0000-0000-000000124001',
+   'another by the same rider', 'p/124b.jpg');
+-- Two reports on ONE postcard by two riders, and a third on a second postcard by
+-- the same author: reports_on_subject is 2 and reports_on_author is 3, so the
+-- two counts cannot be confused for each other by an assertion that passes when
+-- they are equal.
+insert into public.postcard_reports (id, reporter_id, postcard_id, reason, note) values
+  ('00001240-0000-4000-8000-000000000001', '00000000-0000-0000-0000-000000124002',
+   '00001240-0000-4000-8000-0000000c0001', 'harassment', 'severe: look now'),
+  ('00001240-0000-4000-8000-000000000003', '00000000-0000-0000-0000-000000124003',
+   '00001240-0000-4000-8000-0000000c0001', 'spam', null),
+  ('00001240-0000-4000-8000-000000000004', '00000000-0000-0000-0000-000000124002',
+   '00001240-0000-4000-8000-0000000c0002', 'spam', null);
+insert into public.feedback (id, user_id, body, app_version, route, posthog_session_id) values
+  ('00001240-0000-4000-8000-0000000000f1', '00000000-0000-0000-0000-000000124002',
+   'the map never loads', '1.2.3', '/rides', 'sess-abc');
+
+create temp table digest_claimed_124 as
+  select * from public.claim_moderation_digest(50);
+
+select assert_eq(
+  (select attempts from public.moderation_digest_entries
+    where postcard_report_id = '00001240-0000-4000-8000-000000000001'),
+  1, '124.7a: ** the claim itself counted the attempt ** — 121:840''s position, and what makes "a duplicate line in a later digest is a cheap cost" TRUE rather than an unbounded loop');
+select assert_eq(
+  (select claimed_at is not null and sent_at is null
+     from public.moderation_digest_entries
+    where postcard_report_id = '00001240-0000-4000-8000-000000000001'),
+  true, '124.7b: ... and the entry is claimed and unsent, which is the state a crashed run leaves behind and the reclaim window is there to free');
+select assert_eq(
+  (select count(*)::int from public.claim_moderation_digest(50)),
+  0, '124.7c: ** a second claim inside the reclaim window returns ZERO rows **, so two invocations cannot mail the same entry. 124 §0c: this is claimed_at plus the window plus the per-source unique index doing the work — NOT the advisory lock, which is transaction-scoped and released before any mail is sent. A later session that shortens this window because "the lock handles it" breaks the property silently');
+
+-- The reclaim frees a stranded entry AND DOES NOT RESET ITS ATTEMPT. Resetting
+-- would restore exactly the unbounded loop 124.7a exists to bound.
+update public.moderation_digest_entries set claimed_at = now() - interval '16 minutes'
+ where postcard_report_id = '00001240-0000-4000-8000-000000000001';
+select assert_eq(
+  (select count(*)::int from public.claim_moderation_digest(50)
+    where source_id = '00001240-0000-4000-8000-0000000c0001'
+      and reason = 'harassment'),
+  1, '124.7d: an entry left claimed for SIXTEEN minutes is reclaimed and handed out again — fifteen is longer than one invocation''s wall clock (a digest is one HTTP call) and shorter than the hourly interval, so a crashed run is recovered by the next tick and never by two ticks racing');
+select assert_eq(
+  (select attempts from public.moderation_digest_entries
+    where postcard_report_id = '00001240-0000-4000-8000-000000000001'),
+  2, '124.7e: ** and the reclaim did NOT reset attempts ** — it is now 2, so a run that strands every time burns the cap in five ticks instead of re-mailing for ever');
+
+-- ---------------------------------------------------------------------------
+-- 124.8  What the digest carries for a report, and for feedback (task 2.6's
+--         behavioural half — the pin says which columns exist, this says what
+--         goes in them).
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select source_id from digest_claimed_124
+    where entry_id = (select id from public.moderation_digest_entries
+                       where postcard_report_id = '00001240-0000-4000-8000-000000000001')),
+  '00001240-0000-4000-8000-0000000c0001'::uuid,
+  '124.8a: ** source_id is the SUBJECT''s id, not the report row''s. ** The column name invites the other reading and the proposal never settled it: shape.ts renders it as `subject id`, every queue view can be filtered on it, and reports_on_subject is a count ABOUT it. The report row''s own id deliberately does not leave — it is not needed, and one fewer id is one fewer thing that is permanent');
+select assert_eq(
+  (select reports_on_subject from digest_claimed_124
+    where reason = 'harassment'),
+  2, '124.8b: reports_on_subject counts every report ever filed on that SUBJECT — two of the three fixtures name this postcard. NOT open_*: there is no resolved_at, so nothing is closed and "open" would be a qualifier with nothing behind it');
+select assert_eq(
+  (select reports_on_author from digest_claimed_124
+    where reason = 'harassment'),
+  3, '124.8b2: ... and reports_on_author counts every report ever filed on anything that RIDER wrote — three, because the third fixture names their second postcard. It is monotonically increasing and therefore a history rather than a backlog, which is the whole reason neither count is called open_*');
+select assert_eq(
+  (select bool_and(body is null and app_version is null and route is null
+                   and has_session_replay is null)
+     from digest_claimed_124 where source <> 'feedback'),
+  true, '124.8c: a report row NULLs the feedback half of the union — `source` is what says which half is populated, which is why both halves are nullable in shape.ts''s DigestEntry');
+select assert_eq(
+  (select has_session_replay from digest_claimed_124 where source = 'feedback'),
+  true, '124.8d: ** feedback carries has_session_replay as a BOOLEAN and never the id. ** 096 §3 added posthog_session_id so a bug report could be read beside ninety seconds of footage; "there is footage, go and look" survives, and a pointer into a recording of a rider''s screens does not land in a mail provider''s storage. 084 does not mention that column at all, which is why the projection came from the catalogue and not from that file');
+select assert_eq(
+  (select bool_and(reason is null and note is null
+                   and reports_on_subject is null and reports_on_author is null)
+     from digest_claimed_124 where source = 'feedback'),
+  true, '124.8e: ... and a feedback row NULLs the report half, including both counts — feedback is not a report and has no subject to count reports on');
+select assert_eq(
+  (select body from digest_claimed_124 where source = 'feedback'),
+  'the map never loads',
+  '124.8f: ** feedback.body DOES leave, and it is the one deliberate free-text export in this change. ** It is a message a rider wrote TO the owner; a digest that withheld it would be a notification that something had been said. Asserted rather than left to read as an inconsistency with the club-thread exclusions');
+
+-- ---------------------------------------------------------------------------
+-- 124.9  ** THE CAP IS FIVE AND A CAPPED ENTRY STAYS UNSENT (task 1.9). **
+--         Not `sent`, which loses the report; not deleted, which re-mails it
+--         for ever from the next claim. It sits there and the source rows sit
+--         in the dashboard queues — today's state, which is why the worst case
+--         of this whole feature is no worse than not having built it.
+-- ---------------------------------------------------------------------------
+update public.moderation_digest_entries set attempts = 5, claimed_at = null
+ where postcard_report_id = '00001240-0000-4000-8000-000000000001';
+select assert_eq(
+  (select count(*)::int from public.claim_moderation_digest(50)
+    where source_id = '00001240-0000-4000-8000-0000000c0001'
+      and reason = 'harassment'),
+  0, '124.9a: an entry at the attempt cap is NEVER handed out again — the loop is bounded, and re-arming it is a deliberate statement at the dashboard rather than something the next tick does by itself');
+select assert_eq(
+  (select sent_at is null from public.moderation_digest_entries
+    where postcard_report_id = '00001240-0000-4000-8000-000000000001'),
+  true, '124.9b: ** and it is still UNSENT. ** Marking a capped entry `sent` would lose the report behind a marker asserting the opposite, which is the failure at-least-once delivery exists to prevent');
+
+-- ---------------------------------------------------------------------------
+-- 124.10  ** THE OUTCOME VOCABULARY IS FOUR WORDS AND `failed` IS ONE OF THEM. **
+--          tasks.md 1.9 listed sent / retry / skipped and omitted it. `failed`
+--          is what shape.ts's classifyMailStatus returns for an ordinary 4xx —
+--          a bad key, an unverified sender, a malformed payload — so omitting
+--          it would make this function RAISE on the first real
+--          misconfiguration, inside the completion of a batch already mailed.
+-- ---------------------------------------------------------------------------
+update public.moderation_digest_entries set attempts = 1, claimed_at = now(), sent_at = null
+ where postcard_report_id = '00001240-0000-4000-8000-000000000001';
+select assert_eq(
+  (select public.complete_moderation_digest(
+            array(select id from public.moderation_digest_entries
+                   where postcard_report_id = '00001240-0000-4000-8000-000000000001'),
+            'failed')),
+  1, '124.10a: ** `failed` is accepted. ** A real 4xx reaches this function on the first misconfigured deploy, and a vocabulary missing it turns that into an exception on the completion path of a batch the provider already took');
+select assert_eq(
+  (select sent_at is null and attempts = 5 and claimed_at is null
+     from public.moderation_digest_entries
+    where postcard_report_id = '00001240-0000-4000-8000-000000000001'),
+  true, '124.10b: ... and it parks the entry at the cap, UNSENT and unclaimed — not sent (which loses it) and not deleted (which re-mails it for ever)');
+select assert_eq(
+  (select count(*)::int from public.moderation_digest_entries
+    where postcard_report_id = '00001240-0000-4000-8000-000000000001'),
+  1, '124.10c: ** no outcome deletes an entry **, which is what keeps the marker idempotent: a deleted marker is re-created by the very next claim and its report is mailed again every hour');
+select assert_rejected(
+  $$select public.complete_moderation_digest(array['00000000-0000-0000-0000-000000000000'::uuid], 'delivered')$$,
+  '23514',
+  '124.10d: an outcome outside the four raises check_violation rather than being silently ignored — a sender whose classifier drifted from this vocabulary fails loudly instead of leaving every entry claimed for ever');
+
+-- `retry` releases the claim and does NOT count a second attempt: 124.7a owns
+-- the count, and an increment here as well would double-count every send.
+update public.moderation_digest_entries set attempts = 1, claimed_at = now(), sent_at = null
+ where postcard_report_id = '00001240-0000-4000-8000-000000000001';
+select public.complete_moderation_digest(
+  array(select id from public.moderation_digest_entries
+         where postcard_report_id = '00001240-0000-4000-8000-000000000001'), 'retry');
+select assert_eq(
+  (select attempts = 1 and claimed_at is null and sent_at is null
+     from public.moderation_digest_entries
+    where postcard_report_id = '00001240-0000-4000-8000-000000000001'),
+  true, '124.10e: `retry` releases the claim and leaves attempts where the claim put it — the completion path never counts, so an ordinary send is one attempt and not two');
+
+-- `sent` is idempotent, and cannot be undone by a replayed completion.
+select public.complete_moderation_digest(
+  array(select id from public.moderation_digest_entries
+         where postcard_report_id = '00001240-0000-4000-8000-000000000001'), 'sent');
+select assert_eq(
+  (select public.complete_moderation_digest(
+            array(select id from public.moderation_digest_entries
+                   where postcard_report_id = '00001240-0000-4000-8000-000000000001'),
+            'retry')),
+  0, '124.10f: a replayed completion moves ZERO already-sent entries — every outcome is filtered on `sent_at is null`, so a retried call cannot return a delivered entry to the queue and cannot re-stamp it either');
+
+rollback to savepoint digest_claim_124;
+
+-- ---------------------------------------------------------------------------
+-- 124.11  ** AN ENTRY WHOSE SUBJECT HAS VANISHED IS RESOLVED INSIDE THE CLAIM,
+--           NOT LEFT CLAIMED. ** If the projection's join drops a row, the
+--           entry would be handed out with nothing to render and the reclaim
+--           window would hand it out again every fifteen minutes for ever.
+--
+--           ** THE ARM IS DEFENSIVE TODAY RATHER THAN REACHABLE, AND THAT IS
+--           WHY THIS TEST HAS TO REMOVE A CONSTRAINT TO SEE IT FIRE. ** Every
+--           FK from a report table to its subject is ON DELETE CASCADE, so a
+--           vanished subject takes its report and therefore its marker with it
+--           (124.12 measures that). Dropping the marker's own FK inside a
+--           savepoint is what makes the state constructible — and the arm
+--           becomes genuinely reachable the moment a source arrives whose FK is
+--           not cascading, or a subject gains a soft-delete flag. It is here
+--           because the failure it prevents is an immortal entry, which is the
+--           defect 121 §7 had to fix after shipping.
+-- ---------------------------------------------------------------------------
+savepoint digest_skip_124;
+alter table public.moderation_digest_entries
+  drop constraint moderation_digest_entries_postcard_report_id_fkey;
+insert into public.moderation_digest_entries (id, source, postcard_report_id) values
+  ('00001240-0000-4000-8000-00000000dead', 'postcard_report',
+   '00001240-0000-4000-8000-00000000beef');
+select assert_eq(
+  (select count(*)::int from public.claim_moderation_digest(50)
+    where entry_id = '00001240-0000-4000-8000-00000000dead'),
+  0, '124.11a: an entry the projection cannot render is NOT handed out — a claimed entry that renders to nothing is a blank line in a mail at best and a report nobody is ever told about at worst');
+select assert_eq(
+  (select attempts = 5 and claimed_at is null and sent_at is null
+     from public.moderation_digest_entries
+    where id = '00001240-0000-4000-8000-00000000dead'),
+  true, '124.11b: ... it is parked at the cap inside the SAME statement that claims the rest, so the reclaim window never sees it again. 121 §6''s principle: a gate refusal is an EMPTY RESULT rather than an error');
+select assert_eq(
+  (select count(*)::int from public.claim_moderation_digest(50)
+    where entry_id = '00001240-0000-4000-8000-00000000dead'),
+  0, '124.11c: ... and a second claim does not pick it up either, which is the whole difference between resolving the skip and leaving the entry claimed');
+rollback to savepoint digest_skip_124;
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where conrelid = 'public.moderation_digest_entries'::regclass
+      and conname = 'moderation_digest_entries_postcard_report_id_fkey'),
+  1, '124.11d: ... and the constraint 124.11 removed is back, so nothing above leaked into the assertions below');
+
+-- ---------------------------------------------------------------------------
+-- 124.12  ** DELETION REACHES THE MARKER, AND NO ORPHAN SURVIVES (task 2.7). **
+--           An unsent entry whose author deletes their account must never be
+--           mailed: the source row cascades with the profile and the marker
+--           cascades with the source row, so the next claim cannot see it.
+--           Deletion wins; the digest never resurrects content a rider asked to
+--           have erased.
+-- ---------------------------------------------------------------------------
+savepoint digest_cascade_124;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000124011', 'digestcascade1@example.com'),
+  ('00000000-0000-0000-0000-000000124012', 'digestcascade2@example.com');
+insert into postcards (id, author_id, caption, image_path) values
+  ('00001240-0000-4000-8000-0000000c0011', '00000000-0000-0000-0000-000000124011',
+   'about to be deleted', 'p/124c.jpg');
+insert into public.postcard_reports (id, reporter_id, postcard_id, reason) values
+  ('00001240-0000-4000-8000-000000000002', '00000000-0000-0000-0000-000000124012',
+   '00001240-0000-4000-8000-0000000c0011', 'spam');
+insert into public.feedback (id, user_id, body) values
+  ('00001240-0000-4000-8000-0000000000f2', '00000000-0000-0000-0000-000000124012', 'a note');
+select count(*) from public.claim_moderation_digest(50);
+select assert_eq(
+  (select count(*)::int from public.moderation_digest_entries
+    where feedback_id = '00001240-0000-4000-8000-0000000000f2'),
+  1, '124.12a: the feedback row has a marker, claimed and unsent — the state where an account deletion is most dangerous, because a mail has not gone out yet and must not');
+delete from public.profiles where id = '00000000-0000-0000-0000-000000124012';
+select assert_eq(
+  (select count(*)::int from public.moderation_digest_entries
+    where feedback_id = '00001240-0000-4000-8000-0000000000f2'),
+  0, '124.12b: ** deleting the author took the feedback row AND its marker ** — 084 §0b''s cascade plus 124 §1''s, so an unsent entry whose author deleted their account can never be mailed');
+delete from public.postcards where id = '00001240-0000-4000-8000-0000000c0011';
+select assert_eq(
+  (select count(*)::int from public.moderation_digest_entries
+    where postcard_report_id = '00001240-0000-4000-8000-000000000002'),
+  0, '124.12c: ... and deleting a report''s SUBJECT takes the report and its marker the same way, through 011/076''s existing cascade. No new cleanup path and no orphan marker');
+select assert_eq(
+  (select count(*)::int from public.moderation_digest_entries e
+    where not exists (select 1 from private.moderation_digest_projection p
+                       where p.entry_id = e.id)),
+  0, '124.12d: ** and no marker anywhere is left without a projection row **, which is the invariant 124.11''s arm exists for and the reason it is unreachable today');
+rollback to savepoint digest_cascade_124;
+
+-- ---------------------------------------------------------------------------
+-- 124.13  ** Q5: public.feedback LOSES service_role's DEFAULT GRANTS, AND
+--           ACCOUNT DELETION IS UNAFFECTED (task 2.10). ** 084 §2 kept them
+--           with the reasoning "whoever builds the reading story may well want
+--           a function that does" — this is that story, and it reads feedback
+--           through the RPC instead, which makes the sender's zero-`.from()`
+--           property uniform across all five sources rather than true of four.
+--
+--           The grant assertion cannot fail locally (see this block's header);
+--           the CASCADE one can and does, and it is 076 §3b's method rather
+--           than 076 §3b's paragraph: a referential action runs as the
+--           constraint's system trigger and does not consult privileges at all.
+-- ---------------------------------------------------------------------------
+savepoint digest_feedback_grant_124;
+select assert_eq(
+  (select bool_or(has_table_privilege('service_role', 'public.feedback', p))
+     from unnest(array['select','insert','update','delete']) p),
+  false, '124.13a: service_role holds nothing on public.feedback (intent locally; 124 §Verification against the hosted project is the measurement). It is the eighth revoked table, and the criterion stays a judgement about the ROWS with no mechanical test');
+select assert_eq(
+  (select bool_and(has_column_privilege('authenticated', 'public.feedback', c, 'insert'))
+     from unnest(array['user_id','body','app_version','route']) c),
+  true, '124.13b: ... and 084''s COLUMN-level INSERT grant to authenticated is UNTOUCHED on all four columns, which is the half a broad revoke would have taken — a rider can still file feedback. has_column_privilege rather than has_table_privilege: 084 granted four columns and not the table, so the table-level predicate reads FALSE against a correct database and an assertion written that way fails for the wrong reason');
+select assert_eq(
+  (select bool_or(has_column_privilege('authenticated', 'public.feedback', c, 'insert'))
+     from unnest(array['id','created_at']) c),
+  false, '124.13c0: ... and still NOT on `id` or `created_at`, the two columns 084 §2 deliberately left out of the grant so a client cannot name them. ** posthog_session_id IS insertable and that is correct ** — 096 §3 added it to the grant, which is measured here rather than assumed, and is exactly why 124''s projection reduces it to a boolean instead of forwarding a value the client itself writes');
+select assert_eq(
+  has_table_privilege('authenticated', 'public.feedback', 'select'),
+  false, '124.13c: ... and feedback is still write-only for every client role. 084 gave it no reader of any kind and this change does not add one: nobody in the app gains a read, not even the author of the row');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'feedback' and cmd = 'SELECT'),
+  0, '124.13d: ... and there is still no SELECT policy either, which is the other half — 084 §1 says the absence of the three policies is the contract rather than an omission to fill in later');
+
+-- The cascade, measured as service_role holding NEITHER select NOR delete on
+-- the table. BYPASSRLS is granted here only because the hosted service_role has
+-- it and this scratch role does not; the savepoint takes it back, and 124.13g
+-- proves it did.
+alter role service_role bypassrls;
+grant select, delete on public.profiles to service_role;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000124021', 'digesterase@example.com');
+insert into public.feedback (id, user_id, body) values
+  ('00001240-0000-4000-8000-0000000000f3', '00000000-0000-0000-0000-000000124021', 'erase me');
+select count(*) from public.claim_moderation_digest(50);
+set local role service_role;
+select assert_eq(
+  (select bool_or(has_table_privilege('service_role', 'public.feedback', p))
+     from unnest(array['select','delete']) p),
+  false, '124.13e: service_role can neither read nor delete public.feedback at the moment it runs the delete below — the precondition, asserted rather than assumed');
+delete from public.profiles where id = '00000000-0000-0000-0000-000000124021';
+reset role;
+select assert_eq(
+  (select count(*)::int from public.feedback
+    where id = '00001240-0000-4000-8000-0000000000f3')
+  + (select count(*)::int from public.moderation_digest_entries
+      where feedback_id = '00001240-0000-4000-8000-0000000000f3'),
+  0, '124.13f: ** and the row and its marker were still cascaded away. ** A referential action runs as the constraint''s system trigger and does not consult privileges at all (076:261 measured this in a rolled-back transaction because getting it wrong takes account deletion down and nothing in CI would notice). So revoking feedback from service_role does not touch the deletion path — delete-account never names the table anyway');
+rollback to savepoint digest_feedback_grant_124;
+select assert_eq(
+  (select rolbypassrls from pg_roles where rolname = 'service_role'),
+  false, '124.13g: ... and the BYPASSRLS 124.13e borrowed is gone. Roles are cluster-wide, so a probe that leaked it would make every later run pass for the wrong reason');
+
+-- ---------------------------------------------------------------------------
+-- 124.14  ** 124 WRITES TO NO SOURCE TABLE (task 2.9). ** The sweep must not
+--           mutate, delete or flag a source row: the marker lives in its own
+--           table, so the worst outcome of this entire feature is the state
+--           that exists today — rows waiting in a dashboard queue that nobody
+--           mailed. Scoped to the shape D3 rejected rather than to a count of
+--           everything, which would stop testing its own intent the moment any
+--           of the five changes for another reason.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from information_schema.columns
+    where table_schema = 'public'
+      and table_name in ('postcard_reports', 'club_thread_reports',
+                         'ride_thread_reports', 'postcard_comment_reports', 'feedback')
+      and (column_name like '%digest%' or column_name like '%sent%'
+           or column_name like '%mailed%')),
+  0, '124.14a: ** no source table gained a digest_sent_at column of any spelling. ** D3 rejected that shape because it needs UPDATE on four tables whose entire contract is that they have no UPDATE policy and no UPDATE grant to anybody — it would make "a report is not editable" false in order to record that a mail went out');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public'
+      and tablename in ('postcard_reports', 'club_thread_reports',
+                        'ride_thread_reports', 'postcard_comment_reports', 'feedback')
+      and cmd in ('UPDATE', 'ALL')),
+  0, '124.14b: ... and none of the five gained an UPDATE policy either, so a report still cannot be edited after the fact by anybody at all');
+
+-- ---------------------------------------------------------------------------
+-- 124.15  ** THE SCHEDULED JOB IS APPLY-CLEAN AND FIRES NOTHING HERE. **
+--           docs/ENVIRONMENTS.md §Scheduled jobs: a pg_cron job written in a
+--           migration replicates to DEV and fires there, and the mitigation has
+--           to be something the chain CANNOT replicate. Vault secrets are that
+--           thing. This suite runs on plain Postgres with no pg_cron, no pg_net
+--           and no supabase_vault — which is also the state of both hosted
+--           projects today — so the job must exist, be callable, and do nothing.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = 'moderation_digest_tick'),
+  1, '124.15a: the scheduled job exists, IN THE MIGRATION CHAIN rather than outside it — a job scheduled outside the chain is invisible to db:drift, to this suite and to review, so no later session could find out it exists');
+select assert_eq(
+  (select prosrc like '%vault.decrypted_secrets%'
+      and prosrc like '%moderation_digest_project_ref%'
+      and prosrc like '%moderation_digest_endpoint%'
+     from pg_proc where oid = 'private.moderation_digest_tick()'::regprocedure),
+  true, '124.15b: the job reads THREE per-project keys from Vault and checks that the endpoint names the ref before it does anything — the gate the migration chain cannot replicate, so an unconfigured project posts nowhere. Postgres exposes no self-identifying project ref (121 §10 measured it: cluster_name is `main` on both projects), so two independently-created secrets agreeing is what stands in for it');
+select private.moderation_digest_tick();
+select assert_eq(
+  true, true,
+  '124.15c: ** and calling it with no Vault, no pg_net and no pg_cron RETURNS WITHOUT RAISING ** — the statement above is the assertion. A job that threw here would fail every run on a project the owner has not configured, which is both hosted projects today. Unlike 121''s tick it does no unconditional local work, because a marker''s retention is its source row''s');
+select assert_eq(
+  (select count(*)::int from pg_namespace where nspname in ('cron', 'net')),
+  0, '124.15d: neither pg_cron nor pg_net is installed here, so 124 applied cleanly without them — every reference to cron., net. and vault. in that file is inside dynamic SQL behind a catalogue check. Installing them is an owner action, and until then the digest is sent by invoking the function by hand, which needs neither');
+select assert_eq(
+  (select prosrc like '%1240457%'
+     from pg_proc where oid = 'public.claim_moderation_digest(int)'::regprocedure),
+  true, '124.15e: ** the advisory lock key is a STABLE LITERAL CONSTANT. ** A key derived per invocation is a no-op that still reads as protection, which is worse than no lock at all. Read 124 §0c before trusting the lock for anything: it is transaction-scoped and the claim commits before the provider is called, so it serialises the marker INSERT and nothing else');
+
+rollback to savepoint moderation_digest_124;
 rollback;
 
 \echo ''

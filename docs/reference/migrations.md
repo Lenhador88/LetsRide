@@ -329,11 +329,12 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**123 files. DEV is at `123`, answering 126 rows, and PROD at `116` — measured 2026-09-19.**
+**124 files. DEV is at `124`, answering 127 rows, and PROD at `116` — measured 2026-09-19.**
 DEV-ahead is the resting state between a merge and its promotion: `117` (PD-398), `118` (PD-459),
-`119` (PD-175), `120` (PD-458), `121` (PD-303) and `122`/`123` (PD-454) are applied to DEV and
-await the `development` → `main` promotion, which is the only thing that should carry them to PROD.
-Three of the 126 rows are file-less — the long-standing hand-applied ones — and nothing else is.
+`119` (PD-175), `120` (PD-458), `121` (PD-303), `122`/`123` (PD-454) and `124` (PD-457) are applied
+to DEV and await the `development` → `main` promotion, which is the only thing that should carry
+them to PROD. Three of the 127 rows are file-less — the long-standing hand-applied ones — and
+nothing else is.
 
 **Three of those numbers were SPENT ON DEV BEFORE THEIR FILE EXISTED HERE, and that is the state
 to plan for rather than the exception.** `118_the_terms_name_a_person` was applied to DEV from
@@ -401,6 +402,48 @@ live stamp said twenty-three while `select count(*) from pg_trigger where tgname
 enumeration the way `101`'s drop of `club_thread_waves` was folded in. So a careful session
 increments the string and writes twenty-four one file early. `122` restamped from the trigger count
 and folded both drops into a single line; `123` composed its stamp from what `122` left.
+
+**`124_reports_reach_a_human` (PD-457), applied to DEV 2026-09-19T07:39Z as
+`reports_reach_a_human`.** The app's first mail rail. Adds
+`public.moderation_digest_entries` (RLS on, **zero policies**, revoked from `anon`,
+`authenticated` **and** `service_role`; five nullable FKs `on delete cascade`, one per source, with
+`num_nonnulls(...) = 1` plus a CASE agreeing the non-null FK with `source`), the
+`private.moderation_digest_projection` view, `public.claim_moderation_digest(int)`,
+`public.complete_moderation_digest(uuid[], text)`, `private.moderation_digest_tick()` and
+`revoke all on public.feedback from service_role`. **Additive and inert**: it creates a table
+nothing writes and two functions only `service_role` can call, so it is safe in either direction
+relative to any deploy — `supabase/functions/send-moderation-digest/` is deployed to neither
+project as this lands.
+
+**Two things in it are corrections to the merged proposal rather than implementations of it**, and
+both are the kind a later session restores by reading the prose instead of the file. `attempts`
+increments **when a row is handed out**, not on the completion path — `121:840`'s position, and the
+reason is that a sender dying after the provider accepted never reaches the completion call, so a
+completion-path counter never advances, the reclaim window frees the batch, and the same mail
+repeats hourly for ever. And the `service_role` revoke on the marker table is **not** a defence
+against a suppressed report: `complete_moderation_digest` is granted to `service_role` and confers
+exactly that, so the containment is the key's single storage location and the revoke buys the read
+half plus an API surface of two function names. The file says both in `§0b` and `§0d`.
+
+**Applied REDUCED and proved by object diff** (68 KB, 1128 lines — `§Applying a large file`). The
+reducer strips only `--` lines outside dollar-quoted bodies, so function bodies are byte-identical;
+**the recorded statement does not equal `md5sum` of the file and that is the norm, not drift**.
+Both hops verified: a local database that applied the file against one that applied the reduced
+form, 8/8 object hashes identical; and that local database against DEV, 7/7 identical
+(`functiondef 408ca5567db0f82d00536ae9b187a7fe`, `viewdef ef30198a…`, `columns 9be156d9…`,
+`constraints 572b6d5b…`, `indexes 34631a6b…`, `funcacls 850d3418…`, `comments f3d5390d…`).
+`relacl` is excluded from the hash because Supabase's defaults differ from plain Postgres; the
+grants are covered grantee-scoped in the file's `§Verification` instead.
+
+**Measured on DEV before and after, 2026-09-19.** `service_role` census **30 kept / 6 revoked →
+29 kept / 8 revoked** (`moderation_digest_entries` and `feedback` added). Published
+`security definer` functions executable by `authenticated` **38 → 38, unmoved** — both new `public`
+functions are revoked from it. `anon_security_definer_function_executable` **1 → 1**, still only
+`ride_invite_link_public_preview`. `security_definer_view` **absent → absent**: the projection lives
+in `private`, like the four report queues. `rls_enabled_no_policy` **6 → 7**, and the new member is
+correct by design rather than an oversight — a table with RLS on, no policy and no grant to any
+client role is the shape `121`'s `push_deliveries` already has. RLS suite **4158 → 4225**, **+66**
+labels, all `124.x`, none removed.
 
 **The `113`, `114`, `115`, `116` promotion applied to PROD on 2026-09-08, `113` ahead of `114` as
 its gate required.** The open gap today is `117` and `118`, both DEV-only. The ordering rule stands for the next one, and
@@ -1753,7 +1796,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 123 — DEV at 123, PROD at 116. The DEV ref runs AHEAD
+ls supabase/migrations/*.sql | wc -l     # 124 — DEV at 124, PROD at 116. The DEV ref runs AHEAD
                                          # of this count whenever a concurrent branch has applied
                                          # its own file: 118 (PD-459) and 122/123 (PD-454) each
                                          # did, so never infer the next free number from wc -l.

@@ -211,9 +211,12 @@ as a **required** argument, `null` meaning "we do not know"; the viewer's own zo
 answer. `080`'s `enforce_ride_timezone` keeps the typed wall-clock when the zone moves;
 `rideZone()` falls back for anything `Intl` cannot format in.
 
-**Deliberately undecided** — raise rather than invent: i18n, and email delivery beyond Supabase's
-built-in auth mails. Analytics is decided: `docs/reference/analytics.md`, and failed requests are
-readable for 24 hours via `npm run logs:errors` (`docs/reference/observability.md`).
+**Deliberately undecided** — raise rather than invent: i18n. **Email delivery was decided on
+2026-09-19** and supersedes PD-322's unbuilt Slack answer: `124` + `send-moderation-digest` mail
+the operator. **The rail is decided, not the vendor** — the provider lives behind `mail.ts` alone,
+so a swap is a one-file diff, and a mail to a RIDER is a new decision. Analytics is decided:
+`docs/reference/analytics.md`, and failed requests are readable for 24 hours via
+`npm run logs:errors` (`docs/reference/observability.md`).
 
 ## Repo Layout
 
@@ -282,10 +285,11 @@ Four rules, each with a test naming the trap it avoids:
 
 ## Supabase Rules
 
-**Four Edge Functions — three on both projects, `push-notify` on DEV only**: `delete-account` (the only place a
+**Five Edge Functions — three on both projects, `push-notify` on DEV only, `send-moderation-digest` on neither**: `delete-account` (the only place a
 service-role key exists — the Auth admin API needs it), `resolve-ride-location` (geocodes a
-meeting point and renders its tiles), `search-places` (proxies the typeahead) and `push-notify`
-(`121`'s outbox drain — **deployed to DEV only**, and inert until the owner's activation steps).
+meeting point and renders its tiles), `search-places` (proxies the typeahead), `push-notify`
+(`121`'s outbox drain — **deployed to DEV only**, and inert until the owner's activation steps) and
+`send-moderation-digest` (`124`'s report-and-feedback mail sweep — **deployed nowhere yet**).
 Four rules on `delete-account`, which is why it does not contradict §What Not To Do — **the function is not the
 app**: the key lives only in the function's secret store (`src/__tests__/no-service-role-key.test.ts`
 is the tripwire); it takes no user id; it verifies the JWT itself; only CI's `functions` job
@@ -329,11 +333,11 @@ repointed. `docs/ENVIRONMENTS.md` is the contract. **Never promote a Vercel prev
 — both Supabase variables are inlined at build time and promote does not rebuild. **Check drift
 rather than claiming it**: `npm run db:drift` compares migration *names*.
 
-**Applied state: 123 files; DEV is at `123` and PROD at `116` — measured 2026-09-19.** DEV-ahead
+**Applied state: 124 files; DEV is at `124` and PROD at `116` — measured 2026-09-19.** DEV-ahead
 is the resting state between a merge and its promotion; promote everything the gap contains, in
 filename order, per `docs/ENVIRONMENTS.md` §Migrations, and record each file's ordering in
 `docs/reference/migrations.md` §Applied state. Count rather than trust it — `list_migrations`
-against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV answers 126 rows and
+against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV answers 127 rows and
 THREE have no file; PROD none** — the long-standing hand-applied ones. **Three sessions build at
 once, so the DEV ref runs ahead of the tree by however many are in flight**: count the FILE-LESS
 rows rather than the gap, and take the next number off `list_migrations` rather than off `wc -l`.
@@ -364,7 +368,7 @@ before it applies** — every affected path exercised on DEV, in a rolled-back t
 recorded statement that does not equal `md5sum` of its file is the NORM; compare the OBJECT
 (`docs/reference/migrations.md` §Applying a large file, §What reads as drift).
 
-Suite **4158** assertions — re-derive rather than trust it:
+Suite **4225** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs.
 
@@ -390,7 +394,7 @@ difference between the projects is almost always a pending promotion.
 
 **A new table KEEPS Supabase's default `service_role` grants. Revoking is the exception, for a
 restricted-readership sink** — rows the one credential that bypasses RLS must not be able to
-enumerate (`076` §3). Six are revoked today, and the criterion is a judgement about the ROWS
+enumerate (`076` §3). Eight are revoked today, and the criterion is a judgement about the ROWS
 with no mechanical test — an earlier mechanical test excluded the two reporting tables and would
 have re-opened the exposure. `rls_enabled_no_policy` is a candidate set worth checking, never the
 criterion; PD-413 holds the two candidates found unrevoked. Re-run rather than trust any list:
@@ -402,8 +406,9 @@ select count(*) filter (where sr)                          as kept,
   from (select c.relname, has_table_privilege('service_role', c.oid, 'SELECT') as sr
           from pg_class c join pg_namespace n on n.oid = c.relnamespace
          where n.nspname='public' and c.relkind='r') t;
--- 30 kept · 6 revoked · club_thread_reports, postcard_comment_reports, postcard_reports,
---                       push_deliveries, push_devices, ride_thread_reports (2026-09-19).
+-- 29 kept · 8 revoked · club_thread_reports, feedback, moderation_digest_entries,
+--                       postcard_comment_reports, postcard_reports, push_deliveries,
+--                       push_devices, ride_thread_reports (2026-09-19).
 ```
 
 Each revoke carries a grantee-scoped assertion in one of two forms — a savepoint-staged
