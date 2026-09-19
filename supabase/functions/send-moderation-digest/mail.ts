@@ -21,6 +21,22 @@
  * ---------------------------------------------------------------------------
  * THREE SECRETS, NO DEFAULTS, AND THE ABSENCE OF A DEFAULT IS THE POINT
  * ---------------------------------------------------------------------------
+ * **The three are the key, the recipient and the sender. `MAIL_PROVIDER_ENDPOINT`
+ * is the fourth variable read in this file, it is not one of them, and it DOES
+ * have a default** — `design.md` D7's recommended provider, so the common deploy
+ * sets three values rather than four.
+ *
+ * It is named here rather than left to be discovered, because it decides which
+ * host receives the bearer key: switching provider means setting it in the SAME
+ * step as `MAIL_PROVIDER_API_KEY`, or a Brevo key is POSTed to Resend. Its
+ * default is safe in the way an address default is not — a wrong endpoint is a
+ * refused send, never a digest delivered to a stranger — which is why it has one
+ * and the other three must not.
+ *
+ * (`docs/ENVIRONMENTS.md`'s table lists FIVE rows for the same function: these
+ * four, plus `SERVICE_ROLE_KEY`, which `index.ts` reads and this file never
+ * sees. Neither count is wrong; they are counting different things.)
+ * ---------------------------------------------------------------------------
  * **No address literal appears in this directory** — not the recipient, not the
  * sender, not a fallback. `src/__tests__/moderation-digest-secrets.test.ts`
  * asserts that, and it is the mechanism behind N46/N47: the app's *published*

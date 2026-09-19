@@ -201,8 +201,9 @@ changing a policy or a grant is paired with a task adding assertions to `supabas
 - [ ] 7.1 `124` applies. **Additive and inert**: it creates a table nothing writes and two functions
   only `service_role` can call. Safe in either direction relative to any deploy.
 - [ ] 7.2 The function deploys (6.3).
-- [ ] 7.3 The secrets land (6.2). **Before the schedule** — a deployed function with no key burns the
-  attempt cap on every claimed entry and leaves them unsent until an owner re-arms them.
+- [ ] 7.3 The secrets land (6.2). **Before the schedule** — an unconfigured tick 500s
+  `not_configured` before it claims, so no report is delivered for as long as the order is wrong.
+  (It no longer spends the attempt cap: the guard moved ahead of the claim after review.)
 - [ ] 7.4 One hand invocation proves it (6.4).
 - [ ] 7.5 The schedule starts (6.5). **Never before 7.2**, or the job posts to a 404 hourly.
 

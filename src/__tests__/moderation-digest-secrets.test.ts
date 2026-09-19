@@ -116,6 +116,35 @@ describe('the digest function names no address', () => {
     expect(doorway.indexOf('missingMailSecrets().length')).toBeLessThan(doorway.indexOf('fetch('))
   })
 
+  it('refuses before it claims, so an unset secret never spends an attempt', () => {
+    const entry = stripCommentLines(readFileSync(path.join(fnDir, 'index.ts'), 'utf8'))
+
+    // The CALL SITE, not the bare symbol. `missingMailSecrets` is also in the
+    // import line at the top of the file, which sits above the claim — so a
+    // pattern matching the name alone passes on a file whose guard was deleted,
+    // which is the one direction that matters here.
+    const guard = entry.search(/const missing = missingMailSecrets\(\)/)
+    const claim = entry.indexOf("rpc('claim_moderation_digest'")
+
+    // Both anchors must be real. `indexOf` answers -1 for a string that is gone,
+    // and -1 is less than every position — so an ordering assertion on its own
+    // passes loudest exactly when the guard has been deleted.
+    expect(guard, 'the pre-claim guard').toBeGreaterThan(-1)
+    expect(claim, 'the claim').toBeGreaterThan(-1)
+
+    // The other order is the defect this pins: `sendDigestMail` refuses from
+    // inside the send, by which point a batch is claimed and its `attempts`
+    // incremented, and `NOT_CONFIGURED` classifies as `failed`. A function
+    // deployed ahead of its secrets would walk real reports to the attempt cap.
+    expect(guard).toBeLessThan(claim)
+
+    // Both ways, per the file header: the import line alone must NOT satisfy the
+    // guard pattern, or deleting the block leaves this test green for ever.
+    const importOnly = "import { missingMailSecrets, sendDigestMail } from './mail.ts'"
+    expect(importOnly).toContain('missingMailSecrets')
+    expect(importOnly).not.toMatch(/const missing = missingMailSecrets\(\)/)
+  })
+
   it('the recipient is never a parameter, so no call site can name an address', () => {
     // N3/N46. `sendDigestMail` takes the rendered mail and nothing else.
     const doorway = readFileSync(path.join(fnDir, 'mail.ts'), 'utf8')

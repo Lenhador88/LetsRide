@@ -412,8 +412,18 @@ and folded both drops into a single line; `123` composed its stamp from what `12
 `public.complete_moderation_digest(uuid[], text)`, `private.moderation_digest_tick()` and
 `revoke all on public.feedback from service_role`. **Additive and inert**: it creates a table
 nothing writes and two functions only `service_role` can call, so it is safe in either direction
-relative to any deploy — `supabase/functions/send-moderation-digest/` is deployed to neither
-project as this lands.
+relative to any deploy. `supabase/functions/send-moderation-digest/` was deployed to **neither**
+project as `124` landed, and **PD-457's merge deployed it to DEV twelve minutes later** —
+`deploy-functions.yml` runs on a push to `development` touching `supabase/functions/**`, which is
+`CLAUDE.md` §Supabase Rules working as written rather than a surprise. PROD stays on the three
+older functions until the promotion. Read `list_edge_functions` for both, never this sentence.
+
+**`124` §Apply order step 3's stated reason is superseded**: it says a deployed function with no
+key *"burns the attempt cap on every claimed entry"*. PD-457's follow-up moved the secrets check
+ahead of `claim_moderation_digest`, so an unconfigured tick 500s and claims nothing. The rule step
+3 states — **secrets before the schedule** — still holds, now because an unconfigured schedule
+delivers no report rather than because it costs a re-arm. A migration is immutable, so the
+correction lives here.
 
 **Two things in it are corrections to the merged proposal rather than implementations of it**, and
 both are the kind a later session restores by reading the prose instead of the file. `attempts`
@@ -442,8 +452,9 @@ functions are revoked from it. `anon_security_definer_function_executable` **1 �
 `ride_invite_link_public_preview`. `security_definer_view` **absent → absent**: the projection lives
 in `private`, like the four report queues. `rls_enabled_no_policy` **6 → 7**, and the new member is
 correct by design rather than an oversight — a table with RLS on, no policy and no grant to any
-client role is the shape `121`'s `push_deliveries` already has. RLS suite **4158 → 4225**, **+66**
-labels, all `124.x`, none removed.
+client role is the shape `121`'s `push_deliveries` already has. RLS suite **4158 → 4225**, **+67**
+labels, all `124.x`, none removed. **A grep answers 66 and 66 is wrong** — a label pattern ending
+`[:.]` drops `124.1d`, which carries neither; count with `grep -oE "'124\.[0-9]+[a-z0-9]*"`.
 
 **The `113`, `114`, `115`, `116` promotion applied to PROD on 2026-09-08, `113` ahead of `114` as
 its gate required.** The open gap today is `117` and `118`, both DEV-only. The ordering rule stands for the next one, and

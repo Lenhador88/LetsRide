@@ -792,7 +792,7 @@ line. Three things follow:
   blind to the directory; `deno check` runs against every `index.ts` under it when
   `supabase/functions/**` changes, and ESLint parses them too. **Neither reaches this container** —
   there is no `deno` here — so a change under `supabase/functions/` is first type-checked in CI.
-  Three of the four functions answer that by putting every decision in a `shape.ts` with no `Deno.`
+  Three of the five functions answer that by putting every decision in a `shape.ts` with no `Deno.`
   reference, which a test under `src/__tests__/` imports and drags back into `tsc`'s graph.
 - **Secrets are per project.** A DEV push key that reaches a test device and a PROD one that
   reaches every rider. Getting these backwards sends test notifications to real people.
@@ -801,14 +801,16 @@ line. Three things follow:
 
 `send-moderation-digest` (PD-457) is the app's first mail sender. It holds four secrets, per
 project, and one of them is an address rather than a credential — which is why it gets its own
-heading rather than a line in the list above.
+heading rather than a line in the list above. **A fifth variable is not a secret and is the
+table's last row**; it is listed because it has a default and the other four must not.
 
 | Secret | What it is | Absent means |
 |---|---|---|
 | `SERVICE_ROLE_KEY` | shared with `delete-account` and `push-notify` | the function 500s and says which secret is missing |
-| `MAIL_PROVIDER_API_KEY` | the provider's key. `design.md` D7 recommends Resend; the provider is one file (`mail.ts`) | no send, and the batch is left **unsent** rather than marked |
+| `MAIL_PROVIDER_API_KEY` | the provider's key. `design.md` D7 recommends Resend; the provider is one file (`mail.ts`) | **nothing is claimed** — the function 500s `not_configured` before it touches the queue |
 | `DIGEST_SENDER` | the envelope sender. A provider's own onboarding sender works before any DNS exists; a verified domain replaces it later with no deploy | as above |
 | `DIGEST_RECIPIENT` | **the product owner's private mailbox** | as above |
+| `MAIL_PROVIDER_ENDPOINT` | **not a secret, and the one variable with a default** — `https://api.resend.com/emails`. Set it in the *same step* as `MAIL_PROVIDER_API_KEY` when the provider is not Resend | the default is used, so a non-Resend key is POSTed to Resend and refused |
 
 **`DIGEST_RECIPIENT` is not `SUPPORT_EMAIL`, and this is the sharp edge.** `SUPPORT_EMAIL`
 (`hello@letsride.social`) is *published* — the App Store listing, `/legal/support`, the terms and
@@ -825,12 +827,13 @@ cover this one.** No test reaches a secret store, so the only thing standing bet
 the published address is whoever types the value. That is why it is written here, beside the
 secret, rather than only in a task list.
 
-**None of these has a default, deliberately.** A deployed function with no provider key does not
-mail anything, and that is the designed behaviour: it burns an attempt against each entry it
-claimed and leaves them unsent, recoverable, with the source rows still sitting in the
-`private.*_report_queue` views. So **the secrets land before the schedule starts** — not a
-preference, since a schedule running against an unconfigured function spends the attempt cap on
-real reports.
+**None of the four has a default, deliberately**, and the fifth row's default is why that sentence
+has to name a number. A deployed function with no provider key mails nothing and **claims nothing**:
+`missingMailSecrets()` is read ahead of `claim_moderation_digest`, so the tick 500s
+`not_configured`, no entry is touched and no attempt is spent. **The secrets still land before the
+schedule starts** — an unconfigured schedule is an hourly 500 that delivers no report, which is a
+worse outage for being a quiet one — but getting the order wrong now costs ticks rather than the
+attempt cap on real reports, and needs no re-arm to recover.
 
 ### Scheduled jobs — the footgun to design against before writing one
 
@@ -856,6 +859,25 @@ copies `121` §10 rather than re-arguing this.
 one mechanism is one mistake away. For push it is the DEV function's own `APNS_HOST`; for the
 digest it is that DEV holds its own `MAIL_PROVIDER_API_KEY` and `DIGEST_RECIPIENT`, so two things
 must be wrong before DEV mails anybody.
+
+**Prove the gateway by hand before you start either schedule, and note that the two jobs prove it
+differently.** Both Edge Functions authenticate their caller by comparing the presented bearer
+against `SERVICE_ROLE_KEY` itself, and a current `sb_secret_…` key is **not a JWT** — so the
+question is whether the gateway forwards a non-JWT bearer intact rather than rejecting it at the
+edge. A scheduled job is the worst place to discover it does not: `pg_net` is fire-and-forget, so
+the failure is a row that never moves and no error anywhere a person looks.
+
+```bash
+# Expect 200 and a JSON body. A 401 from the GATEWAY (not the function) is the failure this
+# catches — then `verify_jwt` has to come off that function before the schedule is armed.
+curl -sS -i -X POST "https://<ref>.supabase.co/functions/v1/push-notify" \
+  -H "Authorization: Bearer $SERVICE_ROLE_KEY" -H 'Content-Type: application/json' -d '{}'
+```
+
+`push-notify` is `121` §0c step 3's precondition and is checked with exactly the call above.
+`send-moderation-digest` needs the same proof, and gets it for free from the hand invocation its
+own activation order already requires — one `POST` that both proves the gateway and sends the
+first real digest, which is why that step sits ahead of `pg_cron` rather than after it.
 
 ---
 
