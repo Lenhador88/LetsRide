@@ -488,20 +488,57 @@ Ask how long the oldest of these has been true:
   segment is written anyway so one marker form serves both subjects and the legacy rule below has
   nothing to except.
 
-  **No hit — then age the branch tip if there is one**, because a live build keeps resetting it
-  and a dead one does not:
+  **No hit — then find the build branch and age ITS tip**, because a live build keeps resetting
+  it and a dead one does not. Two places to look, and the second is the one that usually answers:
 
   ```bash
-  git ls-remote --heads origin | grep -i "pd-<n>"          # gitBranchName is a guess; this is not
-  git fetch origin "<ref>" --quiet && git log -1 --format=%ct "origin/<ref>"
+  git fetch origin --quiet --prune
+  git ls-remote --heads origin | grep -i "pd-<n>"      # the issue's gitBranchName, if it used one
+
+  # Otherwise: a branch one of whose SUBJECTS ends in (PD-<n>), newest tip last
+  for b in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin/claude); do
+    git log --format='%s' "origin/development..$b" | grep -q "(PD-<n>)" \
+      && git log -1 --format="%cI  $b  %h  %s" "$b"
+  done | sort
   ```
 
-  **This repo's branches are `claude/<slug>` and usually carry no issue id**, so that grep
-  legitimately finds nothing on a healthy build. Fall back to the issue's
-  `stateHistory[].startedAt` — and read a no-branch result as *unknown*, not as *dead*.
-  **Write `unknown` and stop there.** Every hardening of that word into *never pushed a branch*
-  on 2026-09-06 was false, and one of them became a High-priority issue offering to revert a
-  migration whose file was sitting in the PR nobody had searched for.
+  **Several branches can match, so take the newest tip and then test it against the claim.**
+  Ignore any tip OLDER than the `startedAt` of the issue's current `Development (AI)` row — that
+  is a previous attempt's branch, not this session's, and reporting it would send the next firing
+  to resume from abandoned work. If nothing survives that test, the answer is `unknown`.
+
+  **Every clause in that loop is load-bearing** — the obvious one-liner,
+  `git log --all --grep="PD-<n>"`, is wrong in four ways measured on 2026-09-19:
+
+  - **`refs/remotes/origin/claude`, not `--all`.** `--all` reaches `development`, where the
+    SQUASH-MERGE subject also ends `(PD-<n>)`. It is the newest hit, so the "branch tip" aged is
+    a long-lived branch that moves all day — the check would then never alarm again for that
+    issue. That is worse than the miss this block replaces: a suppressed alarm, not an `unknown`.
+  - **`origin/development..$b` narrows, and does NOT mean "unmerged".** Feature PRs here are
+    SQUASH-merged (`CLAUDE.md` §Branching & CI), so a landed branch's own commits never become
+    ancestors of `development` and it keeps matching for ever — measured: PD-457 still answers
+    with two branches hours after its PRs merged. The range drops a merge-committed branch and
+    nothing else; the claim-time test above is what actually discriminates.
+  - **`%s`, and the id in `(PD-<n>)` form.** `--grep` matches the whole message, so a commit that
+    merely *mentions* another story answers for it. **A bare mention does not count** — the same
+    guard, for the same reason, as the `Closes PD-<n>` rule on the PR read above.
+
+  - **`git log -1 "$b"` reads the BRANCH's tip**, where `%D` on the match reads the tip only by
+    luck: it is empty unless the matching commit happens to BE the tip, and the date printed is
+    then the wrong number. Four current `claude/*` tips carry no id in their subject.
+
+  **A miss falls back to the issue's `stateHistory[].startedAt`. Write `unknown` and stop
+  there.** Every hardening of that word into *never pushed a branch* on 2026-09-06 was false, and
+  one of them became a High-priority issue offering to revert a migration whose file was sitting
+  in the PR nobody had searched for. **A hit is not the opposite licence**: a tip that has not
+  moved in hours is a stronger signal than `unknown`, and still not proof the session died, so
+  it changes what the final message can SAY and never who clears the slot.
+
+  **Say what the hit found** — the branch, its tip time and what is on it — because that is what
+  turns the owner's decision into one step: a pushed branch means a later firing can continue
+  from it rather than starting the story over, which `unknown` gives them no way to know. **Name
+  the branch only when the loop above named it**, since that sentence is an instruction to resume
+  from it and the cost of naming the wrong one is a session building on unrelated work.
 - **A `Needs help` issue** — `get_issue` → `stateHistory[].startedAt`. **This clock is now the
   whole backstop, and before this change it was a second one.** The freeze used to make a parked
   story impossible to miss; nothing does that any more, so a parked story that nobody comes back to
