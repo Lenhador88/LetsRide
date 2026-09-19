@@ -44,9 +44,10 @@ export default function PrivacyPage() {
           back to denying that the page is what it plainly is. */}
       <p className="text-muted">
         A plain list of who currently handles your data. What this page does not set out yet is
-        the legal basis for each use, how long we keep things, and how to exercise your rights
-        under the GDPR — including your right to complain to the Autoriteit Persoonsgegevens.
-        Until those are here, ask us at the address at the end of this page and we will answer.
+        the legal basis for each use, how long we keep most things, and how to exercise your
+        rights under the GDPR — including your right to complain to the Autoriteit
+        Persoonsgegevens. Until those are here, ask us at the address at the end of this page and
+        we will answer. Where a bullet below does give a period, that one is exact.
       </p>
       <ul className="text-muted list-disc pl-5 space-y-2">
         <li>

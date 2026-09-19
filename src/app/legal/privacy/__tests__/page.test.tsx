@@ -86,6 +86,25 @@ describe('the privacy page discloses the push sub-processors', () => {
   })
 
   /**
+   * Adding those two windows put the page in contradiction with its own
+   * opening, which said flatly that it does not set out "how long we keep
+   * things" — found by the `data` track re-reading the committed page, not by a
+   * gate. The comment above that paragraph warns against the mirror-image
+   * mistake (*"Name what is missing; do not go back to denying that the page is
+   * what it plainly is"*), and this was that sentence pointing the other way:
+   * a public legal page denying a disclosure it had just made.
+   *
+   * The fix is narrowing rather than deletion, because the general gap is real
+   * and still owed. This pins both halves so the next bullet that adds a period
+   * does not re-open the contradiction.
+   */
+  it('does not deny stating retention while stating two retention periods', () => {
+    expect(MARKUP).toMatch(/how long we keep most things/)
+    expect(MARKUP).not.toMatch(/how long we keep things/)
+    expect(MARKUP).toMatch(/Where a bullet below does give a period, that one is exact/)
+  })
+
+  /**
    * The rule the Geoapify and Sentry bullets already carry, applied here: a
    * claim that flips the moment the owner sets a provider key is a claim
    * nothing in CI, `docs:check` or a review can catch, on a public page about
