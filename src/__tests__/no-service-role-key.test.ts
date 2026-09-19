@@ -235,6 +235,59 @@ describe('the service-role key never reaches the app', () => {
     expect((code.match(JWT) ?? []).length).toBe(0)
   })
 
+  /**
+   * PD-303. `push-notify` holds three secrets rather than one, and none of them
+   * may be in the file. The env-var assertions are the half that would survive
+   * a careless edit; the literal assertions are the half that matters.
+   */
+  it('the push sender reads all three secrets from the environment and inlines none', () => {
+    const fn = path.join(repoRoot, 'supabase/functions/push-notify/index.ts')
+    expect(existsSync(fn)).toBe(true)
+    const source = readFileSync(fn, 'utf8')
+
+    expect(source).toMatch(/Deno\.env\.get\('SERVICE_ROLE_KEY'\)/)
+    expect(source).toMatch(/Deno\.env\.get\('APNS_KEY'\)/)
+    expect(source).toMatch(/Deno\.env\.get\('FCM_SERVICE_ACCOUNT'\)/)
+
+    const code = stripCommentLines(source)
+    expect(findViolations(code).filter((v) => v !== 'the identifier service_role')).toEqual([])
+    expect((code.match(JWT) ?? []).length).toBe(0)
+  })
+
+  /**
+   * Design D11's fifth rule, which `delete-account` did not need: the whole
+   * database reach of a service-role function is a list of RPC names. A
+   * `.from()` here makes the key a general-purpose bypass of every policy in
+   * the schema, which is the layer this project's bugs come from.
+   */
+  it('the push sender issues no .from(), so the service-role key reaches no table directly', () => {
+    const source = readFileSync(
+      path.join(repoRoot, 'supabase/functions/push-notify/index.ts'),
+      'utf8',
+    )
+    const code = stripCommentLines(source)
+    expect(code).not.toMatch(/\.from\(/)
+
+    // And the filter reads the other way: the pattern does match when it is
+    // there, so a zero above is a clean file rather than a broken regex.
+    expect(/\.from\(/.test("db.from('push_devices')")).toBe(true)
+  })
+
+  it('the push sender takes no id from the request, because it takes no request body at all', () => {
+    // D11 rule 2: `delete-account`'s "takes no user id" is replaced by
+    // something stronger here — no rider calls this function, so there is no
+    // body, no query string and no id of any kind. The subject set comes from
+    // `claim_push_batch`.
+    const source = readFileSync(
+      path.join(repoRoot, 'supabase/functions/push-notify/index.ts'),
+      'utf8',
+    )
+    const code = stripCommentLines(source)
+    expect(code).not.toMatch(/req\.json\(\)/)
+    expect(code).not.toMatch(/req\.text\(\)/)
+    expect(code).not.toMatch(/searchParams/)
+  })
+
   it('takes no user id from the request, which is what makes it safe to expose', () => {
     // Design D1: a service-role endpoint that accepts an id is
     // account-deletion-as-a-service for whoever finds the URL.
