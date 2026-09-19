@@ -16,7 +16,7 @@ src/
 │   │   └── profile/        # /profile (your own), /profile/detail (another rider's — view-rider-profile)
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
 │   ├── onboarding/         # /onboarding/terms, /onboarding/username — see decision #5. `location/` went with 075 (PD-286)
-│   ├── legal/              # /legal/terms, /legal/privacy, /legal/account-deletion, /legal/attributions — the four public pages, decision #1
+│   ├── legal/              # /legal/terms, /legal/privacy, /legal/account-deletion, /legal/attributions, /legal/support (PD-467) — the five public pages, decision #1
 │   ├── layout.tsx          # Root layout (Poppins, v2 light theme) — mounts <RouteGuard>
 │   ├── page.tsx            # / — splash resolver: redirects by session (see decision #7)
 │   └── globals.css         # Tailwind import + CSS vars + the safe-area / fixed-bar spacing utilities

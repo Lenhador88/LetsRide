@@ -340,7 +340,7 @@ when it is, fill it from the manifest too, never from this table's wording.
 | Field | Value | State |
 |---|---|---|
 | **Privacy Policy URL** (required) | `https://app.letsride.social/legal/privacy` | Live |
-| **Support URL** (required) | `https://app.letsride.social/legal/support` | **Does not exist yet — see below** |
+| **Support URL** (required) | `https://app.letsride.social/legal/support` | **Live on DEV (`app-dev.letsride.social/legal/support`); live on this host at the next promotion to `main`** — the page merged to `development`, and that host is served from `main` |
 | **Marketing URL** (optional) | *leave blank* | The apex is unattached (`PD-34`, `docs/ENVIRONMENTS.md` §Domains). A blank optional field is better than one pointing at a page that is not a marketing page |
 
 **A fourth URL lives under App Privacy rather than version information, and it has a good answer
@@ -350,42 +350,39 @@ their data, request deletion, or make changes."* That is `/legal/account-deletio
 `https://app.letsride.social/legal/account-deletion`. Fill it in — it is free, it is true, and it
 is the page Play's User Data policy wants for the same reason.
 
-### The Support URL, which is the one open question in this file
+### The Support URL
 
 Apple's requirement, from `.../platform-version-information`: *"This URL must lead to actual
 contact information (legal address, email address, telephone number), as may be required by local
 law, so that users can reach you regarding app issues, general feedback, and feature enhancement
-requests."* A `mailto:` is not a URL that satisfies it, and the four public pages the app has —
-`/legal/privacy`, `/legal/terms`, `/legal/attributions`, `/legal/account-deletion`
-(`ls src/app/legal/`) — are none of them a support page.
+requests."* A `mailto:` is not a URL that satisfies it.
 
-**The recommendation: add one static page at `/legal/support`.** It is the cheapest honest answer
-by a distance, and specifically cheaper than it looks:
+**`/legal/support` is that page** — `src/app/legal/support/page.tsx`, PD-467, public with no
+guard change because protection is a denylist of public paths and `/legal/*` is on it. Five
+public pages now, not four: `ls src/app/legal/`.
 
-- **The route guard already makes it public.** Protection is a denylist and `/legal/*` is on it,
-  so a new page under `/legal/` needs no guard change, no migration and no data. It is one file.
-- **It needs no new domain.** `app.letsride.social` is live and `letsride.social` is not, so
-  waiting for the apex (`PD-34`) blocks the submission on a project that does not exist.
-- **`SUPPORT_EMAIL` is already a published, owner-controlled address** (`hello@letsride.social`,
-  `src/lib/support.ts`) and two legal pages already render it, so the page has something true to
-  say on the day it ships.
+**It is live on DEV and not yet on the host this table names.** `app.letsride.social` is served
+from `main` and the page merged to `development`, so the URL 404s until the promotion — check
+rather than paste: `git cat-file -e origin/main:src/app/legal/support/page.tsx`. Do not fill the
+Support URL field from this table before that command succeeds.
 
-What the page should contain, and nothing more: what LetsRide is in one line; the support address
-as a visible address *and* a `mailto:` link; a realistic response time; a line on how to report a
-postcard or a club thread from inside the app; links to the privacy statement, the terms and the
-account-deletion page. **It is a `feature`-sized story, not a copy edit** — this file may not
-write `src/`.
+**The address is rendered as readable TEXT as well as inside the `mailto:`, and that is the half
+Apple's wording is about.** A tidy-up that turns the visible address into the words "contact us"
+leaves the link working, reads better, and stops being contact information a reviewer can read.
+`src/app/legal/support/__tests__/page.test.tsx` asserts both halves and strips every `href`
+before checking the visible one, so the anchor cannot satisfy it.
 
-**Two worse answers, in case a submission has to happen before that page exists.** Both are
-honest, both read oddly to a reviewer, and neither should outlive the week: point the Support URL
-at `/legal/account-deletion` (it carries the address twice and answers a real support question),
-or at `/legal/terms` (it carries the address once and names the governing law). Prefer the first.
+**Three things on the page are published elsewhere and must not drift**: the 24 hours for reports
+(`/legal/terms` §7 and `/legal/privacy`), the address itself (`SUPPORT_EMAIL` in
+`src/lib/support.ts`, one literal, enforced by `src/__tests__/support-email.test.ts`) and who runs
+the app (§1 of the terms, where the operator's name is still owed — PD-459, so the page points at
+that clause rather than restating it).
 
-**A third answer that is worse than it looks:** a form on a third-party host — Notion, a Google
-Form, a GitHub Pages file. It is free and it is fast, and it puts the app's one published support
-route on a domain the project does not control, which is precisely the failure
-`src/lib/support.ts` already recorded once, when the published address pointed at a domain nobody
-here owned.
+**It must never grow a form, and it must never move to a third-party host** — Notion, a Google
+Form, a GitHub Pages file. A form is a mail sender, an abuse surface and a personal-data sink; a
+borrowed host puts the app's one published support route on a domain the project does not
+control, which is precisely the failure `src/lib/support.ts` already recorded once, when the
+published address pointed at a domain nobody here owned.
 
 ## Screenshots — not this file's to produce, but this file's to order
 
@@ -438,13 +435,12 @@ point 2) and because the reviewer who asks about it will ask at submission.
 Owner actions, each blocking in its own way:
 
 1. **Check the name is free** in App Store Connect. Nothing here could.
-2. **The `/legal/support` page** has to exist, or the Support URL is a legal page pretending.
-3. **Supabase Pro.** The free tier auto-pauses after ~7 days idle and serves nothing — a reviewer
+2. **Supabase Pro.** The free tier auto-pauses after ~7 days idle and serves nothing — a reviewer
    opening a paused app sees a blank screen. `docs/reference/native-shell.md` §Store readiness
    row 6.
-4. **The default club must have content in it**, or the description's day-one promise is false on
+3. **The default club must have content in it**, or the description's day-one promise is false on
    the day a reviewer installs.
-5. **EU trader status under the Digital Services Act — `[unvalidated]`, and the only claim in
+4. **EU trader status under the Digital Services Act — `[unvalidated]`, and the only claim in
    this file with no fetched source.** The launch market is the Netherlands, so the app is
    distributed in the EU, and App Store Connect asks for a trader self-assessment before a new
    app can be submitted. If the answer is *trader*, an individual developer is understood to
