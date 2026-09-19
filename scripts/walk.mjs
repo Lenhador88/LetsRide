@@ -1015,30 +1015,38 @@ if (isFullWalk) {
  * A list with no rows yields no path and the route is skipped rather than
  * guessed at, and it says so — a silent skip here reads as a pass.
  */
+/**
+ * **The id is a query parameter, not a path segment** (PD-142) — so this reads
+ * `?id=` off the first matching link rather than matching the whole pathname.
+ * The old version matched `^/rides/[0-9a-f-]{36}$`, which after the route move
+ * matches nothing at all: every detail link is `/rides/detail`, and a
+ * discovery that silently finds nothing prints a skip notice that reads
+ * exactly like a database with no rides in it.
+ *
+ * **At module scope rather than inside `discoverDetailPaths`, since PD-432**,
+ * because `seedRideThread` below has to ask the SAME question the discovery
+ * will later ask — does this ride show a `/rides/detail/thread` link — and a
+ * second copy of that predicate is one that can drift. Were they ever to
+ * disagree, the walk would seed a thread it cannot discover or skip seeding
+ * for a thread it cannot find, and both end as a shrunken `N/N` that reads
+ * like a pass.
+ */
+async function firstDetailId(listPath, detailPath, exclude = null) {
+  await page.goto(`${BASE}${listPath}`, { waitUntil: 'networkidle' }).catch(() => {})
+  await page.waitForTimeout(800)
+  return page.evaluate(
+    ([p, skip]) =>
+      [...document.querySelectorAll('a[href]')]
+        .map((a) => new URL(a.href, location.origin))
+        .filter((u) => u.pathname === p)
+        .map((u) => u.searchParams.get('id'))
+        .find((id) => id && /^[0-9a-f-]{36}$/.test(id) && id !== skip) ?? null,
+    [detailPath, exclude]
+  )
+}
+
 async function discoverDetailPaths({ quiet = false, preferRide = null, preferClub = null } = {}) {
   const say = (m) => !quiet && console.log(m)
-
-  /**
-   * **The id is a query parameter, not a path segment** (PD-142) — so this reads
-   * `?id=` off the first matching link rather than matching the whole pathname.
-   * The old version matched `^/rides/[0-9a-f-]{36}$`, which after the route move
-   * matches nothing at all: every detail link is `/rides/detail`, and a
-   * discovery that silently finds nothing prints a skip notice that reads
-   * exactly like a database with no rides in it.
-   */
-  const firstDetailId = async (listPath, detailPath, exclude = null) => {
-    await page.goto(`${BASE}${listPath}`, { waitUntil: 'networkidle' }).catch(() => {})
-    await page.waitForTimeout(800)
-    return page.evaluate(
-      ([p, skip]) =>
-        [...document.querySelectorAll('a[href]')]
-          .map((a) => new URL(a.href, location.origin))
-          .filter((u) => u.pathname === p)
-          .map((u) => u.searchParams.get('id'))
-          .find((id) => id && /^[0-9a-f-]{36}$/.test(id) && id !== skip) ?? null,
-      [detailPath, exclude]
-    )
-  }
 
   // **`preferRide`/`preferClub` win over the scan below, when set** (PD-306).
   // This scan answers "is there a ride to open, at all" — the first one in
@@ -1536,39 +1544,85 @@ async function provision(wanted, existing = {}) {
     await page.waitForTimeout(1200)
     created.ride = new URL(page.url()).searchParams.get('id')
 
-    // A thread on the fixture ride — `108`, PD-402. Without one
-    // `/rides/detail/thread` is unwalked on every run, because that route takes
-    // a THREAD id and the only place to discover one is the ride's own Threads
-    // list. `103` makes the creator crew of their own ride in the ride's own
-    // transaction, so this account is crew by construction and `108`'s INSERT
-    // policy admits it.
-    //
-    // **Non-fatal, and it says so rather than failing the run.** The route is
-    // then skipped and the discovery step above prints why — the same treatment
-    // the club's thread already gets when a club has none. A fixture that could
-    // not be created must not turn a render check red; what must not happen is
-    // a silent skip, which reads as a pass.
-    if (created.ride) {
-      await page.goto(`${BASE}/rides/detail/threads/new?id=${created.ride}`, {
-        waitUntil: 'networkidle',
-      })
-      const seeded = await page
-        .fill('input[name="title"]', 'Walk fixture thread', { timeout: 5_000 })
-        .then(() => true)
-        .catch(() => false)
-      if (seeded) {
-        await Promise.all([
-          page.waitForURL((u) => !u.pathname.endsWith('/new'), { timeout: 30_000 }).catch(() => {}),
-          page.click('button[type="submit"]'),
-        ])
-        await page.waitForTimeout(1200)
-      } else {
-        console.log('  ! the fixture ride thread could not be created — /rides/detail/thread will be skipped')
-      }
-    }
+    // **The fixture ride's THREAD is no longer seeded here — PD-432.** It moved
+    // to `seedRideThread` below, called on the ride the walk will actually
+    // open, because it has to cover the ride this run REUSED as well as the one
+    // it created and this function never sees the reused one: `wanted` asks
+    // only for what is missing.
   }
 
   return created
+}
+
+/**
+ * A thread on `rideId`, seeded through the app's own composer — `108`, PD-402,
+ * PD-432. Without one `/rides/detail/thread` is unwalked, because that route
+ * takes a THREAD id and since PD-426 the ride's own detail page is the only
+ * place to discover one.
+ *
+ * **This used to sit inside `provision()`, gated on a ride that run had just
+ * CREATED, and that gate is the defect PD-432 names.** `provision()` runs only
+ * for what is *missing* — ownership, never mere existence (PD-306) — so an
+ * account that already owns a ride took the skip branch and seeded nothing.
+ * `walk-fixture@letsride.dev` owns `Walk fixture ride`, so the named account
+ * took that branch every time; the minted account owns nothing and did
+ * provision, but is deleted at teardown, taking its thread with it through the
+ * `ride_id` cascade. Neither account ever left a ride thread behind, which is
+ * why `select count(*) from public.ride_threads` answered **0** across the
+ * whole of DEV on 2026-09-07: the route had never been walked, on any run, by
+ * either account, and the walk said so honestly every time. Seeding against
+ * the ride the walk will USE covers the reused ride and the created one in one
+ * place.
+ *
+ * **Idempotent, and that is what keeps it safe on a shared database.** It asks
+ * `firstDetailId` the same question the discovery will ask and returns early
+ * when the ride already shows a thread, so repeated runs cannot silt DEV up —
+ * the constraint `provision()`'s header sets, and the reason PD-306 rejected a
+ * cleanup pass rather than adding one.
+ *
+ * **Crew-gating holds by construction rather than by luck.** The only id ever
+ * passed here is `owned.ride`, which `discoverOwned` established this rider can
+ * edit, and `103` makes a ride's creator crew of it in the ride's own
+ * transaction — so `108`'s INSERT policy admits them.
+ *
+ * **It re-checks the fixture permit, and that is not redundant.** On the
+ * created-ride path the caller has already cleared it; on the reused-ride path
+ * — the one this change exists for — nothing has, because `provision()` was
+ * never entered. Dropping the check here would make a reused ride the one route
+ * by which a walk writes to a project `WALK_FIXTURES` and `refWritable` were
+ * meant to keep it out of.
+ *
+ * Returns a short reason rather than a boolean, so the caller can report what
+ * actually landed instead of what was attempted — the same discipline as
+ * `provision()`'s own FIXTURE FAILED reporting.
+ */
+async function seedRideThread(rideId) {
+  if (await firstDetailId(`/rides/detail?id=${rideId}`, '/rides/detail/thread')) return 'present'
+
+  const permit = fixturesPermitted(await authenticatedProjectRef())
+  if (!permit.ok) return permit.why ?? 'WALK_FIXTURES is not set'
+
+  await page.goto(`${BASE}/rides/detail/threads/new?id=${rideId}`, { waitUntil: 'networkidle' })
+  const opened = await page
+    .fill('input[name="title"]', 'Walk fixture thread', { timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (!opened) return 'the composer did not render'
+
+  await Promise.all([
+    page.waitForURL((u) => !u.pathname.endsWith('/new'), { timeout: 30_000 }).catch(() => {}),
+    page.click('button[type="submit"]'),
+  ])
+  await page.waitForTimeout(1200)
+
+  // Confirmed against the ride's detail page rather than against the redirect:
+  // this is the surface `discoverDetailPaths` will read, so a thread that is
+  // not discoverable HERE is one the walk cannot open whatever the composer
+  // did. Reporting the click instead is the `+ created a ride` failure
+  // `provision()`'s header records — a refused write printed as a success.
+  return (await firstDetailId(`/rides/detail?id=${rideId}`, '/rides/detail/thread'))
+    ? 'created'
+    : 'the composer was submitted and no thread appeared'
 }
 
 /**
@@ -1690,6 +1744,18 @@ if (isFullWalk) {
     } else {
       ownershipUnavailableReason = permit.why ?? 'WALK_FIXTURES is not set, so nothing was provisioned'
       if (permit.why) console.log(`  (fixtures not created — ${permit.why})`)
+    }
+  }
+
+  // **A thread on the ride this walk will open — PD-432.** Outside the block
+  // above on purpose: that block runs only when something is MISSING, and the
+  // case this closes is the ride that was already there. Reported the way
+  // `provision()` reports — what landed, never what was attempted.
+  if (owned.ride) {
+    const seeded = await seedRideThread(owned.ride)
+    if (seeded === 'created') console.log('  + seeded a thread on the fixture ride')
+    else if (seeded !== 'present') {
+      console.log(`  ! the fixture ride thread could not be created — ${seeded}`)
     }
   }
 
