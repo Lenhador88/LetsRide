@@ -4973,9 +4973,27 @@ select public.accept_terms() is not null as consented;
 select set_config('test.uid', '', false);
 reset role;
 
+-- TWO assertions, and neither is sufficient alone.
+--
+-- The first compares against the function rather than a literal, because what
+-- `030` guarantees is that `accept_terms()` stamps THE CURRENT VERSION — and it
+-- sets `terms_version = private.current_terms_version()`, so on its own this
+-- compares that expression to itself and can only fail if a future migration
+-- makes the writer stop calling the function.
+--
+-- The second is the literal, and it is HERE rather than in `118`'s own section
+-- 31,000 lines below for exactly that reason: split across two sections, the
+-- pair reads as one assertion plus a duplicate, and deleting the far one
+-- silently turns this one into a tautology. A version bump edits the line
+-- below, which is the cost of pinning a value consent records depend on, and is
+-- the point rather than an objection.
 select assert_eq(
   (select terms_version from profiles where id = '00000000-0000-0000-0000-000000030d01'),
-  '0-placeholder', '030: accept_terms() stamps the current version alongside the timestamp');
+  private.current_terms_version(),
+  '030: accept_terms() stamps the current version alongside the timestamp');
+select assert_eq(
+  private.current_terms_version(),
+  '1.0', '118: ... and the current version is a literal, not a free variable — bump edits this line');
 
 -- Idempotency now pins the version as well as the timestamp: a rider who
 -- consented under one version is not silently re-recorded under a later one.
@@ -37131,6 +37149,32 @@ end $$;
 reset role;
 select set_config('test.uid', '', false);
 rollback to savepoint welcome_club_117;
+
+\echo '# 118 — the terms name a person, so the version stops saying they do not (PD-459)'
+
+-- The VALUE assertion and the no-upgrade assertion both live in `030`'s section
+-- above rather than here, and that is deliberate on both counts. The value is
+-- pinned beside the equality it stops being a tautology for. The no-upgrade
+-- property — a rider who consented under one version is not re-stamped under a
+-- later one — is already asserted there with `'v-earlier'`, which is neither
+-- the old constant nor the new one and therefore cannot pass by coincidence;
+-- `030`'s own comment says that is the entire reason it picked a third string.
+-- Re-asserting it here with `'0-placeholder'` would be weaker and longer.
+--
+-- What is left is the half `030` cannot make, because `118` re-states a revoke
+-- that `create or replace` preserves silently: a control nobody re-asserts is
+-- one the next redefinition can drop with nothing going red.
+
+select assert_eq(
+  has_function_privilege('authenticated', 'private.current_terms_version()', 'execute'),
+  false, '118: authenticated still holds no EXECUTE on the version function');
+select assert_eq(
+  has_function_privilege('anon', 'private.current_terms_version()', 'execute'),
+  false, '118: nor does anon');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'current_terms_version'),
+  0, '118: and it is still not published by PostgREST');
 
 
 -- ===========================================================================

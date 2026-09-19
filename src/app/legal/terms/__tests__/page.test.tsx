@@ -1,6 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
+import { OPERATOR } from '@/lib/legal/terms'
+
 import TermsPage from '../page'
 
 /**
@@ -16,8 +18,14 @@ import TermsPage from '../page'
  *
  * So this asserts against the RENDERED MARKUP rather than the source — the only
  * place the distinction between "a placeholder exists" and "a placeholder is
- * published" is visible. The constant is `null` now and §1 branches, which is
- * the fix; this is what stops the next edit undoing it.
+ * published" is visible. §1 branches on a nullable constant, which is the fix;
+ * this is what stops the next edit undoing it.
+ *
+ * **Both arms are asserted, and the file has to keep testing the one that is
+ * not live.** `OPERATOR` is a real person today, and the empty arm is not dead
+ * code — it is what the page falls back to if the operator is ever un-published
+ * (PD-462 is the standing review of exactly that decision). A test that only
+ * covered the live arm would go green through the fallback rotting.
  */
 const MARKUP = renderToStaticMarkup(<TermsPage />)
 
@@ -29,13 +37,24 @@ describe('the terms page never publishes a placeholder', () => {
     expect(MARKUP).not.toMatch(/PD-\d+/)
   })
 
-  it('still says who is behind the app, and that the name is owed', () => {
-    // The point is not silence. With no operator to name, §1 has to tell the
-    // rider that the disclosure art. 3:15d BW entitles them to is missing and
-    // how to ask for it — otherwise "no placeholder" is satisfied by deleting
-    // the clause, which is worse than the bug.
+  it('still says who is behind the app', () => {
+    // The point is not silence. "No placeholder" is otherwise satisfied by
+    // deleting the clause, which is worse than the bug it fixes — art. 3:15d BW
+    // asks for this paragraph specifically.
     expect(MARKUP).toContain('private individual established in the Netherlands')
-    expect(MARKUP).toContain('not published yet')
+
+    if (OPERATOR === null) {
+      // The fallback has to say the disclosure is missing and how to ask for it,
+      // rather than quietly omitting it.
+      expect(MARKUP).toContain('not published yet')
+    } else {
+      // Rendered from the constant, not restated in the JSX — a second copy is
+      // the failure `support-email.test.ts` exists to catch for the address, and
+      // it is worse here because this copy would not move with the version.
+      expect(MARKUP).toContain(OPERATOR.name)
+      expect(MARKUP).toContain(OPERATOR.address)
+      expect(MARKUP).not.toContain('not published yet')
+    }
   })
 
   it('publishes a contact address, which is the half that is not owed', () => {

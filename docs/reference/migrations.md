@@ -329,20 +329,21 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**122 files. DEV is at `123` and PROD at `116` — measured 2026-09-19.** DEV-ahead is the resting
-state between a merge and its promotion: `117` (PD-398), `119` (PD-175), `120` (PD-458), `121`
-(PD-303) and now `122`/`123` (PD-454) are applied to DEV and await the `development` → `main`
-promotion, which is the only thing that should carry them to PROD.
+**123 files. DEV is at `123`, answering 126 rows, and PROD at `116` — measured 2026-09-19.**
+DEV-ahead is the resting state between a merge and its promotion: `117` (PD-398), `118` (PD-459),
+`119` (PD-175), `120` (PD-458), `121` (PD-303) and `122`/`123` (PD-454) are applied to DEV and
+await the `development` → `main` promotion, which is the only thing that should carry them to PROD.
+Three of the 126 rows are file-less — the long-standing hand-applied ones — and nothing else is.
 
-**`118` HAS NO FILE AND IS NOT A GAP — it is a number the database has already SPENT.** DEV records
-`118_the_terms_name_a_person` (`20260918203612`) from PR #462, which is still open, so
-`ls supabase/migrations/` skips 118 on `development` while `list_migrations` shows it applied. A
-session picking a number off the file tree alone hands out `122` twice and the second apply cannot
-be fixed by applying anything. `121`'s header records the same trap from the other side; `122`'s
-records it from this one. **Check both directions before picking a number** — `list_migrations`
-against `ls supabase/migrations/`. So DEV now answers **126 rows**, of which three are the
-long-standing file-less hand-applied ones and one is `118`: count the FILE-LESS rows rather than
-the gap. **`119` and `120` are RECORDED ON DEV IN THE OPPOSITE ORDER to their
+**Three of those numbers were SPENT ON DEV BEFORE THEIR FILE EXISTED HERE, and that is the state
+to plan for rather than the exception.** `118_the_terms_name_a_person` was applied to DEV from
+PR #462 while it was open, so `ls supabase/migrations/` skipped 118 on `development` for a day
+while `list_migrations` showed it applied; `122` and `123` were the same from PD-454's branch. A
+session picking a number off the file tree alone hands the same one out twice, and the second
+apply cannot be fixed by applying anything. **On a day with three sessions building at once that
+is the normal state, not a fault** — which is the whole reason the next number comes off
+`list_migrations` and never off `wc -l`. `121`'s header records the trap from one side and `122`'s
+from the other. **Check both directions before picking a number.** **`119` and `120` are RECORDED ON DEV IN THE OPPOSITE ORDER to their
 filenames** — `120` went up first — and it is harmless here rather than forgiven: **neither reads
 or writes anything the other defines**, so the two DDLs commute and either order produces the same
 database. **They do both touch `public.profiles`** — `119` adds a column, `120` adds a BEFORE
@@ -399,7 +400,7 @@ increments the string and writes twenty-four one file early. `122` restamped fro
 and folded both drops into a single line; `123` composed its stamp from what `122` left.
 
 **The `113`, `114`, `115`, `116` promotion applied to PROD on 2026-09-08, `113` ahead of `114` as
-its gate required, so there is no open gap today.** The ordering rule stands for the next one, and
+its gate required.** The open gap today is `117` and `118`, both DEV-only. The ordering rule stands for the next one, and
 `114`'s entry below is why: it is the narrowing half and must not reach a project until the same
 bundle is serving there. **`115` carried no such gate against the other two** — it creates one
 object nothing existing calls, so it neither depended on `113`/`114` nor was depended on by them.
@@ -1749,15 +1750,42 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 122 — DEV at 123, PROD at 116. The DEV ref is AHEAD
-                                         # of this count: 118 reached DEV from an unmerged branch,
-                                         # so never infer the next free number from wc -l. 122 and
-                                         # 123 (PD-454) were numbered off list_migrations for
+ls supabase/migrations/*.sql | wc -l     # 123 — DEV at 123, PROD at 116. The DEV ref runs AHEAD
+                                         # of this count whenever a concurrent branch has applied
+                                         # its own file: 118 (PD-459) and 122/123 (PD-454) each
+                                         # did, so never infer the next free number from wc -l.
+                                         # 122 and 123 were numbered off list_migrations for
                                          # exactly that reason — the tasks file said 118/119.
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```
 
+
+**`118_the_terms_name_a_person` (PD-459), applied to DEV 2026-09-18T20:36:12Z as
+`20260918203612`.** One `create or replace` moving `private.current_terms_version()` from
+`0-placeholder` to `1.0`, one `comment on function`, and `030`'s revoke re-stated. No table, no
+policy, no grant change.
+
+**MIGRATION-FIRST, and the two directions are not symmetric** — the migration's own header reasons
+it out. Neither side reads the other at runtime: the page renders `TERMS_VERSION` from
+`src/lib/legal/terms.ts` and the database stamps this function, so the window between them writes a
+consent row whose version and whose text disagree. Migration-first under-claims (a row says `1.0`
+for a rider who saw the older page); deploy-first writes `0-placeholder` against the real
+agreement, which is a consent that cannot be read as evidence — the failure `030` exists to avoid.
+
+**It must NOT be promoted to PROD ahead of the page.** PROD serves `main`, whose `/legal/terms` is
+still the disclaimer that says it is not an agreement; stamping `1.0` there is the fabricated
+evidence record `030` refused to backfill. It goes with the promotion that carries
+`src/app/legal/terms/page.tsx`, in the same bundle, never before it.
+
+**Applied reduced** — the file is mostly its own reasoning, so the three statements went through
+`apply_migration` and the recorded statement does not `md5sum` to the file. Proved by object diff
+rather than by hash, which is the norm here (§Applying a large file). Verified on DEV immediately
+after: `private.current_terms_version()` → `1.0`; `has_function_privilege` false for both
+`authenticated` and `anon`; zero rows in `public` named `current_terms_version`, so PostgREST still
+does not publish it; the comment is present. **No backfill, checked rather than assumed** — the
+version histogram was `<null>=13, 0-placeholder=17` before and after, and stays that way until a
+rider consents after this applied.
 
 **PROD was TWELVE behind and is level again** — `080`–`091` promoted 2026-08-30 around #348's
 build. The order they went in is the part worth keeping, because the next gap is ordered the same
