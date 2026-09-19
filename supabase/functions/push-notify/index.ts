@@ -223,16 +223,31 @@ function base64urlJson(value: Json): string {
   return base64url(new TextEncoder().encode(JSON.stringify(value)))
 }
 
-/** Strip PEM armour and decode the body to DER. */
-function pemToDer(pem: string): Uint8Array {
+/**
+ * Strip PEM armour and decode the body to DER.
+ *
+ * **Returns the `ArrayBuffer`, not a `Uint8Array`, and that is a type fix
+ * rather than a taste one.** `crypto.subtle.importKey` takes a `BufferSource`,
+ * which since TypeScript's typed-ArrayBuffer change means
+ * `ArrayBufferView<ArrayBuffer>` — and a bare `new Uint8Array(n)` is
+ * `Uint8Array<ArrayBufferLike>`, which is not assignable to it because
+ * `ArrayBufferLike` admits `SharedArrayBuffer`. Allocating the `ArrayBuffer`
+ * first and handing that back sidesteps the whole generic with no cast.
+ *
+ * CI's `deno check` caught this and nothing else could have: `tsconfig.json`
+ * excludes this directory and there is no deno in the build container, so
+ * ESLint was the only local tool that had read the file, and it does not type.
+ */
+function pemToDer(pem: string): ArrayBuffer {
   const body = pem
     .replace(/-----BEGIN [^-]+-----/g, '')
     .replace(/-----END [^-]+-----/g, '')
     .replace(/\s+/g, '')
   const binary = atob(body)
-  const der = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) der[i] = binary.charCodeAt(i)
-  return der
+  const buffer = new ArrayBuffer(binary.length)
+  const view = new Uint8Array(buffer)
+  for (let i = 0; i < binary.length; i++) view[i] = binary.charCodeAt(i)
+  return buffer
 }
 
 /**
