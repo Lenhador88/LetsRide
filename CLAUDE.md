@@ -285,11 +285,11 @@ Four rules, each with a test naming the trap it avoids:
 
 ## Supabase Rules
 
-**Five Edge Functions — three on both projects, `push-notify` on DEV only, `send-moderation-digest` on neither**: `delete-account` (the only place a
+**Five Edge Functions — three on both projects, `push-notify` and `send-moderation-digest` on DEV**: `delete-account` (the only place a
 service-role key exists — the Auth admin API needs it), `resolve-ride-location` (geocodes a
 meeting point and renders its tiles), `search-places` (proxies the typeahead), `push-notify`
-(`121`'s outbox drain — **deployed to DEV only**, and inert until the owner's activation steps) and
-`send-moderation-digest` (`124`'s report-and-feedback mail sweep — **deployed nowhere yet**).
+(`121`'s outbox drain) and
+`send-moderation-digest` (`124`'s mail sweep). **Both are DEV-only and inert without the owner's secrets — a merge deploys them, so read `list_edge_functions` rather than this line.**
 Four rules on `delete-account`, which is why it does not contradict §What Not To Do — **the function is not the
 app**: the key lives only in the function's secret store (`src/__tests__/no-service-role-key.test.ts`
 is the tripwire); it takes no user id; it verifies the JWT itself; only CI's `functions` job

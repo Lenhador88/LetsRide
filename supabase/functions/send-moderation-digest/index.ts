@@ -24,10 +24,18 @@
  * applies, *then* this deploys, *then* the secrets land, *then* the schedule
  * starts. The difference is the third step: `push-notify` drains an outbox a
  * trigger fills, so a deploy with no credentials still had rows waiting. This
- * function claims its own work, and **a deployed function with no provider key
- * burns the attempt cap on every entry it claims** and leaves real reports
- * unsent until somebody re-arms them. Secrets before schedule is not a
- * preference.
+ * function claims its own work.
+ *
+ * **An earlier revision of this file burned the attempt cap in that state**, and
+ * the sentence is kept because `124` §Apply order still carries it and cannot be
+ * edited: the secrets check used to live inside `sendDigestMail`, so an
+ * unconfigured deploy claimed a batch, spent an attempt and left real reports
+ * needing a hand re-arm. The guard below (search `missingMailSecrets`) now runs
+ * ahead of the claim, so that state costs a wasted tick and nothing else.
+ * **Secrets before schedule is still not a preference** — an unconfigured
+ * schedule now delivers no report quietly instead, which `observability.md`
+ * §The moderation digest — the database is the instrument, not the mail names
+ * as the one case no query reaches.
  *
  * **One thing this needs no extension for.** Because the sweep *pulls*, the
  * database holds no outbound capability in the delivery path at all — `pg_net`

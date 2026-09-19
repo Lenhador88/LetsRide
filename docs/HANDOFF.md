@@ -31,9 +31,9 @@ history.
   ordinary with several sessions building. `docs/reference/migrations.md` §Applied state has the
   per-file log and §Security advisors the counts.
 - **Edge Functions: the older three AGREE across both projects** — identical `ezbr_sha256`
-  (2026-09-19); equality is not currency. **`push-notify` is DEV-only**, `v1`, deployed by
-  `deploy-functions.yml` off PD-303's merge. Read the `deploy` *job's* conclusion, never the
-  run's: without the token it skips and the run is green anyway.
+  (2026-09-19); equality is not currency. **`push-notify` and `send-moderation-digest` are DEV-only
+  `v1`**, each deployed by `deploy-functions.yml` off its own merge. Read the `deploy` *job's*
+  conclusion, never the run's: without the token it skips and the run is green anyway.
 - **The walk is green on DEV** as both fixture accounts (2026-09-06 baselines in
   `docs/reference/running-locally.md` §The walk); in CI it is **skipped**, per §Blocked on the
   owner.
@@ -60,13 +60,13 @@ history.
   the checks and the owner action. **It stays open**: the Android half needs a signing fingerprint
   that cannot exist until `android/` does.
 - **Push (`openspec/changes/deliver-push-notifications`): child C (PD-303) is built and delivers
-  nothing yet** — `121` + `push-notify/` are merged and the function is on DEV, but the job is
-  Vault-gated per project and no-ops on both until the owner runs `121` §0c's order. Child B
+  nothing yet** — the job is Vault-gated per project and no-ops on both until the owner runs
+  `121` §0c's order, whose step 3 wants the gateway `curl` in `docs/ENVIRONMENTS.md`
+  §Scheduled jobs first. Child B
   (#438, #446) is unverified on a device — 2.15–2.19a want a Push-capable provisioning profile.
   PD-291 stays open until a phone has received one.
-- **The mail rail is merged and sends nothing** (PD-457): `124` + `send-moderation-digest/` are
-  inert until the owner deploys, sets the secrets, invokes it once by hand, then schedules —
-  **secrets before schedule**; unset, a tick 500s before it claims, so nothing is delivered.
+- **The mail rail sends nothing** (PD-457): the owner owes the secrets, one hand invocation, then
+  the schedule, in that order. Unset, a tick 500s before it claims — nothing delivered, none lost.
   **`DIGEST_RECIPIENT` is the owner's private mailbox, never `SUPPORT_EMAIL`** —
   `docs/ENVIRONMENTS.md` §`send-moderation-digest`'s secrets is the control no test can reach.
 - **PD-385 is open on purpose**: 9 DEV rides have a coordinate and no tile, repairable only by

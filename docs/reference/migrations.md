@@ -412,8 +412,18 @@ and folded both drops into a single line; `123` composed its stamp from what `12
 `public.complete_moderation_digest(uuid[], text)`, `private.moderation_digest_tick()` and
 `revoke all on public.feedback from service_role`. **Additive and inert**: it creates a table
 nothing writes and two functions only `service_role` can call, so it is safe in either direction
-relative to any deploy — `supabase/functions/send-moderation-digest/` is deployed to neither
-project as this lands.
+relative to any deploy. `supabase/functions/send-moderation-digest/` was deployed to **neither**
+project as `124` landed, and **PD-457's merge deployed it to DEV twelve minutes later** —
+`deploy-functions.yml` runs on a push to `development` touching `supabase/functions/**`, which is
+`CLAUDE.md` §Supabase Rules working as written rather than a surprise. PROD stays on the three
+older functions until the promotion. Read `list_edge_functions` for both, never this sentence.
+
+**`124` §Apply order step 3's stated reason is superseded**: it says a deployed function with no
+key *"burns the attempt cap on every claimed entry"*. PD-457's follow-up moved the secrets check
+ahead of `claim_moderation_digest`, so an unconfigured tick 500s and claims nothing. The rule step
+3 states — **secrets before the schedule** — still holds, now because an unconfigured schedule
+delivers no report rather than because it costs a re-arm. A migration is immutable, so the
+correction lives here.
 
 **Two things in it are corrections to the merged proposal rather than implementations of it**, and
 both are the kind a later session restores by reading the prose instead of the file. `attempts`

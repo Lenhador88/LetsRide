@@ -252,6 +252,14 @@ views exactly as they did before, and the digest resumes from where it stopped.
 - **Whether the schedule is running at all.** An empty unsent set is ambiguous between *everything
   was mailed* and *nothing ever ran*. `select * from cron.job` is the check, and it is the one
   question this table cannot answer.
+- **Whether a running schedule is CONFIGURED** — a third case, and it is the price of the
+  pre-claim guard. Deployed, scheduled, one mail secret unset: the function 500s before it claims,
+  so both queries above return zero rows *and* `cron.job` shows a healthy row, and nothing reaches
+  this table at all. **The section's own promise — the state is a query rather than a search —
+  does not hold for this one case**, which the older behaviour did answer, at the cost of walking
+  real reports to the attempt cap. Only `function_edge_logs` (and `net._http_response` from a
+  tick) carries it, on a short retention. The cheap standing check is the fourth activation step:
+  one hand `POST` that returns `{"entries":N}` rather than `not_configured`.
 
 ## Client-side error reporting — DECIDED and shipped, PD-315
 
