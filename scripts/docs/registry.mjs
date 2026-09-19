@@ -430,6 +430,20 @@ export const claims = [
     // unmerged branch 21 minutes later, so the file count and the DEV ref moved
     // independently. The captures still agree because only the file half is
     // compared — read the ref off `list_migrations`, never off `wc -l`.
+    //
+    // ** The DEV-AHEAD shape is blind in the direction the LEVEL shape was not,
+    // and this is the first time that is written down. ** Both level numbers are
+    // non-capturing `\d+`, so `DEV is at \`999\` and PROD at \`999\`` matches and
+    // passes. The LEVEL shape went red the moment the two diverged, which is how
+    // this entry caught twelve of its thirteen flips; the DEV-AHEAD shape does
+    // NOT go red when they converge, because the sentence still matches with
+    // stale numbers in it. So the promotion that levels the projects leaves
+    // `PROD at \`116\`` false here and in `docs/reference/migrations.md` with
+    // nothing to catch it. Capturing and comparing them is not the fix — this
+    // entry's `cmd` counts files and cannot see either level, which is the same
+    // blind spot the 2026-09-08 note recorded from the other side. The fix is to
+    // re-read this sentence on every promotion, which is what the promotion
+    // checklist in `docs/ENVIRONMENTS.md` §Migrations is for.
     pattern: /\*\*Applied state: (\d+) files; DEV is at `\d+` and PROD at `\d+` — measured/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',

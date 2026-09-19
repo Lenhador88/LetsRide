@@ -3,7 +3,12 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { OPERATOR, TERMS_LAST_UPDATED, TERMS_VERSION } from '@/lib/legal/terms'
+import {
+  OPERATOR,
+  PRE_RELEASE_TERMS_VERSION,
+  TERMS_LAST_UPDATED,
+  TERMS_VERSION,
+} from '@/lib/legal/terms'
 
 /**
  * The terms page makes two claims that live somewhere else, and both are the
@@ -107,14 +112,20 @@ describe('the operator disclosure', () => {
     // reachable, so an unnamed operator is not a cosmetic gap — it is the
     // reason the text is not yet binding. The two directions:
     //
-    //   no operator + placeholder version  → fine, today's state
-    //   an operator + real version         → fine, the release
-    //   an operator + placeholder version  → consents stamped unreadably
-    //   no operator + real version         → a "binding" text naming nobody
+    //   no operator + pre-release version  → the state before 118
+    //   an operator + a real version        → the state after it
+    //   an operator + pre-release version   → consents stamped unreadably
+    //   no operator + a real version        → a "binding" text naming nobody
     //
     // Asserted as an equivalence rather than as two separate cases, so neither
-    // half can be edited on its own and left green.
-    expect(OPERATOR === null).toBe(TERMS_VERSION === '0-placeholder')
+    // half can be edited on its own and left green — including the edit that
+    // sets the operator back to `null`, which is a live possibility while the
+    // published address is under review.
+    // `as string` rather than a widened export: the constant's literal type is
+    // worth keeping for every consumer, and this is the one place that needs
+    // it gone — the comparison is provably false TODAY and must survive the
+    // edit that makes it true again.
+    expect(OPERATOR === null).toBe((TERMS_VERSION as string) === PRE_RELEASE_TERMS_VERSION)
   })
 
   it('has no placeholder string to leak, which is why the constant is nullable', () => {
