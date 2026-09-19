@@ -387,7 +387,7 @@ difference between the projects is almost always a pending promotion.
 
 **A new table KEEPS Supabase's default `service_role` grants. Revoking is the exception, for a
 restricted-readership sink** — rows the one credential that bypasses RLS must not be able to
-enumerate (`076` §3). Three are revoked today, and the criterion is a judgement about the ROWS
+enumerate (`076` §3). Four are revoked today, and the criterion is a judgement about the ROWS
 with no mechanical test — an earlier mechanical test excluded the two reporting tables and would
 have re-opened the exposure. `rls_enabled_no_policy` is a candidate set worth checking, never the
 criterion; PD-413 holds the two candidates found unrevoked. Re-run rather than trust any list:
@@ -399,7 +399,8 @@ select count(*) filter (where sr)                          as kept,
   from (select c.relname, has_table_privilege('service_role', c.oid, 'SELECT') as sr
           from pg_class c join pg_namespace n on n.oid = c.relnamespace
          where n.nspname='public' and c.relkind='r') t;
--- 30 kept · 3 revoked · club_thread_reports, postcard_reports, push_devices (2026-09-06).
+-- 30 kept · 4 revoked · club_thread_reports, postcard_reports, push_deliveries,
+--                       push_devices (2026-09-19).
 ```
 
 Each revoke carries a grantee-scoped assertion in one of two forms — a savepoint-staged
