@@ -2,16 +2,16 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { DeleteIcon, OptionsIcon } from '@/components/icons/generated'
+import { DeleteIcon, OptionsIcon, ReportIcon } from '@/components/icons/generated'
 import { useBanner } from '@/components/ui/Banner'
 import { Button } from '@/components/ui/Button'
 import { ContextMenu, ContextMenuItem } from '@/components/ui/ContextMenu'
-import { moderateRideThread } from '@/lib/actions/ride-threads'
+import { moderateRideThread, reportRideThread } from '@/lib/actions/ride-threads'
 import { routes } from '@/lib/routes'
 
 /**
  * A ride thread's own ⋯ menu — `108`, PD-402, `ThreadOptions`'s shape one
- * domain over, with two rows the club has deliberately absent.
+ * domain over, with one row the club has that this one still does not.
  *
  * **No Edit row, and its absence is the enforcement rather than an omission.**
  * `108` grants no UPDATE and declares no UPDATE policy on either content table,
@@ -19,30 +19,25 @@ import { routes } from '@/lib/routes'
  * always fails. The stated remedy for a thread a rider regrets is deletion and
  * re-creation, which the copy below says.
  *
- * **No Report row this pass, and that is a deferral rather than a decision that
- * reporting is unwanted** — `proposal.md` Q4. `094`'s `club_thread_reports` plus
- * `076`'s reader queue is the follow-up, and its trigger is named there: App
- * Store Review Guideline 1.2 wants a report path on user-generated content, and
- * this change adds a new UGC surface. **Until it lands, a rider's remedies are
- * to leave the crew and to block the author** — RLS applies a block to every
- * thread surface, so the second one works today.
+ * **`Report thread` closes the deferral this component's header used to
+ * name — `122`, PD-454.** `proposal.md` Q4 named the trigger for the
+ * follow-up as App Store Review Guideline 1.2 wanting a report path on a new
+ * UGC surface; that trigger is this change. Report is drawn for **every
+ * viewer who is not the author**, which is also what makes the menu
+ * structurally non-empty: `isAuthor` is a boolean, so either it is true — in
+ * which case `Delete thread` (through one of `moderate_ride_thread`'s two
+ * authority arms, below) always renders — or it is false — in which case
+ * `Report thread` always renders. There is no third state, so no viewer this
+ * component mounts for can see an empty sheet, and the caller's own mount
+ * gate is gone with this change (`design.md` D11). The author never sees
+ * `Report thread`: `122`'s policy would permit a self-report and the row
+ * simply is not drawn for them — a menu row is a display hint, never an
+ * authorization.
  *
  * **No share row.** `ClubShareOrInviteItem` exists because a club is a place a
  * rider can be invited into; a ride thread is not shareable to anyone who is not
  * already crew, so a share affordance would produce a link every recipient is
  * refused.
- *
- * ## The menu can be empty, and that is why the caller gates on it
- *
- * The club's version argues it is structurally non-empty because `Report thread`
- * is drawn for every non-author. With Report deferred, this one has exactly one
- * row and it is conditional — so a crew member who is neither the thread's
- * author nor the ride's organizer has nothing here. **`RideThreadOptions` must
- * therefore not be mounted for them at all**; the thread screen decides that
- * with the same predicate, because a dots icon opening an empty sheet is worse
- * than the icon's absence (`docs/reference/design-system.md` §The ⋯ options
- * menu). `canRemove` below is exported as the single expression both sites read,
- * so they cannot disagree.
  *
  * ## One write behind `Delete thread`, with two authority arms
  *
@@ -63,6 +58,16 @@ import { routes } from '@/lib/routes'
  * crew member being able to delete every other's thread is not moderation. Nor
  * is it the club's owner or admin — the resource is the ride, and a ride has no
  * admin role.
+ *
+ * **`Report thread` is a separate right the crew audience grants, never the
+ * delete right in another shape.** `122`'s INSERT policy inherits the same
+ * `rides` EXISTS + `private.is_ride_crew` + block conjunct `108`'s SELECT
+ * carries, naming none of it again, so "may I report this" is "may I read
+ * this" — and reporting a thread reaches nobody who can act on it in-app:
+ * `private.ride_thread_report_queue` is revoked from every client role,
+ * including `service_role` (`design.md` D5, the `076` question). One tap, a
+ * banner, no confirm, no invalidation — reporting changes nothing the
+ * reporter, the author or the organiser can read.
  */
 export function RideThreadOptions({
   threadId,
@@ -126,6 +131,20 @@ export function RideThreadOptions({
     })
   }
 
+  function onReport() {
+    setOpen(false)
+    startTransition(async () => {
+      const result = await reportRideThread(threadId)
+      if (result.error) {
+        showBanner(result.error, 'error')
+        return
+      }
+      showBanner('Thread reported')
+      // No navigation: reporting leaves the thread exactly where it was and
+      // changes nothing the reporter can see, matching `PostcardMenu.onReport`.
+    })
+  }
+
   return (
     <>
       <button
@@ -140,7 +159,13 @@ export function RideThreadOptions({
       </button>
 
       <ContextMenu open={open} onClose={() => setOpen(false)} label="Thread options">
-        <RideThreadOptionsRows pending={pending} onDeleteClick={openDeleteConfirm} />
+        <RideThreadOptionsRows
+          isAuthor={isAuthor}
+          isOrganizer={isOrganizer}
+          pending={pending}
+          onReport={onReport}
+          onDeleteClick={openDeleteConfirm}
+        />
       </ContextMenu>
 
       <ContextMenu
@@ -164,14 +189,23 @@ export function RideThreadOptions({
 }
 
 /**
- * Whether this viewer has anything in the ⋯ menu at all — the one expression
- * the thread screen and this component both read, so a viewer can never be
- * given a dots icon that opens an empty sheet.
+ * Whether this viewer may delete the thread — the display hint for the
+ * `Delete thread` row, and (until this change) the caller's own mount gate
+ * too.
  *
  * **It mirrors `moderate_ride_thread`'s two authority arms and must keep
  * mirroring them.** It is a display hint and never the authorization: the RPC
  * re-checks both arms in its own body, so a rider who reaches the call some
  * other way is still refused.
+ *
+ * **No longer the mount gate — `122`, PD-454, `design.md` D11.** With `Report
+ * thread` drawn for every non-author, `RideThreadOptionsRows` is structurally
+ * non-empty for every viewer (see that component's own header), so gating the
+ * menu's mount on this expression would have kept a condition that is always
+ * true for a reason the next reader could no longer see. `thread/page.tsx`
+ * mounts `RideThreadOptions` once the thread, the ride and the viewer's
+ * profile have all arrived, and nothing more; this expression's only job now
+ * is deciding the delete row.
  */
 export function canRemoveRideThread({
   isAuthor,
@@ -189,23 +223,48 @@ export function canRemoveRideThread({
  * `null` under `renderToStaticMarkup` (no `document`) whatever `open` is.
  * `ThreadOptionsRows` is the precedent for pulling a menu's rows out from behind
  * that sheet for exactly this reason.
+ *
+ * **This is the whole of the D11 viewer × row table**: `!isAuthor` draws
+ * `Report thread`, `canRemoveRideThread({ isAuthor, isOrganizer })` draws
+ * `Delete thread`, and because `isAuthor` is a boolean, at least one of the
+ * two is always true — this component structurally cannot render nothing.
  */
 export function RideThreadOptionsRows({
+  isAuthor,
+  isOrganizer,
   pending,
+  onReport,
   onDeleteClick,
 }: {
+  isAuthor: boolean
+  isOrganizer: boolean
   pending: boolean
+  onReport: () => void
   onDeleteClick: () => void
 }) {
   return (
-    <ContextMenuItem
-      icon={<DeleteIcon className="h-6 w-6" />}
-      variant="warning"
-      disabled={pending}
-      onClick={onDeleteClick}
-    >
-      Delete thread
-    </ContextMenuItem>
+    <>
+      {!isAuthor && (
+        <ContextMenuItem
+          icon={<ReportIcon className="h-6 w-6" />}
+          disabled={pending}
+          onClick={onReport}
+        >
+          Report thread
+        </ContextMenuItem>
+      )}
+
+      {canRemoveRideThread({ isAuthor, isOrganizer }) && (
+        <ContextMenuItem
+          icon={<DeleteIcon className="h-6 w-6" />}
+          variant="warning"
+          disabled={pending}
+          onClick={onDeleteClick}
+        >
+          Delete thread
+        </ContextMenuItem>
+      )}
+    </>
   )
 }
 

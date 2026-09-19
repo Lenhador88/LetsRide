@@ -1657,6 +1657,22 @@ Poppins/16/Semibold.
       left looking meaningful. Note `postcard_reports` is already write-only in practice —
       no admin role exists to triage it — so this compounds an existing gap rather than
       creating one.
+- [ ] **Two more surfaces gained a Report control with no frame of their own — `123`/`122`,
+      PD-454, `design.md` D10/Q2, registered beside the two entries immediately above as the
+      same gap on new subjects.** `npm run figma -- ls "*eport*"` returns **0 of 451** frames,
+      and so do `"*omment*"` and `"*hread*"` (measured 2026-09-18 — offline, re-run rather than
+      trust). Both chose the smallest thing that reuses an existing affordance rather than
+      inventing one:
+      - **The ride thread's ⋯ menu** (`RideThreadOptions.tsx`) gained a `Report thread` row,
+        `ReportIcon`, identical in shape to `ThreadOptions.tsx`'s club version this file has no
+        entry for either — one tap, a banner, no confirm.
+      - **Every postcard comment the viewer did not write** (`CommentItem.tsx`) gained an
+        inline `Report` text control beside `Delete`, on the same 44px floor and `-ml-1`
+        negative-margin trick §Comments already logs for `Delete` itself. A per-comment ⋯
+        sheet was the alternative and was rejected as heavier — it needs an icon in every row
+        of a list that can run to fifty.
+      Both send `REPORT_REASON_WHEN_UNDRAWN` (`other`) unconditionally, for the same reason the
+      postcard's own Report row does — see the entry above.
 - [ ] **The Delete row is not in the design.** The sheet is drawn for *someone else's*
       postcard, where Hide/Block/Report all make sense; on your own they do not, and the
       design has no own-postcard sheet at all. Added on the product owner's explicit call
