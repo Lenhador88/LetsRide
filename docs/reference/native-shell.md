@@ -83,8 +83,16 @@ simulator build settled several of them and left the device-only ones untouched,
 - **`ITSAppUsesNonExemptEncryption` is `false` in `Info.plist`, and that is a declaration rather
   than a setting.** Without the key, App Store Connect holds every uploaded build behind the
   export-compliance question and nobody can submit until it is answered by hand; with it, the
-  answer travels in the bundle. `false` is the exempt case — the app's only cryptography is
-  HTTPS to Supabase and the platform keychain, both Apple's own. **It stops being true the day
+  answer travels in the bundle. `false` is the exempt case, and the inventory is
+  longer than "HTTPS and the keychain" — that sentence sends the next reader to grep, find
+  `crypto.subtle` and wonder. What ships: TLS to Supabase, Sentry and PostHog; the platform
+  keychain behind `@aparajita/capacitor-secure-storage`; `crypto.subtle.digest('SHA-256')` in
+  `@supabase/auth-js` for PKCE; and `crypto.randomUUID()`/`getRandomValues()` in three `src/`
+  modules. Every one is the platform's own Web Crypto or TLS, with no bundled implementation
+  behind it, and the PKCE one is hashing for authentication — exempt twice over. No cipher is
+  bundled: the SPM graph is `capacitor-swift-pm`, `keychain-swift` (a Security.framework
+  wrapper) and `sentry-cocoa`, and none of the four plugins' iOS sources names `CryptoKit`,
+  `CommonCrypto`, `AES` or `SecKey`. **It stops being true the day
   the app implements or bundles its own encryption** (a custom cipher, a bundled crypto library,
   end-to-end message encryption), and then the key has to change along with an annual
   self-classification report. Read it back rather than trusting this line:
@@ -660,7 +668,7 @@ still an owner action**; a simulator never gets a token whatever the project say
 ### Store readiness — assessed 2026-08-06
 
 Ordered by what actually blocks a submission. **Read each row's own state rather than the shape
-of the table** — four of the seven are struck through, most of the rest are started, and row 6 is
+of the table** — four of the eight are struck through, most of the rest are started, and row 6 is
 the only one still labelled the owner's. Do not count that label with a bare grep: row 7 contains
 the words *"stopped being **Owner**"*, so the obvious command counts its own obituary, which is
 `CLAUDE.md`'s comment trap arriving in a table.

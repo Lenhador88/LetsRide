@@ -340,7 +340,7 @@ when it is, fill it from the manifest too, never from this table's wording.
 | Field | Value | State |
 |---|---|---|
 | **Privacy Policy URL** (required) | `https://app.letsride.social/legal/privacy` | Live |
-| **Support URL** (required) | `https://app.letsride.social/legal/support` | Live |
+| **Support URL** (required) | `https://app.letsride.social/legal/support` | **Live on DEV (`app-dev.letsride.social/legal/support`); live on this host at the next promotion to `main`** — the page merged to `development`, and that host is served from `main` |
 | **Marketing URL** (optional) | *leave blank* | The apex is unattached (`PD-34`, `docs/ENVIRONMENTS.md` §Domains). A blank optional field is better than one pointing at a page that is not a marketing page |
 
 **A fourth URL lives under App Privacy rather than version information, and it has a good answer
@@ -357,9 +357,14 @@ contact information (legal address, email address, telephone number), as may be 
 law, so that users can reach you regarding app issues, general feedback, and feature enhancement
 requests."* A `mailto:` is not a URL that satisfies it.
 
-**`/legal/support` is that page and it is live** — `src/app/legal/support/page.tsx`, PD-467,
-public with no guard change because protection is a denylist of public paths and `/legal/*` is on
-it. Five public pages now, not four: `ls src/app/legal/`.
+**`/legal/support` is that page** — `src/app/legal/support/page.tsx`, PD-467, public with no
+guard change because protection is a denylist of public paths and `/legal/*` is on it. Five
+public pages now, not four: `ls src/app/legal/`.
+
+**It is live on DEV and not yet on the host this table names.** `app.letsride.social` is served
+from `main` and the page merged to `development`, so the URL 404s until the promotion — check
+rather than paste: `git cat-file -e origin/main:src/app/legal/support/page.tsx`. Do not fill the
+Support URL field from this table before that command succeeds.
 
 **The address is rendered as readable TEXT as well as inside the `mailto:`, and that is the half
 Apple's wording is about.** A tidy-up that turns the visible address into the words "contact us"

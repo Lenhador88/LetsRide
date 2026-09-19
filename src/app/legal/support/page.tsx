@@ -65,8 +65,16 @@ export default function SupportPage() {
       </p>
 
       <h2 className="font-semibold">Reporting a postcard or a discussion</h2>
+      {/*
+        "Open the postcard … and use its Report option", never "every postcard
+        carries one": `PostcardMenu` draws Report only when `!isOwn` and
+        `ThreadOptions` only when `!isAuthor`, so the stronger sentence — which
+        `/legal/terms` §7 does carry — is false of your own content. Not fixed
+        there in the same breath: that text is pinned to `TERMS_VERSION`, and a
+        copy edit to it is a version bump and a re-consent question.
+      */}
       <p className="text-muted">
-        Every postcard and every club discussion carries a{' '}
+        Open the postcard or the club discussion and use its{' '}
         <span className="font-medium">Report</span> option. Reports are read by us and by
         nobody else — no other rider can see that you filed one — and we aim to act on them
         within 24 hours. If the thing you want to report has no Report option on it, email the

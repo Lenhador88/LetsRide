@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -46,6 +46,10 @@ describe('the /legal segment is not indexable', () => {
     const pages = readdirSync(SEGMENT, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && entry.name !== '__tests__')
       .map((entry) => entry.name)
+      // A directory is not a page: a route group, a nested route whose parent
+      // holds no `page.tsx`, or a `_components/` folder would make the read
+      // below throw ENOENT and the case would die instead of asserting.
+      .filter((name) => existsSync(path.resolve(SEGMENT, name, 'page.tsx')))
 
     // Both ways: a derivation that silently returns nothing passes every
     // assertion below and looks exactly like a clean segment.

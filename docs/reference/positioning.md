@@ -512,7 +512,8 @@ Both are submission blockers and neither is copy:
 
 **Both now have an answer, and neither needs anything built.**
 
-- **Support URL is `https://app.letsride.social/legal/support`, and the page is live** (PD-467).
+- **Support URL is `https://app.letsride.social/legal/support`, and the page is live on DEV**
+  (PD-467) — that host is served from `main`, so the URL answers only after the promotion.
   The public routes are `/legal/privacy`, `/legal/terms`, `/legal/attributions`,
   `/legal/account-deletion` and `/legal/support` — check rather than trust: `ls src/app/legal/`.
   It sits under the app's own domain because the apex that would normally host it is unattached
