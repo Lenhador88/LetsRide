@@ -787,8 +787,13 @@ line. Three things follow:
   not, and nothing — not CI, not `db:drift`, which only reads migrations — compares them. That is
   the same CLI that brings `config.toml`, which is why the first Edge Function — not branching —
   is what forces the tooling decision.
-- **Nothing type-checks them.** `tsconfig.json` excludes `supabase/functions` because it is
-  Deno. ESLint still parses them, and it is the only tool that does.
+- **`tsc` does not type-check them, and CI's `functions` job does.** `tsconfig.json` excludes
+  `supabase/functions` because it is Deno, so `npx tsc --noEmit`, `next build` and Vitest are all
+  blind to the directory; `deno check` runs against every `index.ts` under it when
+  `supabase/functions/**` changes, and ESLint parses them too. **Neither reaches this container** —
+  there is no `deno` here — so a change under `supabase/functions/` is first type-checked in CI.
+  Three of the four functions answer that by putting every decision in a `shape.ts` with no `Deno.`
+  reference, which a test under `src/__tests__/` imports and drags back into `tsc`'s graph.
 - **Secrets are per project.** A DEV push key that reaches a test device and a PROD one that
   reaches every rider. Getting these backwards sends test notifications to real people.
 
