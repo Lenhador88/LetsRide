@@ -421,9 +421,10 @@ describe('the rating block renders as five skimmable scores', () => {
     // gets FIXED — which removes an entry and its ratings, as 119 just did for
     // PD-175 — turns this red for doing the right thing, and the same edit
     // recurs for ever. Each file now carries the guarantee it can actually
-    // keep: `CLAUDE.md`'s two blocks are structural and its floor is its
-    // current count; `known-issues.md` is a list that shrinks as issues close,
-    // so its floor is one complete block.
+    // keep: `CLAUDE.md`'s THREE blocks are structural — the rating-block spec
+    // plus the two debrief examples — so its floor is its current count, 15;
+    // `known-issues.md` is a list that shrinks as issues close, so its floor is
+    // one complete block.
     const FLOORS = { 'CLAUDE.md': 15, 'docs/reference/known-issues.md': 5 }
 
     for (const [file, floor] of Object.entries(FLOORS)) {

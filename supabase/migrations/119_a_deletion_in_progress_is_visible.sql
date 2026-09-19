@@ -65,9 +65,10 @@
 -- deadlock: each holds the lock on its own `profiles` row and waits for the
 -- other's. ** Three or more concurrent deletions can form a longer wait cycle
 -- than that two-rider one ** — same detection, same retry, same outcome, and
--- said here so the two-rider shape is not read as the only one. Postgres detects it and aborts one transaction, the transfer RPC
--- fails, the Edge Function throws and answers `deletion_failed` 500, and the
--- rider retries — by which time the other deletion has committed and the retry
+-- said here so the two-rider shape is not read as the only one. Postgres
+-- detects it and aborts one transaction, the transfer RPC fails, the Edge
+-- Function throws and answers `deletion_failed` 500, and the rider retries —
+-- by which time the other deletion has committed and the retry
 -- finds a stamped, skippable row. Nothing is lost and nothing is half-done:
 -- `032` §1 made the transfer idempotent for exactly this class of failure.
 --
@@ -96,10 +97,14 @@
 -- loop whose chunk count grows with the rider's object count
 -- (`delete-account/index.ts`, one sequential `remove()` per `REMOVE_CHUNK`), so
 -- it is not a ceiling. ** The form that holds: an Edge Function invocation
--- cannot outlive the platform's wall-clock limit for one, which is far under 15
--- minutes. ** So a marker older than the window ALWAYS belongs to a run that is
--- already dead, and never to one still in flight — whatever the rider's folder
--- looks like.
+-- cannot outlive the platform's wall-clock limit for one, which is 400 s
+-- (~6.7 minutes) on Supabase and is not overridden here — this repo has no
+-- `supabase/config.toml` and sets no `max_duration`. ** So 15 minutes is more
+-- than twice the longest run that can exist, and a marker older than the window
+-- ALWAYS belongs to a run that is already dead rather than one still in flight,
+-- whatever the rider's folder looks like. Re-check the 400 s against Supabase's
+-- current limit if this is ever tightened: the argument is only as good as that
+-- number.
 --
 -- ** The residual, stated rather than implied: ** a rider whose deletion failed
 -- and who retries more than 15 minutes later is racing again, exactly as they

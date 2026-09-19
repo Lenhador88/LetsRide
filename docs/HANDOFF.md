@@ -110,10 +110,10 @@ live), so read `src/` and `supabase/migrations/`, matching a migration by SUBJEC
 filename its proposal guessed. **The tool accepting a change is not evidence it shipped**: three
 it accepts are verified NOT BUILT and must not be archived —
 `place-backdated-postcards-on-the-timeline`, `postcard-audience-follows-its-entry-point` and
-`page-the-club-timeline-on-scroll`. `add-account-deletion` stays open — Q4 answered, tasks
-remain, collides with `enforce-creator-membership`, and **its spec still records the pre-PD-98
-succession answer, which must be fixed before it archives** — as does `enforce-ride-capacity`
-(PD-436).
+`page-the-club-timeline-on-scroll`. `enforce-ride-capacity` (PD-436) stays open, and so does
+`add-account-deletion`: Q4 answered, tasks remain, it collides with `enforce-creator-membership`,
+and **its spec still records the pre-PD-98 succession answer, which must be fixed before it
+archives.**
 
 ## Test accounts
 
