@@ -103,18 +103,21 @@ paragraph —
   links with an expiry and a revoke.
 - **Notifications** for the things other riders do.
 - **Safety and control.** Block a rider, hide a postcard, report a postcard or a **club**
-  thread, and delete the account outright. **Reporting is not uniform, and a listing must not
-  imply it is: a RIDE thread has no report affordance.** That is a deferral rather than a
-  decision — `094` gave `club_thread_reports` no ride counterpart — and it is the gap App Store
-  Review Guideline 1.2 asks about. Check rather than trust it:
-  `grep -rn "export async function report" src/lib/actions/` names two.
+  thread, and delete the account outright. **Reporting is uniform on `development` and is NOT in
+  production, and this is the paragraph a listing gets wrong.** `122` (PD-454) and `123` added
+  ride-thread and postcard-comment reporting; neither is applied to PROD. So the code answers four
+  and the promoted build answers two — check both halves, never one:
+  `grep -rn "export async function report" src/lib/actions/` names four, and `npm run db:drift`
+  or `list_migrations` against the PROD ref says whether the build being described has them.
+  Guideline 1.2 is what asks. `docs/reference/app-store-listing.md` §The Guideline 1.2 gap carries
+  the copy consequence.
 
 **Not claimable — do not write these words:**
 
 | Do not say | Because |
 |---|---|
 | "chat", "message a rider", "DMs" | There are no direct messages — `docs/reference/product-scope.md` establishes that in its **Inbox** row. Rides and clubs have **threads** instead. Do not cite the Clubs row for this: its version of the sentence argues a thread is not a chat *because the ride has a Chat*, which PD-402 retired on `development` |
-| "report any post", "report anything" | Reporting covers postcards and club threads only. See the safety bullet above — over-claiming here is this table's worst failure, because Guideline 1.2 is the one that checks |
+| "report any post", "report anything" | Reporting covers postcards and club threads **in the promoted build**; `development` adds ride threads and comments. Write to the build being uploaded, and see the safety bullet above — over-claiming here is this table's worst failure, because Guideline 1.2 is the one that checks |
 | "track your rides", "record your route", "GPS" | Nothing records a route. Decision #3 is a static thumbnail plus a deeplink, and background location is roadmap, not build |
 | "navigation", "turn-by-turn" | Google Maps does that; we hand off to it |
 | "your garage", "log your bike", "gear", "badges" | The Garage domain is not built |
@@ -262,6 +265,16 @@ copy rather than trusting this line:
 ```bash
 grep -n "^const TITLE\|^const DESCRIPTION" src/app/layout.tsx
 ```
+
+**The brand is contested on both stores, found 2026-09-19, and this section was written without
+knowing it.** An App Store app holds the exact string `LetsRide.` (a private-hire taxi firm), and
+a **motorcycle** app on Google Play trades under this brand with routes and turn-by-turn
+navigation in its copy. That does not necessarily block the name — Apple collides on the exact
+string — but it does undercut the argument every naming decision below rests on, which is that
+brand search converts. **Read `docs/reference/app-store-listing.md` §Two apps already trade under
+this brand before treating anything in this section as settled**, including its provenance
+caveat: the store hosts are refused at this container's egress proxy, so the finding is read from
+search results and wants ten seconds in the App Store app to confirm.
 
 **"Ride together" is already the app's own tagline** — `LetsRide — Ride Together` is what
 unfurls from every shared link today. Keep it. A store subtitle that says something different

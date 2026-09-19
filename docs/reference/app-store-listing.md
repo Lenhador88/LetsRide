@@ -47,9 +47,12 @@ or Keywords and then finding it needs a version to change.
 
 - **Whether `LetsRide: Motorcycle Clubs` is available as an App Store name.** `apps.apple.com`,
   `itunes.apple.com` and `play.google.com` are all refused at this container's egress proxy
-  (`403` to `CONNECT`, re-tested 2026-09-19), and the iTunes Search API lives on the second of
-  those. **Nothing in this file is evidence that the name is free.** App Store Connect answers it
-  in ten seconds at app-record creation, and it is the first thing to do.
+  (`403` to `CONNECT`, re-tested 2026-09-19 against all three; `WebFetch` returns
+  `EGRESS_BLOCKED`), and the iTunes Search API lives on the second of those. **Nothing in this
+  file is evidence that the name is free.** App Store Connect answers it in ten seconds at
+  app-record creation, and it is the first thing to do. **What web search alone could establish is
+  that two other apps already trade under this brand — §Two apps already trade under this brand,
+  and it is the most important unread thing in this file.**
 - **What category the competitors chose.** Same block. The category argument below is reasoned
   from Apple's own category definitions, which are readable, and not from what REVER or TONIT did.
 - **Anything about what riders search for.** Unchanged from `positioning.md`: **[unvalidated]**,
@@ -64,7 +67,7 @@ printf '%s' "Join rides, tell your story" | LC_ALL=C.UTF-8 wc -m   # 27
 
 Every count in this file is reproducible with the block in §Re-measuring every field at the end.
 
-## The app name — 26 of 30
+## The app name — 26 of 30, and the brand is contested
 
 ```
 LetsRide: Motorcycle Clubs
@@ -77,6 +80,67 @@ census found nobody using and the one exactly true of this product, and the bran
 name because brand search is the highest-converting term any app has.
 
 One spelling, `LetsRide`, matching the domain, the OG `siteName` and the icon. Never `Let's Ride`.
+
+### Two apps already trade under this brand — searched 2026-09-19
+
+An earlier version of this file said only that the name *could not be checked from here*. It can
+be checked in part, and the partial answer is worse than "unknown":
+
+| What is there | Where | What it is |
+|---|---|---|
+| **`LetsRide.`** — the exact brand plus a full stop, seller `LetsRide West Midlands` | App Store, `id1572666713` | A private-hire **taxi** app around Solihull and Birmingham |
+| **`Let's Ride`**, whose own store copy calls the product `LetsRide` | Google Play, `com.ya6n.letsride` | A **motorcycle** app — route generation, turn-by-turn GPS navigation, a radar of riders near you, group rides |
+| `Let's Ride` (`id1575861007`), `Let's Ride BC` (`id1661327557`), `Ride On: Let's Ride` (`id1434380853`) | App Store | Not established — the titles are all that was readable |
+
+**Provenance, and it is weaker than every other fetched claim in this file.** `apps.apple.com`,
+`itunes.apple.com` and `play.google.com` are all refused at the egress proxy — measured three times
+independently — so **no listing page was ever opened**. Every row above comes from search-result
+titles, snippets and the ids visible in result URLs.
+
+**The table mixes two reliabilities and the distinction matters.** Titles, the bundle id and the
+numeric App Store ids come off result URLs and are as good as the search index. The seller string,
+the categories and the feature lists come out of snippet prose — what a snippet says, not what a
+registered seller record or a category field says. Nothing here establishes a rating count, an
+install range, a subtitle, or that any of them is still on sale. **The App Store app on a phone
+settles the whole table in seconds, and is also the only place the name's availability can be
+tested.**
+
+**Two different risks, and the second is the one that matters.**
+
+- **Availability is probably fine, and is not the problem.** Apple's rule is *"You can use an app
+  name for one app per localization"* (`.../create-an-app-record/add-a-new-app`, fetched
+  2026-09-19) — it collides on the exact string, and `LetsRide: Motorcycle Clubs` is not the exact
+  string `LetsRide.`. Expect the record to be creatable. Where another developer holds a name and
+  you hold the mark, Apple's route is a legal claim, not the console.
+- **Brand search is the problem, and it is the argument the name was built on.**
+  `positioning.md` §Three fields, three jobs puts `LetsRide` in the name because brand search is
+  the highest-converting term any app has. A rider told *"get LetsRide"* who searches `letsride`
+  today lands on someone else's app — a taxi firm on the App Store, and on Play an app **in this
+  category, using this brand**. Ten of the thirty characters are being spent on a term the project
+  does not own.
+
+**This is above a copy pass and is not settled here.** The brand is fixed in the domain, the OG
+`siteName`, the icon and the logo alt text, so moving it is a product decision with a cost this
+file cannot price — and keeping it is equally a decision, to compete for a term two other apps
+already answer. What this file owes is the finding plus the two checks only the owner can run: the
+App Store search, and whether the Play app holds a registered mark in the EU.
+
+**If the brand stays, differentiate inside the 30 characters rather than outside them.** Measured:
+
+| Candidate | Chars | Note |
+|---|---|---|
+| `LetsRide: Motorcycle Clubs` | 26 | The standing recommendation, unchanged by this finding |
+| `LetsRide Social: Moto Clubs` | 27 | A second distinguishing word sits next to the brand |
+| `LetsRide Moto: Clubs & Rides` | 28 | The clearest separation from the taxi app; spends a slot on `Rides`, which the census calls contested |
+
+**Neither alternate is a recommendation.** Both are worse on every argument in `positioning.md`
+§Choosing the second half of the name; they exist because that section was written without knowing
+the brand was contested.
+
+**One useful thing falls out of the Play collision.** That app advertises routes and turn-by-turn
+navigation; this one deliberately does neither (decision #3). The Description's line *"It does not
+record your route or navigate for you"* is therefore doing more work than when it was written — it
+separates this app from the nearest same-brand product as well as from REVER.
 
 ## Subtitle — 27 of 30
 
@@ -129,7 +193,7 @@ formed, the day the app goes Dutch. A version-free edit is the whole point of it
 **If the Netherlands-only line is ever wrong, this is the field it is wrong in**, and it is the
 cheapest one to fix. Do not put a market claim in the Name or the Description.
 
-## Description — 1837 characters of 4000
+## Description — 1826 characters of 4000
 
 Apple's own note: the Description *"will be used for web engine search results once you release
 your app"*, which is the closest thing this product has to an SEO surface, because decision #1
@@ -164,10 +228,17 @@ LetsRide is not a public feed: you need an account, and nothing you post is brow
 Built for riders in the Netherlands first. English for now.
 ```
 
-**1837 characters, 1837 bytes** — deliberately ASCII-only, hyphens rather than em dashes, because
-a description that is byte-clean survives a copy-paste through any editor. There are 2262
+**1826 characters, 1826 bytes** — deliberately ASCII-only, hyphens rather than em dashes, because
+a description that is byte-clean survives a copy-paste through any editor. There are 2174
 characters of headroom; do not spend them on a feature that is not in
 `positioning.md` §What we may honestly claim.
+
+**Re-measure this block rather than trusting the number, and use the extractor in
+§Re-measuring every field.** It is now enforced — `description-chars-listing` in
+`scripts/docs/registry.mjs` extracts the fenced block and compares it, so a wrong number here reds
+`docs:check` rather than sitting. That entry exists because this file carried `1837` against a block
+that has always measured `1826`: **the text never drifted, the count was simply wrong from the day
+it was typed**, and by eye the two are indistinguishable.
 
 **Five sentences in there are load-bearing and must not be tidied:**
 
@@ -179,14 +250,20 @@ characters of headroom; do not spend them on a feature that is not in
    grep -E "10[89]_"`). **The ride's threads are deliberately not mentioned above**, so this text
    is true as it stands; the RIDES paragraph may now gain *"Every ride gets titled threads, so
    the plan does not scroll away"* whenever a copy pass wants it.
-2. **"Report a postcard or a club thread"**, exactly that — never *"report any post"*. A ride
-   thread has no report affordance (`094` gave `club_thread_reports` no ride counterpart), and
-   Guideline 1.2 is the one that checks. See §The Guideline 1.2 gap.
-3. **"you need an account to see anything"** is decision #1 stated out loud. It costs some
-   installs and it prevents the one-star review that says *"you can't even look without signing
-   up"*, which is the review this app would otherwise get.
+2. **"Report a postcard or a club thread"**, exactly that — never *"report any post"*. It is
+   written to the **promoted** build: `122` and `123` added ride-thread and comment reporting on
+   `development` and neither is applied to PROD, so this sentence under-claims a DEV build and
+   describes a `main` build exactly. **Widen it only after establishing which build is being
+   uploaded** — §The Guideline 1.2 gap has the check. Guideline 1.2 is the one that punishes the
+   other direction.
+3. **"you need an account, and nothing you post is browsable or searchable on the open web"** is
+   decision #1 stated out loud. It costs some installs and it prevents the one-star review that
+   says *"you can't even look without signing up"*, which is the review this app would otherwise
+   get.
 4. **"It does not record your route or navigate for you"** pre-empts the single most likely
-   wrong expectation in this category, given that REVER's own name carries `GPS`.
+   wrong expectation in this category, given that REVER's own name carries `GPS` — and, since
+   2026-09-19, that the Play app trading under this brand advertises turn-by-turn navigation
+   (§Two apps already trade under this brand).
 5. **"New riders are put into a club on day one"** is true of the build — `complete_onboarding`
    joins the club carrying `clubs.is_default` — **and honest only if that club has something in
    it.** It is a precondition on the owner, not on the copy. See §Before this listing goes up.
@@ -195,11 +272,11 @@ characters of headroom; do not spend them on a feature that is not in
 
 | Field | Text | Count | Cap |
 |---|---|---|---|
-| Name | `LetsRide: Motorcycle Clubs` | 26 chars | 30 |
+| Name | `LetsRide: Motorcycle Clubs` — **check §Two apps already trade under this brand first** | 26 chars | 30 |
 | Subtitle | `Join rides, tell your story` | 27 chars | 30 |
 | Keywords | `group,riders,nearby,…,moto` | 97 bytes | 100 bytes |
 | Promotional Text | `Share your motorcycle story, …` | 165 chars | 170 |
-| Description | see above | 1837 chars | 4000 |
+| Description | see above | 1826 chars | 4000 |
 
 ## Categories — Social Networking, then Travel
 
@@ -421,20 +498,43 @@ frame in a store listing is Guideline 2.3 in picture form.
 
 Guideline 1.2 applies to every app with user-generated content and asks for four things: a way to
 filter objectionable material, a way to **report** it, a way to block abusive users, and published
-contact information. Three of the four are built — hide a postcard, block a rider (enforced in
-RLS, not the UI), and `SUPPORT_EMAIL` on two public pages.
+contact information. Three of the four were never in doubt — hide a postcard, block a rider
+(enforced in RLS, not the UI), and `SUPPORT_EMAIL` on two public pages.
 
-**Reporting is not uniform: a ride thread has no report affordance.** Check rather than trust it —
-`grep -rn "export async function report" src/lib/actions/` names two, `reportPostcard` and
-`reportClubThread`. It is a deferral rather than a decision. It is not this file's to fix and it
-is this file's to name, because the listing copy has had to be written around it (§Description,
-point 2) and because the reviewer who asks about it will ask at submission.
+**Reporting was the fourth, and it is now uniform on `development`.** This file used to say a ride
+thread had no report affordance; it has one. Re-derive rather than trusting either version:
+
+```bash
+grep -rn "export async function report" src/lib/actions/    # 4
+```
+
+`reportPostcard`, `reportPostcardComment` (`123`), `reportRideThread` (`122`, PD-454) and
+`reportClubThread` (`094`), each with a UI caller — `PostcardMenu.tsx`, `CommentItem.tsx`,
+`RideThreadOptions.tsx`, `ThreadOptions.tsx`.
+
+**A listing describes the PROMOTED build, and that is where this stops being tidy.** `122` and
+`123` are files in this tree and are **not applied to PROD**: `124`'s own header records
+`list_migrations` against the production ref topping out at `a_completion_carries_a_country`. So a
+binary cut from `main` today still reports postcards and club threads only — exactly what
+§Description says — and that sentence turns into an *under*-claim, not an over-claim, on the day
+the promotion lands.
+
+**So neither wording is safe to write ahead of the build it describes.** Establish which side of
+the promotion the uploaded binary sits on before touching §Description point 2 — `npm run db:drift`,
+or `list_migrations` against both refs. The over-claiming direction is the one Guideline 1.2
+punishes; the under-claiming direction costs nothing but a sentence.
+
+**`124` is a different thing and does not answer this guideline.** It mails a digest so reports
+reach a human; the guideline asks for the affordance, not for the triage behind it.
 
 ## Before this listing goes up
 
 Owner actions, each blocking in its own way:
 
-1. **Check the name is free** in App Store Connect. Nothing here could.
+1. **Check the name is free** in App Store Connect, and read §Two apps already trade under this
+   brand before you do — an App Store app already holds the exact string `LetsRide.`, and a
+   **motorcycle** app on Play trades under the brand. Availability is the small half of that; the
+   brand-search half is a decision only the owner can take.
 2. **Supabase Pro.** The free tier auto-pauses after ~7 days idle and serves nothing — a reviewer
    opening a paused app sees a blank screen. `docs/reference/native-shell.md` §Store readiness
    row 6.
@@ -482,6 +582,19 @@ and no space after a comma. **Keep them out of a `#` comment inside the fence** 
 not, so a shell comment there becomes a phantom section that other files' `§` pointers can
 resolve against.
 
-The description is the block in §Description; count it by saving it to a file and running
-`LC_ALL=C.UTF-8 wc -m` on it, minus the trailing newline — **1837 characters, 1837 bytes**, the
-two being equal because it is deliberately ASCII.
+The description is the fenced block in §Description. **Count it with the extractor below rather
+than by hand** — a hand count is what put `1837` in this file against a block that measures
+`1826`:
+
+```bash
+python3 - <<'PY'
+lines = open('docs/reference/app-store-listing.md', encoding='utf-8').read().split('\n')
+start = next(i for i, l in enumerate(lines) if l.startswith('## Description'))
+a, b = [i for i, l in enumerate(lines) if l.strip() == '```' and i > start][:2]
+body = '\n'.join(lines[a + 1:b])
+print(len(body), 'chars', len(body.encode('utf-8')), 'bytes')   # 1826 chars 1826 bytes
+PY
+```
+
+The two are equal because the block is deliberately ASCII; if they ever differ, a copy pass has
+introduced an em dash or a curly apostrophe and the cap is now being measured in the wrong unit.
