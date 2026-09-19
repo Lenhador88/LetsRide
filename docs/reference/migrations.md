@@ -329,10 +329,20 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**120 files. DEV is at `121` and PROD at `116` — measured 2026-09-19.** DEV-ahead is the resting
-state between a merge and its promotion: `117` (PD-398), `119` (PD-175) and `120` (PD-458) are
-applied to DEV and await the `development` → `main` promotion, which is the only thing that should
-carry them to PROD. **`119` and `120` are RECORDED ON DEV IN THE OPPOSITE ORDER to their
+**122 files. DEV is at `123` and PROD at `116` — measured 2026-09-19.** DEV-ahead is the resting
+state between a merge and its promotion: `117` (PD-398), `119` (PD-175), `120` (PD-458), `121`
+(PD-303) and now `122`/`123` (PD-454) are applied to DEV and await the `development` → `main`
+promotion, which is the only thing that should carry them to PROD.
+
+**`118` HAS NO FILE AND IS NOT A GAP — it is a number the database has already SPENT.** DEV records
+`118_the_terms_name_a_person` (`20260918203612`) from PR #462, which is still open, so
+`ls supabase/migrations/` skips 118 on `development` while `list_migrations` shows it applied. A
+session picking a number off the file tree alone hands out `122` twice and the second apply cannot
+be fixed by applying anything. `121`'s header records the same trap from the other side; `122`'s
+records it from this one. **Check both directions before picking a number** — `list_migrations`
+against `ls supabase/migrations/`. So DEV now answers **126 rows**, of which three are the
+long-standing file-less hand-applied ones and one is `118`: count the FILE-LESS rows rather than
+the gap. **`119` and `120` are RECORDED ON DEV IN THE OPPOSITE ORDER to their
 filenames** — `120` went up first — and it is harmless here rather than forgiven: **neither reads
 or writes anything the other defines**, so the two DDLs commute and either order produces the same
 database. **They do both touch `public.profiles`** — `119` adds a column, `120` adds a BEFORE
@@ -344,6 +354,49 @@ was applied to DEV migration-first, ahead of #428; the merge is what landed its 
 row that read as file-less until then is an ordinary applied migration. DEV's row count reads
 **three** high — the three long-standing hand-applied rows — and **PROD's is exact**, which is the
 direction that matters: nothing is applied there without a file behind it. Neither is a gap.
+
+**`122_report_a_ride_thread` (PD-454), applied to DEV 2026-09-19 as
+`122_report_a_ride_thread`.** Adds `public.ride_thread_reports` with RLS on and two policies (SELECT
+`reporter_id = auth.uid()`, INSERT a bare `EXISTS` against `public.ride_threads` so the audience is
+INHERITED from `108` and restated nowhere), `revoke all … from public, anon, authenticated,
+service_role` at creation, `grant select` plus a column-scoped
+`grant insert (reporter_id, thread_id, reason, note)`, `023`'s gate trigger, and the reader in the
+same file — `private.ride_thread_report_queue` (`security_invoker = false` written out) and
+`private.remove_reported_ride_thread(uuid)`, both revoked from every client role and neither
+`security definer`. Restamps `public.enforce_participation_gate()`'s comment and
+`public.ride_threads`'. **Additive in every statement and MIGRATION-FIRST**: the client half writes
+a table that does not exist yet, so the reverse order answers `PGRST205` for the length of a deploy.
+**The hand-exercise gate does not fire** — the gate trigger is on the new table, no function anyone
+calls today is replaced, and all three objects are new. **Adds no PostgREST relationship**: single-column
+`id` primary key with `unique (reporter_id, thread_id)` as a separate constraint, so it is not a
+junction — the junction query in `src/lib/data/columns.ts` §Embed hints still answers **eight** on
+DEV after both files, and `embed-hints.test.ts` is green.
+
+**`123_report_a_postcard_comment` (PD-454), applied to DEV 2026-09-19 as
+`123_report_a_postcard_comment`.** The same for `public.postcard_comment_reports`, with
+`private.postcard_comment_report_queue` and `private.remove_reported_comment(uuid)`. Restamps the
+gate comment and `public.postcard_comments`'. **`122` BEFORE `123` IS REQUIRED, and not for an
+object** — the two share no table, view, function or policy. They both restamp
+`public.enforce_participation_gate()`'s comment, where the last writer wins: `122` makes it
+twenty-three and `123` twenty-four, each composed from the LIVE comment read off `pg_proc`.
+**Applied in the other order the enumeration is wrong and NOTHING FAILS.** Replay the pair in
+filename order on the PROD promotion.
+
+**Measured on DEV before and after the pair, 2026-09-19.** Gate triggers **22 → 23 → 24**; published
+`security definer` functions executable by `authenticated` **38 → 38** (neither file creates a
+`public` function at all); views in `private` **2 → 4**; `service_role` census **30 kept / 4 revoked
+→ 30 kept / 6 revoked** (`ride_thread_reports`, `postcard_comment_reports` added to
+`club_thread_reports`, `postcard_reports`, `push_deliveries`, `push_devices`); security advisors
+**46 → 46, zero new**, `rls_enabled_no_policy` staying at 6 because both new tables carry two
+policies. RLS suite **3986 → 4149** assertions, +163 labelled `122.x`/`123.x`.
+
+**The gate comment was ONE HIGH when `122` found it, and that is the correction worth keeping.** The
+live stamp said twenty-three while `select count(*) from pg_trigger where tgname =
+'enforce_participation_gate' and not tgisinternal` answered **twenty-two**: `109` dropped
+`ride_messages`, the ninth, and recorded it as a trailing sentence instead of folding it into the
+enumeration the way `101`'s drop of `club_thread_waves` was folded in. So a careful session
+increments the string and writes twenty-four one file early. `122` restamped from the trigger count
+and folded both drops into a single line; `123` composed its stamp from what `122` left.
 
 **The `113`, `114`, `115`, `116` promotion applied to PROD on 2026-09-08, `113` ahead of `114` as
 its gate required, so there is no open gap today.** The ordering rule stands for the next one, and
@@ -1696,9 +1749,11 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 120 — DEV at 121, PROD at 116. The DEV ref is AHEAD
+ls supabase/migrations/*.sql | wc -l     # 122 — DEV at 123, PROD at 116. The DEV ref is AHEAD
                                          # of this count: 118 reached DEV from an unmerged branch,
-                                         # so never infer the next free number from wc -l.
+                                         # so never infer the next free number from wc -l. 122 and
+                                         # 123 (PD-454) were numbered off list_migrations for
+                                         # exactly that reason — the tasks file said 118/119.
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```
