@@ -68,10 +68,22 @@
  * **4. Nothing type-checks it.** Above.
  *
  * **5. It issues no `.from()`.** Its entire database reach is four function
- * names. A grep of this file for `.from(` returns zero, and that is the
- * property that keeps a service-role key from being a general-purpose bypass of
- * the layer this project's bugs come from. If a future change here wants a
- * table, it wants an RPC instead.
+ * names, and that is the property that keeps a service-role key from being a
+ * general-purpose bypass of the layer this project's bugs come from. If a
+ * future change here wants a table, it wants an RPC instead.
+ *
+ * **The bare grep prints 2 and both are this sentence** — `CLAUDE.md`'s comment
+ * trap, in the file whose whole safety argument rests on the count. Keep the
+ * second half of the pipe, and note the anchor: `grep -rn` over a directory
+ * prints `path:line:`, but `grep -n` on ONE file prints `line:` with no path,
+ * so `CLAUDE.md`'s `:[0-9]+:` pattern matches nothing here and silently reports
+ * the unfiltered number. Measured: it did, on the first version of this very
+ * comment.
+ *
+ *   grep -n "\.from(" supabase/functions/push-notify/index.ts | grep -vcE '^[0-9]+: *\*'
+ *
+ * `src/__tests__/no-service-role-key.test.ts` asserts it on comment-stripped
+ * source and verifies the filter both ways.
  *
  * ---------------------------------------------------------------------------
  * What it does NOT decide, and the shape that follows from it
@@ -456,15 +468,25 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  /**
+   * Read into consts before the branch rather than narrowing the outer `let`
+   * in place. Nothing in this container type-checks this file — CI's `deno
+   * check` is its first — so the cheap insurance is worth more than the two
+   * lines it costs.
+   */
+  const apns = apnsToken
+  const fcm = fcmToken
+  const fcmProject = fcmProjectId
+
   async function sendToDevice(
     device: PushClaimRow,
     payload: PushPayload,
   ): Promise<PushOutcome> {
     if (device.platform === 'ios') {
-      return apnsToken ? await sendApns(device, payload, apnsToken) : 'transport'
+      return apns ? await sendApns(device, payload, apns) : 'transport'
     }
     if (device.platform === 'android') {
-      return fcmToken ? await sendFcm(device, payload, fcmToken, fcmProjectId) : 'transport'
+      return fcm ? await sendFcm(device, payload, fcm, fcmProject) : 'transport'
     }
     // An unknown platform is a registration bug, not a dead device. `transport`
     // retries it harmlessly rather than deleting a row nobody has diagnosed.
