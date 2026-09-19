@@ -62,6 +62,13 @@
 -- them. The entire value of this feature is timeliness. Stated here beside the
 -- interval it is paired with, as `push-delivery` requires.
 --
+-- ** RECLAIM WINDOW: TEN MINUTES ** (§7). The third number of the same family,
+-- and it lives between the other two by construction: longer than one
+-- invocation's wall clock, shorter than the age cut. A row left `claimed` for
+-- longer than this is returned to `pending`, because the alternative is a push
+-- lost in silence and a row nothing can ever delete. All three numbers move
+-- together or not at all.
+--
 -- ---------------------------------------------------------------------------
 -- §0b  THE RESIDUE: A DELIVERED PUSH CANNOT BE WITHDRAWN  (design D6)
 -- ---------------------------------------------------------------------------
@@ -132,7 +139,10 @@ create table public.push_deliveries (
     references public.notifications(id) on delete cascade,
 
   -- pending    — enqueued, not yet claimed
-  -- claimed    — a run holds it; `claimed_at` is when
+  -- claimed    — a run holds it; `claimed_at` is when, and it is READ rather
+  --              than merely written: claim_push_batch returns a row stuck
+  --              here for ten minutes to `pending`, because an invocation that
+  --              dies mid-batch otherwise strands it for ever (§7's reclaim)
   -- sent       — the run finished with nothing left to do. That INCLUDES a
   --              recipient with zero devices (§7): "a rider with no tokens is
   --              not a failure", so the row completes rather than failing.
@@ -220,7 +230,7 @@ comment on table public.push_deliveries is
   'The push outbox: one row per notification, written by an AFTER INSERT trigger on public.notifications and drained by a scheduled Edge Function (121, PD-303). ** IT HOLDS NO COPY. ** No payload column, no rendered string, no club, ride, postcard or rider name — database-enforced-integrity permits a copy of a visibility decision to be PRODUCED AND TRANSMITTED and never STORED, and this table is condition 1 of that carve-out. Readable and writable by NO role, service_role included: RLS is on, there is no policy, and every grant is revoked. The delivery path reaches it through claim_push_batch() and complete_push_delivery(), both granted to service_role by name. A row dies with its notification (cascade) or in the 7-day sweep at §9.';
 
 comment on column public.push_deliveries.state is
-  'pending -> claimed -> one of sent / suppressed / failed. `sent` means the run finished with nothing left to do, which INCLUDES a recipient who has registered no device — a rider with no tokens is not a failure. `suppressed` means deliberately not sent and never retried, because the answer will not improve: the visibility gate refused, the rider had already read it, or it aged out. `failed` means the transport gave up; NO token is ever deleted for that reason.';
+  'pending -> claimed -> one of sent / suppressed / failed. `sent` means the run finished with nothing left to do, which INCLUDES a recipient who has registered no device — a rider with no tokens is not a failure. `suppressed` means deliberately not sent and never retried, because the answer will not improve: the visibility gate refused, the rider had already read it, or it aged out. `failed` means the transport gave up; NO token is ever deleted for that reason. `claimed` is the only NON-terminal state, and it is not a dead end: claim_push_batch returns a row left here for ten minutes to `pending`, because the sweep deletes terminal rows only and an invocation killed mid-batch would otherwise lose its push and strand its row for ever.';
 
 comment on column public.push_deliveries.attempts is
   'Incremented by each claim, not by each provider call. The retry ceiling is in complete_push_delivery(); the CHECK is the backstop that turns an unbounded retry loop into a 23514.';
@@ -706,6 +716,55 @@ comment on function public.push_payload_for(uuid) is
 -- backlog drains through the age cut at `batch_size` a minute instead of
 -- standing in front of the rows that are still worth sending.
 --
+-- ---------------------------------------------------------------------------
+-- ** THE RECLAIM, AND THE DEFECT IT CLOSES — TEN MINUTES **
+-- ---------------------------------------------------------------------------
+-- ** A `claimed` ROW WITH NO `complete_push_delivery` CALL BEHIND IT WAS
+-- IMMORTAL AND ITS PUSH WAS LOST. ** The first version of this function
+-- selected `where d.state = 'pending'` alone and the sweep at §9b deletes only
+-- `sent`, `suppressed` and `failed`, so nothing anywhere returned a `claimed`
+-- row to circulation: an invocation killed between the claim and the
+-- completion — an Edge Function wall-clock timeout part-way through a batch,
+-- which is the EXPECTED failure under load and not an exotic one — silently
+-- dropped that push AND left a row this table can never delete. That
+-- contradicted §9b's own promise that the outbox never becomes a permanent
+-- parallel log of every interaction in the app.
+--
+-- It also made two comments false, which is the part worth recording: both
+-- this file and the sender said "the age cut suppresses rather than sends",
+-- and the age cut was evaluated INSIDE the `pending`-only candidate set, so it
+-- never saw a `claimed` row at all. A mechanism named in two places and
+-- present in none.
+--
+-- ** Fixed by RECLAIMING here rather than by widening the sweep. ** Deleting a
+-- stranded row would make the loss permanent and tidy; returning it to
+-- `pending` puts it back on the ordinary path, where the read filter and the
+-- age cut then decide whether it is still worth sending — so the age cut
+-- governs a stranded row exactly as both comments already claimed, and the two
+-- sentences become true rather than being deleted.
+--
+-- ** TEN MINUTES, and the number has a floor and a ceiling. ** It must be
+-- comfortably LONGER than one invocation's wall clock, because nothing
+-- distinguishes a dead run from a slow one except elapsed time — the claim's
+-- row lock is released when `claim_push_batch` returns, not held across the
+-- send — so a window shorter than a live invocation double-sends. And it must
+-- be well SHORTER than the six-hour age cut, or a stranded row ages out before
+-- anything retries it and the reclaim buys nothing.
+--
+-- ** This turns at-most-once into at-least-once-bounded, in exactly the window
+-- where the alternative is silent loss. ** A run that sent and then died
+-- re-sends that notification once. A duplicate push is a nuisance; a lost one
+-- is the feature not working, and there is no third option that does not
+-- require the provider to tell us what it accepted.
+--
+-- ** THE RECLAIM LOOP IS BOUNDED BY THE AGE CUT, and the arithmetic is written
+-- down because the `attempts` CHECK is otherwise a landmine. ** Each reclaim
+-- costs at least ten minutes and a row stops being claimable after six hours,
+-- so a row that strands every single time is reclaimed at most 36 times, for
+-- 37 attempts against a CHECK ceiling of 50. Widen the age cut or narrow this
+-- window and that headroom is what has to be re-checked: at 50 the CHECK
+-- raises, and it raises INSIDE the claim, taking the whole batch down.
+--
 -- ** A RECIPIENT WITH ZERO DEVICES COMPLETES RATHER THAN FAILING. ** Most
 -- riders will have no token for most of this feature's life. Such a row is
 -- marked `sent` here and NOT returned, so the property is provable in the RLS
@@ -729,7 +788,27 @@ declare
   v_limit int := least(greatest(coalesce(claim_push_batch.batch_size, 50), 1), 500);
   v_claimed uuid[];
 begin
-  -- ** THREE STATEMENTS, NOT ONE, AND THE SPLIT IS LOAD-BEARING. ** The
+  -- ** THE RECLAIM, FIRST, AND A SEPARATE STATEMENT ON PURPOSE. ** It has to be
+  -- visible to the candidate set below, and a CTE would not be: the candidates
+  -- read the snapshot this statement is writing, so folded in it would reclaim
+  -- rows and then fail to see them. Bounded by the same v_limit and skip-locked
+  -- like the claim, so two overlapping runs never wait on each other — a
+  -- reclaim that blocks is a delivery run that blocks.
+  with stale as (
+    select d.id
+      from public.push_deliveries d
+     where d.state = 'claimed'
+       and d.claimed_at < now() - interval '10 minutes'
+     order by d.claimed_at
+     limit v_limit
+       for update skip locked
+  )
+  update public.push_deliveries d
+     set state = 'pending', claimed_at = null
+    from stale s
+   where d.id = s.id;
+
+  -- ** FOUR STATEMENTS, NOT ONE, AND EVERY SPLIT IS LOAD-BEARING. ** The
   -- tokenless completion below touches rows the claim above has just written,
   -- and two data-modifying CTEs in ONE statement do not see each other's
   -- effects: "trying to update the same row twice in a single statement is not
@@ -796,7 +875,7 @@ revoke all on function public.claim_push_batch(int) from public, anon, authentic
 grant execute on function public.claim_push_batch(int) to service_role;
 
 comment on function public.claim_push_batch(int) is
-  'Claims up to batch_size pending outbox rows (bounded to 500) with `for update skip locked`, and returns one row per (delivery, device) pair for their recipients. Granted to service_role alone. The CLAIM is what guarantees at-most-once delivery — never a check the sender performs afterwards. Two suppressions are applied at claim time and neither is a failure: a notification the rider has already READ (with a one-minute interval this is the ordinary case), and one older than the SIX-HOUR age cut (a resumed free-tier project must not deliver a week of notifications in installments). A claimed row whose recipient has registered no device is marked `sent` here and not returned, because a rider with no tokens is not a failure. Oldest first, so a backlog drains through the age cut rather than standing in front of rows still worth sending.';
+  'Claims up to batch_size pending outbox rows (bounded to 500) with `for update skip locked`, and returns one row per (delivery, device) pair for their recipients. Granted to service_role alone. The CLAIM is what guarantees at-most-once delivery — never a check the sender performs afterwards. Two suppressions are applied at claim time and neither is a failure: a notification the rider has already READ (with a one-minute interval this is the ordinary case), and one older than the SIX-HOUR age cut (a resumed free-tier project must not deliver a week of notifications in installments). A claimed row whose recipient has registered no device is marked `sent` here and not returned, because a rider with no tokens is not a failure. Oldest first, so a backlog drains through the age cut rather than standing in front of rows still worth sending. ** IT ALSO RECLAIMS: a row left `claimed` for more than TEN MINUTES goes back to `pending` before candidates are chosen **, because an invocation killed between the claim and complete_push_delivery would otherwise lose that push AND leave a row no sweep can ever delete. Ten minutes is comfortably longer than one invocation (nothing distinguishes a dead run from a slow one but elapsed time) and far shorter than the age cut, which is what then decides whether a recovered row is still worth sending. So this is at-most-once everywhere except that window, where it is deliberately at-least-once.';
 
 -- ===========================================================================
 -- §8  public.complete_push_delivery — the three outcomes, and the token touch
@@ -883,9 +962,21 @@ comment on function public.complete_push_delivery(uuid, text, text[]) is
 -- ===========================================================================
 -- §9  public.invalidate_push_device — the ONLY route from a refusal to a delete
 -- ===========================================================================
--- Called for APNs 410 `Unregistered` / 403 `BadDeviceToken` and FCM
--- `UNREGISTERED` / `INVALID_ARGUMENT`, and for NOTHING else. A 5xx, a timeout,
+-- Called for APNs **410 `Unregistered`** and **400 `BadDeviceToken`**, and for
+-- FCM `UNREGISTERED` / `INVALID_ARGUMENT`. For NOTHING else. A 5xx, a timeout,
 -- a 429 or a TLS failure retries with backoff and leaves the row alone.
+--
+-- ** APNs 403 IS EXCLUDED, BY NAME, AND IT IS THE DANGEROUS ONE. ** An earlier
+-- revision of this comment said "410 Unregistered / 403 BadDeviceToken", and
+-- both halves of that were wrong in the same direction: `BadDeviceToken`
+-- arrives on **400**, and APNs's 403s are `ExpiredProviderToken`,
+-- `InvalidProviderToken` and `MissingProviderToken` — all three about OUR
+-- SIGNING KEY rather than any rider's device, so all three arrive for every
+-- device at once. A classifier reconciled to the wrong sentence deletes every
+-- iOS token in one run the first time the `.p8` expires, which is precisely
+-- the mass unsubscribe this whole classification exists to prevent, and
+-- nothing would report it. The status code is part of the rule, not decoration
+-- on it: treat the 403 family as TRANSPORT and fix the key.
 --
 -- Unscoped by user, deliberately: the caller is the delivery function, which
 -- knows the installation because it just tried to reach it, and the row's owner
@@ -908,7 +999,7 @@ revoke all on function public.invalidate_push_device(text) from public, anon, au
 grant execute on function public.invalidate_push_device(text) to service_role;
 
 comment on function public.invalidate_push_device(text) is
-  'Deletes one device row, and is the ONLY route by which a provider refusal removes one — the third of the four ways a push_devices row dies (078). Granted to service_role alone. Call it for a PERMANENT refusal only: APNs 410 Unregistered / 403 BadDeviceToken, FCM UNREGISTERED / INVALID_ARGUMENT. A transport failure — 5xx, 429, timeout, TLS — must leave every token alone, because deleting live tokens during a provider outage silently unsubscribes every rider on that platform and nothing would report it.';
+  'Deletes one device row, and is the ONLY route by which a provider refusal removes one — the third of the four ways a push_devices row dies (078). Granted to service_role alone. Call it for a PERMANENT refusal only: APNs 410 Unregistered and 400 BadDeviceToken, FCM UNREGISTERED / INVALID_ARGUMENT. A transport failure — 5xx, 429, timeout, TLS — must leave every token alone, because deleting live tokens during a provider outage silently unsubscribes every rider on that platform and nothing would report it. ** APNs 403 IS EXCLUDED BY NAME: ExpiredProviderToken, InvalidProviderToken and MissingProviderToken are about OUR SIGNING KEY, not a rider''s device, so they arrive for every device at once ** — classifying them as permanent deletes every iOS token in a single run the first time the .p8 expires.';
 
 -- ===========================================================================
 -- §9b  public.sweep_push_retention — the fourth way a device row dies
@@ -966,7 +1057,7 @@ revoke all on function public.sweep_push_retention() from public, anon, authenti
 grant execute on function public.sweep_push_retention() to service_role;
 
 comment on function public.sweep_push_retention() is
-  'Retention, run by the scheduled job at §10 and callable by service_role. Deletes device rows idle 60 days — the fourth of the four ways a push_devices row dies, and the window 078 stated and could not yet enforce — and terminal outbox rows completed more than 7 days ago, so the outbox never becomes a permanent parallel log of every interaction in the app. Both windows are also written into /legal/privacy, in the same words.';
+  'Retention, run by the scheduled job at §10 and callable by service_role. Deletes device rows idle 60 days — the fourth of the four ways a push_devices row dies, and the window 078 stated and could not yet enforce — and terminal outbox rows completed more than 7 days ago, so the outbox never becomes a permanent parallel log of every interaction in the app. ** IT DELETES TERMINAL ROWS ONLY — sent, suppressed and failed. ** A `claimed` row is recovered by claim_push_batch''s ten-minute reclaim rather than deleted here, because deleting one makes a lost push permanent and tidy. Both windows are what /legal/privacy tells a rider, in its own words: "We keep the connection to your phone for as long as it stays reachable and drop it after 60 days of silence; the record that a notification was sent is deleted after 7 days." Change either number here and that sentence is what has to move with it.';
 
 -- ===========================================================================
 -- §10  THE SCHEDULE — gated on Vault, and apply-clean without either extension
@@ -1180,6 +1271,13 @@ $schedule$;
 --    where n.nspname = 'public'
 --      and proname in ('push_payload_for','claim_push_batch','complete_push_delivery',
 --                      'invalidate_push_device','sweep_push_retention');
+--
+-- Expected: 0 — no row is stranded in `claimed` past the reclaim window. This
+-- is the standing health check for the whole outbox: a non-zero answer that
+-- does not clear on the next run means claim_push_batch's reclaim is not
+-- reached, and every row it counts is a push nobody received.
+--   select count(*) from public.push_deliveries
+--    where state = 'claimed' and claimed_at < now() - interval '10 minutes';
 --
 -- Expected: 1 — the enqueue trigger exists, and it carries no WHEN clause
 --   select tgname, pg_get_triggerdef(oid) from pg_trigger

@@ -38143,6 +38143,79 @@ select assert_eq(
 rollback to savepoint claim_tokenless_121;
 
 -- ---------------------------------------------------------------------------
+-- 121.11f  ** A ROW STRANDED IN `claimed` IS RECLAIMED. ** The defect this
+--          closes: claim_push_batch originally selected `pending` alone and
+--          sweep_push_retention deletes terminal rows only, so an invocation
+--          killed between the claim and complete_push_delivery — an Edge
+--          Function wall-clock timeout part-way through a batch, the EXPECTED
+--          failure under load — lost that push silently AND left a row nothing
+--          could ever delete, against §9b's own promise that the outbox never
+--          becomes a permanent parallel log of every interaction in the app.
+--
+--          Not covered by any of the sixty-one assertions that shipped with
+--          121: every one of them drove a row to a terminal state, so `claimed`
+--          had no fate to test and the gap was invisible from inside the suite.
+-- ---------------------------------------------------------------------------
+savepoint claim_reclaim_121;
+delete from push_deliveries;
+insert into push_devices (user_id, installation_id, token, platform) values
+  ('00000000-0000-0000-0000-000000121001', '00012100-0000-4000-8000-000000000001', 'TOK-121-1', 'ios');
+insert into push_deliveries (notification_id, state, attempts, claimed_at)
+  values ('00000000-0000-0000-0000-0001210e0001', 'claimed', 1, now() - interval '11 minutes');
+select assert_eq(
+  (select count(*)::int from claim_push_batch(50)),
+  1, '121.11f: ** a row left `claimed` for eleven minutes is RECLAIMED and comes back out of claim_push_batch. ** Before the reclaim this returned 0 for ever: the row was not `pending`, so the claim never saw it, and not terminal, so the sweep never deleted it');
+select assert_eq(
+  (select attempts from push_deliveries where notification_id = '00000000-0000-0000-0000-0001210e0001'),
+  2, '121.11g: ... and it re-enters the ORDINARY path — attempts advances, so a row that strands every time is still bounded. The age cut is what stops the loop: at ten minutes a reclaim, a row stops being claimable after six hours, so 36 reclaims at most against the attempts CHECK ceiling of 50');
+rollback to savepoint claim_reclaim_121;
+
+-- ---------------------------------------------------------------------------
+-- 121.11h  ** AND A ROW CLAIMED JUST NOW IS NOT. ** The other half, and the one
+--          that matters more: nothing distinguishes a dead invocation from a
+--          slow one except elapsed time — the claim's row lock is released when
+--          claim_push_batch returns, not held across the send — so a window
+--          shorter than a live invocation double-sends every push under load.
+-- ---------------------------------------------------------------------------
+savepoint claim_fresh_121;
+delete from push_deliveries;
+insert into push_devices (user_id, installation_id, token, platform) values
+  ('00000000-0000-0000-0000-000000121001', '00012100-0000-4000-8000-000000000001', 'TOK-121-1', 'ios');
+insert into push_deliveries (notification_id, state, attempts, claimed_at)
+  values ('00000000-0000-0000-0000-0001210e0001', 'claimed', 1, now() - interval '9 minutes');
+select assert_eq(
+  (select count(*)::int from claim_push_batch(50)),
+  0, '121.11h: a row claimed nine minutes ago is NOT reclaimed — inside the ten-minute window an invocation is assumed alive, because the alternative is re-sending a push a live run is in the middle of sending');
+select assert_eq(
+  (select state from push_deliveries where notification_id = '00000000-0000-0000-0000-0001210e0001'),
+  'claimed', '121.11i: ... and it is left exactly as it was, rather than being swept, failed or completed out from under the run that holds it');
+rollback to savepoint claim_fresh_121;
+
+-- ---------------------------------------------------------------------------
+-- 121.11j  ** THE AGE CUT GOVERNS A RECLAIMED ROW, which is what makes two
+--          comments true rather than deleted. ** Both this migration and the
+--          sender say "the age cut suppresses rather than sends"; before the
+--          reclaim the age cut was evaluated INSIDE the pending-only candidate
+--          set and never saw a `claimed` row at all, so the mechanism was named
+--          in two places and present in none. A stranded row that is also stale
+--          must come back and then be SUPPRESSED, not sent.
+-- ---------------------------------------------------------------------------
+savepoint claim_reclaim_stale_121;
+delete from push_deliveries;
+insert into push_devices (user_id, installation_id, token, platform) values
+  ('00000000-0000-0000-0000-000000121001', '00012100-0000-4000-8000-000000000001', 'TOK-121-1', 'ios');
+insert into push_deliveries (notification_id, state, attempts, created_at, claimed_at)
+  values ('00000000-0000-0000-0000-0001210e0001', 'claimed', 1,
+          now() - interval '7 hours', now() - interval '11 minutes');
+select assert_eq(
+  (select count(*)::int from claim_push_batch(50)),
+  0, '121.11j: a stranded row that is ALSO past the six-hour age cut is reclaimed and then suppressed rather than sent — it comes back onto the ordinary path and the ordinary path decides');
+select assert_eq(
+  (select state from push_deliveries where notification_id = '00000000-0000-0000-0000-0001210e0001'),
+  'suppressed', '121.11k: ... reaching a TERMINAL state, so the sweep can now delete it — which is the half of §9b''s promise that a stranded row was breaking');
+rollback to savepoint claim_reclaim_stale_121;
+
+-- ---------------------------------------------------------------------------
 -- 121.12  complete_push_delivery: the three outcomes, the retry ceiling, and
 --         the token touch. ** NO OUTCOME HERE DELETES A TOKEN ** — folding a
 --         transport error into the dead-token branch silently unsubscribes
