@@ -282,10 +282,11 @@ Four rules, each with a test naming the trap it avoids:
 
 ## Supabase Rules
 
-**Three Edge Functions, deployed to both projects**: `delete-account` (the only place a
+**Four Edge Functions — three on both projects, `push-notify` on DEV only**: `delete-account` (the only place a
 service-role key exists — the Auth admin API needs it), `resolve-ride-location` (geocodes a
-meeting point and renders its tiles) and `search-places` (proxies the typeahead). Four rules on
-`delete-account`, which is why it does not contradict §What Not To Do — **the function is not the
+meeting point and renders its tiles), `search-places` (proxies the typeahead) and `push-notify`
+(`121`'s outbox drain — **deployed to DEV only**, and inert until the owner's activation steps).
+Four rules on `delete-account`, which is why it does not contradict §What Not To Do — **the function is not the
 app**: the key lives only in the function's secret store (`src/__tests__/no-service-role-key.test.ts`
 is the tripwire); it takes no user id; it verifies the JWT itself; only CI's `functions` job
 type-checks it.
@@ -363,7 +364,7 @@ before it applies** — every affected path exercised on DEV, in a rolled-back t
 recorded statement that does not equal `md5sum` of its file is the NORM; compare the OBJECT
 (`docs/reference/migrations.md` §Applying a large file, §What reads as drift).
 
-Suite **4153** assertions — re-derive rather than trust it:
+Suite **4158** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs.
 

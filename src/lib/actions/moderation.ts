@@ -132,6 +132,12 @@ export async function reportPostcard(
  * A duplicate report is a no-op, not an error: `unique (reporter_id,
  * comment_id)` is the anti-brigading mechanism, and they can read their own
  * report regardless.
+ *
+ * **`ignoreDuplicates: true` is a PRIVILEGE requirement, not a preference about
+ * duplicates** — the same reason `hidePostcard` above states for
+ * `postcard_hides`. `123` grants `authenticated` no UPDATE on this table, so
+ * the default merge-duplicates form 42501s **every** report including a rider's
+ * first. Pinned at `123.6` in the emitted form.
  */
 export async function reportPostcardComment(commentId: string): Promise<ActionState> {
   const parsed = reportPostcardCommentSchema.safeParse({

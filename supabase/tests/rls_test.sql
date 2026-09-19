@@ -38630,6 +38630,22 @@ select assert_rejected($$
   '23505', '122.3: a SECOND report of the same thread by the same rider is refused by ride_thread_reports_one_per_rider (N6) — 23505, which the client absorbs with `on conflict do nothing` rather than showing');
 select assert_allowed($$
   insert into ride_thread_reports (reporter_id, thread_id, reason)
+  values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f1', 'spam')
+  on conflict do nothing$$,
+  '122.3: ** the form the CLIENT actually emits is a silent no-op ** — supabase-js sends
+   `on conflict do nothing` only because the action passes `ignoreDuplicates: true`, and this is the
+   assertion that covers the statement rather than the constraint (supabase/tests/README.md §write
+   the emitted form)');
+select assert_rejected($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason)
+  values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f1', 'spam')
+  on conflict (reporter_id, thread_id) do update set reason = excluded.reason$$,
+  '42501', '122.3: ** and DROPPING that option breaks the FIRST report, not the second ** —
+   supabase-js''s `upsert` default is merge-duplicates, which plans `on conflict do update` against a
+   table with no UPDATE grant, so every report 42501s including a riders first one. `addCountry` shipped exactly this bug;
+   this assertion is what goes red instead');
+select assert_allowed($$
+  insert into ride_thread_reports (reporter_id, thread_id, reason)
   values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f2', 'other')$$,
   '122.3: ... while the same rider reporting a DIFFERENT thread succeeds, so the key is per-subject and not a per-rider rate limit');
 reset role;
@@ -39146,8 +39162,11 @@ select assert_rejected($$
   '23514', '123.1: a note of nothing but SPACES is refused — the FLOOR is on the trimmed length, 011''s split, copied from 094 verbatim');
 -- ** AND THE GAP IN THAT FLOOR, PINNED RATHER THAN LEFT TO BE REDISCOVERED. **
 -- `btrim` with no second argument strips SPACES ONLY — 108's measurement:
---   select length(btrim(E'\n\n')), length(btrim('   '));   -->  2 | 0
--- so a note of nothing but NEWLINES passes this CHECK. That is true of
+--   select length(btrim(E'\n\n')), length(btrim(E'\t')), length(btrim('   '));  -->  2 | 1 | 0
+-- so a note of nothing but NEWLINES — or of nothing but TABS — passes this CHECK.
+-- ** Both, not just the newline: ** a fix keyed on the word "newline" alone leaves
+-- half the class behind, and the class is every character `btrim` does not treat
+-- as a space. That is true of
 -- postcard_reports (011), club_thread_reports (094) and both of 122's and 123's
 -- tables, because task 1.3 required the constraint copied VERBATIM rather than
 -- improved in one of four places. ** It matters because it is the inversion
@@ -39160,6 +39179,12 @@ select assert_allowed($$
   insert into postcard_comment_reports (reporter_id, comment_id, reason, note)
   values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'other', E'\n\n')$$,
   '123.1: ** ... while a note of nothing but NEWLINES is ACCEPTED, and that is asserted as the KNOWN GAP it is ** — btrim strips spaces only, so this floor is weaker than 108''s `~ ''\S''` on all four report tables including 011''s and 094''s. Written as a positive so the day somebody tightens it, this line goes red and names the four tables that have to move together');
+select assert_allowed($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason, note)
+  values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f2', 'other', E'\t')$$,
+  '123.1: ** ... and so is a note of nothing but TABS, which is the same gap and is asserted
+   SEPARATELY on purpose ** — the whitespace class `btrim` ignores is wider than the newline, so a
+   tightening keyed on E''\n'' alone would leave this line green and the floor still broken');
 select assert_rejected($$
   insert into postcard_comment_reports (reporter_id, comment_id, reason, note)
   values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'other', repeat('x', 1001))$$,
@@ -39349,6 +39374,22 @@ select assert_rejected($$
   insert into postcard_comment_reports (reporter_id, comment_id, reason)
   values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'spam')$$,
   '23505', '123.6: a SECOND report of the same comment by the same rider is refused by postcard_comment_reports_one_per_rider (N6) — 23505, which the client absorbs with `on conflict do nothing`');
+select assert_allowed($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason)
+  values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'spam')
+  on conflict do nothing$$,
+  '123.6: ** the form the CLIENT actually emits is a silent no-op ** — supabase-js sends
+   `on conflict do nothing` only because the action passes `ignoreDuplicates: true`, and this is the
+   assertion that covers the statement rather than the constraint (supabase/tests/README.md §write
+   the emitted form)');
+select assert_rejected($$
+  insert into postcard_comment_reports (reporter_id, comment_id, reason)
+  values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f1', 'spam')
+  on conflict (reporter_id, comment_id) do update set reason = excluded.reason$$,
+  '42501', '123.6: ** and DROPPING that option breaks the FIRST report, not the second ** —
+   supabase-js''s `upsert` default is merge-duplicates, which plans `on conflict do update` against a
+   table with no UPDATE grant, so every report 42501s including a riders first one. `addCountry` shipped exactly this bug;
+   this assertion is what goes red instead');
 select assert_allowed($$
   insert into postcard_comment_reports (reporter_id, comment_id, reason)
   values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f2', 'other')$$,

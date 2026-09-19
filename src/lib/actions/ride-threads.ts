@@ -292,6 +292,14 @@ export async function moderateRideThread(
  * A duplicate report is a no-op rather than an error, `unique (reporter_id,
  * thread_id)` being the anti-brigading mechanism and the reporter already able
  * to read their own row regardless.
+ *
+ * **`ignoreDuplicates: true` is a PRIVILEGE requirement, not a preference about
+ * duplicates.** supabase-js's `upsert` default is merge-duplicates, which plans
+ * `on conflict do update` — and `122` grants `authenticated` no UPDATE on this
+ * table, so the default form 42501s **every** report including a rider's first.
+ * Measured through PostgREST against DEV, and pinned at `122.3` in the RLS
+ * suite in the emitted form, because nothing in `tsc`, lint or the unit suite
+ * can see this option go.
  */
 export async function reportRideThread(threadId: string): Promise<ActionState> {
   const parsed = reportRideThreadSchema.safeParse({

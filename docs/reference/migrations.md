@@ -389,7 +389,10 @@ filename order on the PROD promotion.
 → 30 kept / 6 revoked** (`ride_thread_reports`, `postcard_comment_reports` added to
 `club_thread_reports`, `postcard_reports`, `push_deliveries`, `push_devices`); security advisors
 **46 → 46, zero new**, `rls_enabled_no_policy` staying at 6 because both new tables carry two
-policies. RLS suite **3986 → 4149** assertions, +163 labelled `122.x`/`123.x`.
+policies. RLS suite **3990 → 4158** assertions, **+168** labelled `122.x`/`123.x` — 163 written with
+the two files and five more closing `reviewer`'s findings on them (the emitted `on conflict`
+form on each table, and the tab half of the note-floor gap). The baseline is 3990 rather than
+3986 because `118` merged in between and brought four of its own.
 
 **The gate comment was ONE HIGH when `122` found it, and that is the correction worth keeping.** The
 live stamp said twenty-three while `select count(*) from pg_trigger where tgname =
