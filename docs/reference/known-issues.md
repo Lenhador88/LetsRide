@@ -246,37 +246,6 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   >
   > a firing ends at `Deployed to DEV`, and the promotion is the owner's on their own timing
 
-- **Two riders deleting at the same moment can destroy a third rider's postcards.** `PD-175`, a
-  sub-issue of `PD-102` because it sits inside the deletion deliverable. The narrow race that
-  `032` §3 documents and deliberately leaves open: the successor lock dies with the RPC
-  transaction, well before the Edge Function's `deleteUser`. Not fixable in SQL — the window is
-  between two HTTP calls in two processes — and **the RLS suite cannot see it either**, since its
-  idempotency assertion runs both calls inside one psql transaction.
-
-  > **Recommendation** 6/10
-  >
-  > worth closing before the flow ships, not before the flow is built
-  >
-  > **Complexity** 4/10
-  >
-  > an advisory lock is small; a marker column is a migration plus a recovery story for runs
-  > that die holding it
-  >
-  > **Urgency** 1/10 today
-  >
-  > genuinely conditional: it needs two riders deleting within seconds, in a club they share.
-  > There are four accounts — `select count(*) from auth.users` on PROD, 4 as of 2026-08-09. It
-  > rises with the user count, and sharply the day deletion is reachable from the UI at all
-  >
-  > **Customer value** 3/10
-  >
-  > nobody sees it working; what it prevents is a club cascading away with every postcard every
-  > *other* member ever posted there, for riders who did nothing and get no warning
-  >
-  > **This session** N
-  >
-  > it is a design choice between two mechanisms, and the flow it protects does not exist yet
-
 - **Account deletion's flow is built (2026-08-16, `PD-102`) and shipped BEHIND a flag, because
   commit order inside a branch does not make a redeploy fail-closed.** `029`–`032` are applied.
   The re-authentication arm (D6/Q7) landed in `supabase/functions/delete-account/index.ts` as its

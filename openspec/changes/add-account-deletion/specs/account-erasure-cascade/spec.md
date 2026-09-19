@@ -114,6 +114,131 @@ reasoning is sound for its premise. Its premise moves here.
 - **THEN** no notification SHALL be sent, because no notification system exists
 - **AND** this SHALL be a stated gap owned by the Inbox epic, not an omission
 
+### Requirement: A club SHALL NOT be handed to a rider whose own deletion is already under way
+
+The transfer SHALL record that a deletion has begun, before it chooses anybody, and SHALL NOT
+choose a rider whose recorded deletion is still in progress.
+
+**This closes a race the schema currently states and leaves open.** `032` §3: rider B's transfer
+commits (B owns nothing); rider A's transfer then picks B as successor for club C; B's own
+deletion reaches `deleteUser(B)` and C cascades away with every postcard every other member
+posted into it — the harm the transfer exists to prevent, reached through it. The lock `029`
+takes on the candidate's `profiles` row lives only as long as the RPC transaction, which ends
+before the rest of the deletion runs, so the lock alone does not close it.
+
+The record SHALL be a column on `public.profiles` rather than a row elsewhere, because the
+serialisation depends on the writer and the successor select contending for the **same row
+lock**. The Edge Function SHALL NOT change.
+
+#### Scenario: A rider whose deletion has begun is not chosen as a successor
+- **WHEN** a rider's deletion has recorded that it is in progress, and it is still in progress
+- **AND** another rider's transfer is choosing a successor for a club they both belong to
+- **THEN** the first rider SHALL NOT be chosen while an eligible unmarked candidate exists
+- **AND** the exclusion SHALL be expressed in the successor query's `where` clause, so that a
+  candidate whose record is written concurrently is re-checked after the row lock is taken and
+  skipped — an exclusion expressed only as a sort order SHALL NOT satisfy this, because sort
+  order is not re-evaluated after the lock
+
+#### Scenario: The record is written before any club is chosen
+- **WHEN** a deletion begins
+- **THEN** the record SHALL be written before the transfer examines any club
+- **AND** a concurrent transfer holding a lock on that rider's row SHALL block the write, so the
+  rider's own club loop cannot run until that transfer is visible to it
+
+#### Scenario: A rider who owns no clubs is recorded anyway
+- **WHEN** a rider with no clubs at all deletes their account
+- **THEN** the record SHALL still be written, because the deletion always calls the transfer
+- **AND** it SHALL NOT be written inside the per-club loop, where a rider with nothing to
+  transfer would never reach it — which is the whole case the race needs
+
+#### Scenario: The reverse interleaving is safe only because of the record
+- **WHEN** rider A's transfer commits first, handing club C to rider B, and rider B's own
+  deletion then runs
+- **THEN** B's transfer SHALL find C and hand it on
+- **AND** it SHALL NOT hand it back to A, who is still in C's roster as a demoted member and is
+  themselves mid-deletion — without the record that is the ordinary outcome and C cascades away,
+  so "the reverse order is harmless" SHALL NOT be asserted independently of this requirement
+
+#### Scenario: Excluding the last candidate falls through to the ownerless arm, not to deletion
+- **WHEN** excluding marked candidates leaves a club with no successor at all
+- **THEN** the club SHALL take the existing no-successor arm, which keeps it with no owner when
+  any postcard in it was authored by someone else and deletes it only when there is nothing
+  third-party to lose
+- **AND** the outcome SHALL be that the club reaches that arm one deletion earlier than it
+  otherwise would, with the third-party postcards intact
+- **AND** a last-resort pass that preferred a marked candidate over that arm SHALL NOT be added:
+  an ownerless club definitely survives, while a club handed to a rider whose deletion is in
+  flight cascades away when that deletion completes — so the pass is strictly worse against the
+  arm as it now stands
+- **AND** the residual SHALL be attributed where it belongs: the no-successor arm keys on
+  **postcards alone**, so a club whose only third-party content is a thread still takes the
+  delete branch. This requirement moves one club into that branch one deletion earlier and SHALL
+  NOT be read as widening it
+
+#### Scenario: Two riders who own each other's clubs may deadlock, and that is the chosen failure
+- **WHEN** two riders who each own a club and are members of each other's delete concurrently
+- **THEN** one transaction MAY be aborted by the database's deadlock detection, the deletion
+  SHALL fail with a retryable error, and the retry SHALL find a recorded, skippable row
+- **AND** nothing SHALL be half-done, because the transfer is idempotent for exactly this class
+  of failure
+- **AND** `skip locked` SHALL NOT be used to remove the deadlock: it would skip a candidate
+  locked for an unrelated reason — a rider editing their own profile — and take the ownerless or
+  delete arm while a transfer was available, which is a quiet wrong outcome in place of a loud
+  retryable one
+
+#### Scenario: A record that is no longer fresh does not exclude anybody
+- **WHEN** a rider's deletion failed part way, leaving the record behind, and the rider carries on
+  using the app
+- **THEN** nothing SHALL be degraded for them: they can sign in, read, write, join, post and
+  delete their account exactly as before
+- **AND** the only consequence SHALL be that they are passed over as a club successor while the
+  record is fresh, which the preceding scenario bounds at no harm
+- **AND** the record SHALL age out on a stated window rather than requiring anyone to clear it
+- **AND** a retry of their deletion SHALL write the record again before choosing anybody
+
+#### Scenario: Nothing else reads the record
+- **WHEN** any other decision in the system is made — signing in, the route guard, participation,
+  visibility, membership, a screen's copy
+- **THEN** the record SHALL NOT be consulted
+- **AND** it SHALL NOT be capable of refusing a rider their own deletion, which is the failure a
+  deletion-in-progress marker is normally expected to have
+
+#### Scenario: No client can read the record
+- **WHEN** any signed-in rider selects the column from any profile row, their own included
+- **THEN** the read SHALL be refused rather than returning NULL, because `025` revoked the
+  table-level SELECT and the column joins none of its three allowlists
+- **AND** `authenticated` and `anon` SHALL hold no SELECT, INSERT or UPDATE on it, asserted per
+  grantee rather than table-wide
+- **AND** it SHALL appear in no `security definer` accessor's projection, since those are the
+  routes that reach columns a grant does not
+- **AND** "a new column on `profiles` is unreachable by default" SHALL NOT be accepted in place
+  of the assertion, because that default is undone silently by anyone adding the column to an
+  allowlist to make something work
+
+#### Scenario: No client can write the record, so a marked rider is always a deleting rider
+- **WHEN** a rider attempts to set the column on their own row or anyone else's
+- **THEN** the write SHALL be refused with `42501` before any trigger runs
+- **AND** the only writer SHALL be the `security definer` transfer function, which is in `private`
+  with no `authenticated` EXECUTE and is reachable only through the `service_role`-only wrapper
+- **AND** a rider SHALL NOT be able to reach it by disabling or adding a trigger, since `047`
+  revoked `TRIGGER` on `public.profiles` from `authenticated`
+- **AND** the residual SHALL be stated rather than denied: a second holder of the service-role
+  credential could mark an arbitrary rider, and the whole effect of that is the rider not being
+  chosen as a club successor for the length of the window
+
+#### Scenario: The remaining window is stated with its bound
+- **WHEN** a deletion runs for longer than the freshness window
+- **THEN** its rider SHALL become selectable as a successor again until the deletion lands
+- **AND** this SHALL be recorded as the residual with its bound — an invocation that outlives the
+  platform's own wall-clock ceiling — rather than described as closed
+
+#### Scenario: The interleaving is not covered by the policy suite
+- **WHEN** the requirement is verified
+- **THEN** the two-session interleaving SHALL be exercised by hand against a real project and the
+  result recorded
+- **AND** a green policy suite SHALL NOT be offered as evidence for it, because the suite runs
+  both calls inside one transaction and cannot observe two
+
 ### Requirement: A ride SHALL NOT survive its club as something nobody can read
 
 Rides SHALL NOT be left in a state where they exist, hold a crew, and are visible to no one.

@@ -90,12 +90,14 @@ does not cleanly return.
 - **AND** it SHALL NOT return an error, which would leave a rider holding a dead session on a
   screen whose only action fails
 
-#### Scenario: A failure before the auth delete leaves everything intact
+#### Scenario: A failure before the auth delete leaves the account usable
 - **WHEN** the club transfer or the Storage sweep fails
-- **THEN** no rows and no auth record SHALL have been removed, and the caller SHALL receive a
-  retryable error
-- **AND** the club transfer and the row cascade SHALL be one database transaction, so a
-  half-transferred club is not a reachable state
+- **THEN** no auth record SHALL have been removed and the caller SHALL receive a retryable error
+- **AND** each club transfer SHALL be atomic in itself, so a half-transferred club — an owner
+  changed without its roster row, or the reverse — is not a reachable state
+- **AND** a transfer that already committed SHALL NOT be rolled back, because it cannot be: the
+  rider SHALL be left an ordinary member of the clubs they founded, and the retry SHALL find
+  nothing left to transfer and proceed
 
 #### Scenario: The one genuinely partial state is named rather than denied
 - **WHEN** Storage objects are deleted and the subsequent auth delete fails
@@ -108,13 +110,28 @@ does not cleanly return.
 - **WHEN** two deletion calls for the same account run concurrently
 - **THEN** exactly one SHALL perform the work and the other SHALL observe the account already
   gone
-- **AND** no club SHALL be transferred twice or to a rider who is themselves mid-deletion
+- **AND** no club SHALL be transferred twice
 
 #### Scenario: Two riders deleting at once do not hand a club to each other
-- **WHEN** the only two members of a club both delete their accounts concurrently
-- **THEN** the outcome SHALL be a deleted club, not a club owned by a nonexistent rider
-- **AND** the transfer SHALL never select a candidate whose own `profiles` row is being removed in
-  the same transaction
+- **WHEN** two riders who share a club delete their accounts within moments of each other
+- **THEN** neither SHALL be handed a club by the other's transfer while their own deletion is
+  already under way
+- **AND** the rule SHALL be enforced in the database rather than in this function, which takes no
+  part in it — see `account-erasure-cascade`, "A club SHALL NOT be handed to a rider whose own
+  deletion is already under way"
+- **AND** an in-transaction row lock SHALL NOT be accepted as satisfying this: the transfer is a
+  separate RPC that commits before the Storage sweep and the auth delete, so its locks are
+  released while the rest of the deletion is still to come
+
+#### Scenario: The function's own steps are not one transaction, and nothing SHALL claim they are
+- **WHEN** a deletion runs
+- **THEN** the transfer SHALL commit when its call returns, before the Storage sweep and before
+  the auth delete
+- **AND** a failure between those steps SHALL leave a rider who is still signed in, still holding
+  an account, and an ordinary member of the clubs they founded — never ejected from a private club
+  they could not rejoin
+- **AND** the recovery SHALL be that the transfer is idempotent and the retry completes, not that
+  the work is rolled back
 
 ### Requirement: A residual access token SHALL be able to read for at most its remaining lifetime and SHALL write nothing
 

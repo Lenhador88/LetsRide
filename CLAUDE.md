@@ -328,12 +328,12 @@ repointed. `docs/ENVIRONMENTS.md` is the contract. **Never promote a Vercel prev
 — both Supabase variables are inlined at build time and promote does not rebuild. **Check drift
 rather than claiming it**: `npm run db:drift` compares migration *names*.
 
-**Applied state: 117 files; DEV is at `118` and PROD at `116` — measured 2026-09-18.** DEV-ahead
+**Applied state: 119 files; DEV is at `120` and PROD at `116` — measured 2026-09-19.** DEV-ahead
 is the resting state between a merge and its promotion; promote everything the gap contains, in
 filename order, per `docs/ENVIRONMENTS.md` §Migrations, and record each file's ordering in
 `docs/reference/migrations.md` §Applied state. Count rather than trust it — `list_migrations`
 against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV records THREE rows with
-no file and PROD none** — the long-standing hand-applied ones. DEV answers 121 rows: `118` is
+no file and PROD none** — the long-standing hand-applied ones. DEV answers 123 rows: `118` is
 applied from a branch that has not merged, so count the FILE-LESS rows rather than the gap.
 **`113` then `114` was a required order on the PROD promotion and must not be collapsed** if it is
 ever replayed: `114` refuses a NULL country, so applied ahead of the bundle that writes one it
@@ -361,7 +361,7 @@ before it applies** — every affected path exercised on DEV, in a rolled-back t
 recorded statement that does not equal `md5sum` of its file is the NORM; compare the OBJECT
 (`docs/reference/migrations.md` §Applying a large file, §What reads as drift).
 
-Suite **3885** assertions — re-derive rather than trust it:
+Suite **3919** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs.
 
