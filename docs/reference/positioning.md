@@ -77,17 +77,16 @@ Marketing copy is a claim about the build, and the build is smaller than the des
 this list against the code before writing any listing — `docs/reference/product-scope.md`
 §Product Scope is the per-domain state, and it moves faster than this section.
 
-**Measured against `development` on 2026-09-07 — which is not what a rider installs.** A
-listing describes the *promoted* build, and `main` runs five migrations behind. One row differs
-today and it is one this file leans on: **a ride has titled threads on `development` and a chat
-on `main`**, because `108`/`109` are DEV-only.
+**A listing describes the *promoted* build, so measure against `main` rather than
+`development`.** As of 2026-09-19 the gap is **one** migration, not five: `108`/`109` are on
+`main` and applied to PROD, so the ride's Chat is retired in production too.
 
-**Exactly one word flips, and reading the caveat wider than that is how it becomes the defect it
-warns about.** On `main`, "chat" is *accurate* for a ride. **"message a rider" and "DMs" are
-wrong on both branches and always have been** — the Inbox epic's remaining half is DMs, unbuilt
-everywhere. Treating the whole do-not-say row as suspended on production puts two phrases into a
-listing for an app that has no direct messages, which is Guideline 2.3. Re-derive the gap rather
-than trusting this paragraph —
+**"chat" is therefore wrong for a ride on BOTH branches** — an earlier version of this paragraph
+said it was accurate on `main`, which by then was advice to write a Guideline 2.3 word into the
+listing. **"message a rider" and "DMs" are wrong on both branches and always have been** — the
+Inbox epic's remaining half is DMs, unbuilt everywhere. The whole do-not-say row stands on
+production; none of it is suspended there. Re-derive the gap rather than trusting this
+paragraph —
 `docs/reference/migrations.md` §Applied state, and `list_migrations` against both refs.
 
 **Claimable today:**
@@ -295,7 +294,7 @@ is a guess. The Play rows were not, and are inherited.
 | App Store — app name | 30 | 2 minimum. Highest keyword weight of any field **[unvalidated]**. The only one of these that is **not** editable without a new version once the app has been submitted |
 | App Store — subtitle | 30 | Second highest **[unvalidated]**. Shown under the name in search results |
 | App Store — keywords | **100 bytes** | **Bytes, not characters** — identical for ASCII and not for anything else. Each keyword must be **longer than two characters**, which is what killed `near,me`. Comma-separated, **no spaces after commas**; Apple's own wording says not to repeat the app name or company name, and not repeating the subtitle is this file's inference |
-| App Store — promotional text | 170 | Editable without a new version. **It is not the only one** — subtitle, description, keywords and the three URLs are all editable too; what makes it the field to reach for is that it is the one written to be replaced |
+| App Store — promotional text | 170 | **Editable without a new version — the only marketing copy field Apple documents that way** (*"without requiring an updated submission"*). Subtitle, description and keywords carry only *"editable depending on the app status"*, so treat them as shipped with the build |
 | App Store — description | 4000 | Almost nobody expands it **[unvalidated]**; write for the first ~3 lines. Apple says it feeds web search results, which is this product's only SEO surface |
 | Play — title | 30 | **[inherited]** — not re-checked; `play.google.com` and `support.google.com` are both refused at this container's egress proxy |
 | Play — short description | 80 | **[inherited]**. The one that appears above the fold |
@@ -452,12 +451,12 @@ to reject `Clubs` in an English name — which is how an earlier draft of this f
 
 ### The name does not have to carry everything
 
-The 100-character keyword field is indexed too, and both stores build phrases across the fields,
-so **a word already in the name or subtitle is wasted if repeated there** — asserted from
-knowledge and worth confirming in App Store Connect, unlike the localisation rules above which
-were checked. With `LetsRide: Motorcycle Clubs` and `Join rides, tell your story`, the two fields
-already own `motorcycle`, `clubs`, `join`, `rides`, `tell`, `story`. The keyword field spends its
-100 characters on what they do not (86 of them):
+The keyword field — **100 bytes, not characters** — is indexed too, and both stores build phrases
+across the fields, so **a word already in the name or subtitle is wasted if repeated there** —
+asserted from knowledge and worth confirming in App Store Connect, unlike the localisation rules
+above which were checked. With `LetsRide: Motorcycle Clubs` and `Join rides, tell your story`,
+the two fields already own `motorcycle`, `clubs`, `join`, `rides`, `tell`, `story`. The keyword
+field spends its 100 bytes on what they do not — **97 of them, so the headroom is 3**:
 
 ```
 group,riders,nearby,community,social,meetup,biker,motorbike,crew,tour,bike,trip,share,photos,moto

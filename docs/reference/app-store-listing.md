@@ -31,10 +31,17 @@ container, unlike the store fronts themselves, so these are read rather than rec
 capped in **bytes**, not characters — identical for pure ASCII and not for anything else — and a
 two-character keyword (`me`) is refused outright. That file's caps table now points here.
 
-**Editability, from the same pages.** Subtitle, Description, Keywords, Promotional Text and all
-three URLs can be changed without shipping a new build; the **Name** can be edited only until the
-app is submitted, and after that with a new version. So the promotional text is *not* the only
-editable marketing field — it is the only one that was ever advertised as such.
+**Editability — and Apple documents far less of it than is convenient.** Exactly one marketing
+field is stated to be changeable without a new submission: **Promotional Text**, which *"lets you
+inform your App Store visitors of any current app features without requiring an updated
+submission."* Subtitle, Description and Keywords carry only the page-level *"This property is
+editable depending on the app status"*, which is not the same promise. The **Name** can be edited
+until the app is submitted, and after that with a new version.
+
+**So treat Promotional Text as the only field you can swap freely, and everything else as
+shipped with the build.** An earlier draft of this section said the opposite, sourced it to these
+same pages, and the pages do not say it — the trap is putting a perishable claim in the Subtitle
+or Keywords and then finding it needs a version to change.
 
 **What could NOT be checked here, and must be before upload:**
 
@@ -122,7 +129,7 @@ formed, the day the app goes Dutch. A version-free edit is the whole point of it
 **If the Netherlands-only line is ever wrong, this is the field it is wrong in**, and it is the
 cheapest one to fix. Do not put a market claim in the Name or the Description.
 
-## Description — 1738 characters of 4000
+## Description — 1837 characters of 4000
 
 Apple's own note: the Description *"will be used for web engine search results once you release
 your app"*, which is the closest thing this product has to an SEO surface, because decision #1
@@ -137,7 +144,7 @@ Find riders near you, plan a ride together, and keep the photos.
 LetsRide is where motorcycle riders organise the next ride and share the last one. Join a club, see what everyone has been riding, and turn a group chat that lost the meeting point into a ride with a map, a time and a crew list.
 
 A HOME SCREEN MADE OF PHOTOS
-LetsRide opens on postcards - a deck of photos from other riders' rides that you swipe through. Like them, comment on them, and send one to anybody with a link.
+LetsRide opens on postcards - a deck of photos from other riders' rides that you swipe through. Like them, comment on them, and share one with any rider.
 
 CLUBS
 Join a club and get a timeline of everything it has done: its rides, its postcards and its threads. Start a thread with a title so it is still findable next week. Invite riders by name or with a link.
@@ -152,12 +159,12 @@ YOUR CALL WHO YOU RIDE WITH
 Block a rider and you disappear from each other. Hide a postcard you would rather not see. Report a postcard or a club thread. Delete your account from inside the app, and everything goes with it.
 
 A FEW HONEST NOTES
-LetsRide is not a public feed: you need an account to see anything, and nothing you post is visible on the open web. It does not record your route or navigate for you - Google Maps already does that, and we hand off to it. New riders are put into a club on day one, so the app is not empty while you find your own.
+LetsRide is not a public feed: you need an account, and nothing you post is browsable or searchable on the open web. The one thing anyone can open without an account is a ride invite link you chose to send them. It does not record your route or navigate for you - Google Maps already does that, and we hand off to it. New riders are put into a club on day one, so the app is not empty while you find your own.
 
 Built for riders in the Netherlands first. English for now.
 ```
 
-**1738 characters, 1738 bytes** — deliberately ASCII-only, hyphens rather than em dashes, because
+**1837 characters, 1837 bytes** — deliberately ASCII-only, hyphens rather than em dashes, because
 a description that is byte-clean survives a copy-paste through any editor. There are 2262
 characters of headroom; do not spend them on a feature that is not in
 `positioning.md` §What we may honestly claim.
@@ -167,10 +174,11 @@ characters of headroom; do not spend them on a feature that is not in
 1. **"turn a group chat that lost the meeting point"** names the thing riders leave behind —
    WhatsApp — and is not a claim that LetsRide has a chat. A copy pass that shortens it to
    *"turn your group chat into a ride"* is fine; one that adds *"chat with your crew"* anywhere
-   else is Guideline 2.3 on `development`, where `108` replaced the ride's Chat with titled
-   threads. **The ride's threads are deliberately not mentioned above**, so this text is true on
-   both branches. Once `108` is promoted to `main`, the RIDES paragraph may gain
-   *"Every ride gets titled threads, so the plan does not scroll away."*
+   else is Guideline 2.3 on **both** branches — `108`/`109` replaced the ride's Chat with titled
+   threads and are on `main`, applied to PROD (`git ls-tree origin/main supabase/migrations/ |
+   grep -E "10[89]_"`). **The ride's threads are deliberately not mentioned above**, so this text
+   is true as it stands; the RIDES paragraph may now gain *"Every ride gets titled threads, so
+   the plan does not scroll away"* whenever a copy pass wants it.
 2. **"Report a postcard or a club thread"**, exactly that — never *"report any post"*. A ride
    thread has no report affordance (`094` gave `club_thread_reports` no ride counterpart), and
    Guideline 1.2 is the one that checks. See §The Guideline 1.2 gap.
@@ -191,7 +199,7 @@ characters of headroom; do not spend them on a feature that is not in
 | Subtitle | `Join rides, tell your story` | 27 chars | 30 |
 | Keywords | `group,riders,nearby,…,moto` | 97 bytes | 100 bytes |
 | Promotional Text | `Share your motorcycle story, …` | 165 chars | 170 |
-| Description | see above | 1738 chars | 4000 |
+| Description | see above | 1837 chars | 4000 |
 
 ## Categories — Social Networking, then Travel
 
@@ -291,10 +299,8 @@ The two disagreeing is a rejection now and a correction later. Verify the count 
 grep -c "<key>NSPrivacyCollectedDataType</key>" ios/App/App/PrivacyInfo.xcprivacy   # 11
 ```
 
-**Eleven — confirmed 2026-09-19.** (`docs/reference/native-shell.md` §Store readiness row 8 said
-nine; it was written before the location pair was split. Corrected there, and the command above is
-why.) Every one is **Linked to the user**, **none is used for tracking**, and the answer to
-*"Does this app collect data?"* is **Yes**.
+**Eleven — confirmed 2026-09-19.** Every one is **Linked to the user**, **none is used for
+tracking**, and the answer to *"Does this app collect data?"* is **Yes**.
 
 | ASC category | ASC data type | Linked | Tracking | Purposes | Manifest key |
 |---|---|---|---|---|---|
@@ -438,14 +444,20 @@ Owner actions, each blocking in its own way:
    row 6.
 4. **The default club must have content in it**, or the description's day-one promise is false on
    the day a reviewer installs.
-5. **EU trader status under the Digital Services Act.** The launch market is the Netherlands, so
-   the app is distributed in the EU, and App Store Connect asks for a trader self-assessment
-   before a new app can be submitted. If the answer is *trader*, an individual developer must
+5. **EU trader status under the Digital Services Act — `[unvalidated]`, and the only claim in
+   this file with no fetched source.** The launch market is the Netherlands, so the app is
+   distributed in the EU, and App Store Connect asks for a trader self-assessment before a new
+   app can be submitted. If the answer is *trader*, an individual developer is understood to
    enter an address, a phone number and an email address, verify both by two-factor, and upload a
    document proving the address — **and all three are then displayed publicly on the product
    page**. If the answer is *not a trader*, EU consumers are told consumer-protection rights do
-   not apply to the contract. It is a self-assessment with legal consequences and it is the
-   owner's alone; Apple's own page points at the European Commission's guidance for the factors.
+   not apply to the contract.
+
+   **Read the mechanics off App Store Connect rather than off this paragraph.** Unlike every
+   other Apple claim here, no help page backing it could be fetched from this container — four
+   candidate URLs returned Apple's "Page Not Found" body under HTTP 200 — so the substance is
+   plausible and the specifics are not verified. What is certain is that the assessment exists,
+   gates submission, and is a legal self-assessment the owner alone can make. PD-468 holds it.
 
 ## Re-measuring every field
 
@@ -475,5 +487,5 @@ not, so a shell comment there becomes a phantom section that other files' `§` p
 resolve against.
 
 The description is the block in §Description; count it by saving it to a file and running
-`LC_ALL=C.UTF-8 wc -m` on it, minus the trailing newline — **1738 characters, 1738 bytes**, the
+`LC_ALL=C.UTF-8 wc -m` on it, minus the trailing newline — **1837 characters, 1837 bytes**, the
 two being equal because it is deliberately ASCII.

@@ -614,6 +614,33 @@ export const claims = [
     about: 'docs/reference/product-scope.md: the trap — unscoped grep -c "href:" on Navbar.tsx',
   },
 
+  // ---- Collected data types (the privacy manifest vs the two docs) --------
+  //
+  // The App Store Connect questionnaire and Play's Data safety form are both
+  // filled from `PrivacyInfo.xcprivacy`, so a doc that miscounts it is a
+  // rejection at submission and a correction afterwards. The number was hand-
+  // copied into two files and went stale in one of them the moment the
+  // location pair was split into Coarse AND Precise — nine became eleven with
+  // nothing going red. Both anchors are gated here rather than trusted.
+  {
+    id: 'collected-data-types-native-shell',
+    file: 'docs/reference/native-shell.md',
+    pattern: /and \*\*(\w+)\*\* collected-data types, every one Linked and none Tracking/,
+    extractStated: extractWord(),
+    kind: 'shell',
+    cmd: `grep -c "<key>NSPrivacyCollectedDataType</key>" ios/App/App/PrivacyInfo.xcprivacy`,
+    about: 'Store readiness table, row 8: collected data types in PrivacyInfo.xcprivacy',
+  },
+  {
+    id: 'collected-data-types-listing',
+    file: 'docs/reference/app-store-listing.md',
+    pattern: /\*\*(\w+) — confirmed \d{4}-\d{2}-\d{2}\.\*\* Every one is \*\*Linked to the user\*\*/,
+    extractStated: extractWord(),
+    kind: 'shell',
+    cmd: `grep -c "<key>NSPrivacyCollectedDataType</key>" ios/App/App/PrivacyInfo.xcprivacy`,
+    about: 'app-store-listing.md §App Privacy: the transcribed row count',
+  },
+
   // ---- Icon count (prose vs the generator's committed source) --------------
   //
   // The one piece of the 2026-08-16 generated-artifact alarms that IS a doc
