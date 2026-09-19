@@ -489,19 +489,32 @@ Ask how long the oldest of these has been true:
   nothing to except.
 
   **No hit — then age the branch tip if there is one**, because a live build keeps resetting it
-  and a dead one does not:
+  and a dead one does not. **Search the COMMIT MESSAGES, not the branch names** — this repo's
+  branches are `claude/<slug>` and carry no issue id, but a build session's commit subjects end
+  in `(PD-<n>)`, so the name grep answers nothing while the message grep finds the branch at once:
 
   ```bash
-  git ls-remote --heads origin | grep -i "pd-<n>"          # gitBranchName is a guess; this is not
-  git fetch origin "<ref>" --quiet && git log -1 --format=%ct "origin/<ref>"
+  git fetch origin --quiet
+  git log --all --format='%h %cI %D %s' --grep="PD-<n>" -20     # the branch is in %D
+  git for-each-ref --format='%(committerdate:iso8601) %(refname:short) %(subject)' \
+      refs/remotes/origin/claude --sort=-committerdate | head -10   # or read the recent tips
   ```
 
-  **This repo's branches are `claude/<slug>` and usually carry no issue id**, so that grep
-  legitimately finds nothing on a healthy build. Fall back to the issue's
-  `stateHistory[].startedAt` — and read a no-branch result as *unknown*, not as *dead*.
-  **Write `unknown` and stop there.** Every hardening of that word into *never pushed a branch*
-  on 2026-09-06 was false, and one of them became a High-priority issue offering to revert a
-  migration whose file was sitting in the PR nobody had searched for.
+  **A hit is conclusive and a miss is still `unknown`** — that asymmetry is the same one the PR
+  read above has, and it is the direction to err in. Measured 2026-09-19: 33 of `development`'s
+  last 40 subjects name their issue, and both of that day's build sessions put the id on every
+  commit; the old name grep found neither.
+
+  **A miss falls back to the issue's `stateHistory[].startedAt`. Write `unknown` and stop
+  there.** Every hardening of that word into *never pushed a branch* on 2026-09-06 was false, and
+  one of them became a High-priority issue offering to revert a migration whose file was sitting
+  in the PR nobody had searched for. **A hit is not the opposite licence**: a tip that has not
+  moved in hours is a stronger signal than `unknown`, and still not proof the session died, so
+  it changes what the final message can SAY and never who clears the slot.
+
+  **Say what the hit found** — the branch, its tip time and what is on it — because that is what
+  turns the owner's decision into one step: a pushed branch means a later firing can continue
+  from it rather than starting the story over, which `unknown` gives them no way to know.
 - **A `Needs help` issue** — `get_issue` → `stateHistory[].startedAt`. **This clock is now the
   whole backstop, and before this change it was a second one.** The freeze used to make a parked
   story impossible to miss; nothing does that any more, so a parked story that nobody comes back to
