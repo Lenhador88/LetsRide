@@ -5,13 +5,19 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * PD-223 — "the filter bar still blinks out on a filter tap", `/postcards`
- * half. Same harness as the `/rides` sibling test — see its header for the
- * full reasoning. This file exists because the issue names both screens, and
+ * **This gates PD-210 on `/postcards`** — see the `/rides` sibling's header for
+ * the full reasoning, including why it does NOT gate the blink PD-223 reports
+ * (a failed RSC fetch makes `next/link` hard-reload the document, which no
+ * mocked-`next/link` test can reproduce).
+ *
+ * This file exists because the collapsed gate was on both screens, and because
  * `PostcardsScreen` differs from `RidesScreen` in one relevant way: its deck
  * carries `key={`${filter?.kind}-${filter?.id}`}`, which forces the DECK to
- * remount on a filter change by design — a property this test must not
- * mistake for the bar unmounting.
+ * remount on a filter change **by design**. `PostcardDeck` is mocked to `null`
+ * here, which sidesteps that rather than reasoning around it — acceptable only
+ * because the assertion is about a DIFFERENT element's identity (the `<nav>`),
+ * and the deck's own remount is `PostcardDeck`'s to test. If this file ever
+ * starts asserting anything about the deck, unmock it first.
  */
 
 function delay<T>(value: T, ms: number): Promise<T> {
@@ -150,5 +156,21 @@ describe('PD-223 — the postcards filter bar survives a filter tap', () => {
     expect(sawBarMissing.some(Boolean), 'the bar must never be absent from the DOM mid-transition').toBe(
       false
     )
+
+    // ** WITHOUT THIS THE WHOLE FILE IS VACUOUS. ** Verified: delete the
+    // `setSearch` call from the `next/link` mock above and every assertion
+    // below still passes — a bar that never had to survive anything is
+    // trivially the same element. So the tap has to be PROVED to have landed,
+    // and `aria-current` is the proof that travels furthest: it moves only if
+    // the click reached the router stand-in, the page re-parsed the search
+    // string, and the real bar re-rendered with a new `active`.
+    expect(
+      tile!.getAttribute('aria-current'),
+      'the tapped tile must be selected AFTER the tap — otherwise the navigation never landed and this test proves nothing'
+    ).toBe('true')
+    expect(
+      barBefore!.querySelector('a[aria-current="true"]'),
+      'exactly one tile is current, and it is the tapped one'
+    ).toBe(tile)
   })
 })

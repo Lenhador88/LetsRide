@@ -654,6 +654,29 @@ export const claims = [
     cmd: `grep -c "<key>NSPrivacyCollectedDataType</key>" ios/App/App/PrivacyInfo.xcprivacy`,
     about: 'app-store-listing.md §App Privacy: the transcribed row count',
   },
+  {
+    // The Description's own character count, which was WRONG in four places
+    // until 2026-09-19 and which nothing measured. The cause is worth naming
+    // because it is not the usual one: the block never changed, so this was not
+    // drift — the number was miscounted by hand on the day it was written and
+    // then copied to three more places. A cap claim nobody enforces is exactly
+    // as good as no cap claim, and this is the field with 2174 characters of
+    // headroom, so the number's only job is to prove the block was measured.
+    //
+    // `kind: 'shell'` and a python extractor rather than a regex over the whole
+    // file: the count has to come from the FENCED BLOCK in §Description, and a
+    // grep for digits would match the four restatements instead of the text.
+    id: 'description-chars-listing',
+    file: 'docs/reference/app-store-listing.md',
+    pattern: /## Description — (\d+) characters of 4000/,
+    extractStated: (m) => Number(m[1]),
+    kind: 'shell',
+    // No regex and no backslashes in the command on purpose: it goes through a
+    // JS template literal and then a shell, and an escape that survives one
+    // rarely survives both. `chr(96)*3` is the fence.
+    cmd: `python3 -c "import io;f=chr(96)*3;s=io.open('docs/reference/app-store-listing.md',encoding='utf-8').read();b=s[s.index('## Description'):].split(f)[1].strip(chr(10));print(len(b))"`,
+    about: 'app-store-listing.md §Description: the character count vs the fenced block',
+  },
 
   // ---- Icon count (prose vs the generator's committed source) --------------
   //

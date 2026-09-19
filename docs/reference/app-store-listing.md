@@ -92,11 +92,18 @@ be checked in part, and the partial answer is worse than "unknown":
 | **`Let's Ride`**, whose own store copy calls the product `LetsRide` | Google Play, `com.ya6n.letsride` | A **motorcycle** app — route generation, turn-by-turn GPS navigation, a radar of riders near you, group rides |
 | `Let's Ride` (`id1575861007`), `Let's Ride BC` (`id1661327557`), `Ride On: Let's Ride` (`id1434380853`) | App Store | Not established — the titles are all that was readable |
 
-**Provenance, and it is weaker than every other fetched claim in this file.** Those three hosts are
-refused at the egress proxy, so every row is read from **search-result titles and snippets**, never
-from a listing page. No rating count, no install range and no seller record could be read for any
-of them. **Confirm each row before acting on it**; the App Store app on a phone settles it in
-seconds.
+**Provenance, and it is weaker than every other fetched claim in this file.** `apps.apple.com`,
+`itunes.apple.com` and `play.google.com` are all refused at the egress proxy — measured three times
+independently — so **no listing page was ever opened**. Every row above comes from search-result
+titles, snippets and the ids visible in result URLs.
+
+**The table mixes two reliabilities and the distinction matters.** Titles, the bundle id and the
+numeric App Store ids come off result URLs and are as good as the search index. The seller string,
+the categories and the feature lists come out of snippet prose — what a snippet says, not what a
+registered seller record or a category field says. Nothing here establishes a rating count, an
+install range, a subtitle, or that any of them is still on sale. **The App Store app on a phone
+settles the whole table in seconds, and is also the only place the name's availability can be
+tested.**
 
 **Two different risks, and the second is the one that matters.**
 
@@ -126,9 +133,9 @@ App Store search, and whether the Play app holds a registered mark in the EU.
 | `LetsRide Social: Moto Clubs` | 27 | A second distinguishing word sits next to the brand |
 | `LetsRide Moto: Clubs & Rides` | 28 | The clearest separation from the taxi app; spends a slot on `Rides`, which the census calls contested |
 
-**Do not take either alternate on this file's word.** Both are worse on every argument in
-`positioning.md` §Choosing the second half of the name, and they exist only because that section
-was written without knowing the brand was contested.
+**Neither alternate is a recommendation.** Both are worse on every argument in `positioning.md`
+§Choosing the second half of the name; they exist because that section was written without knowing
+the brand was contested.
 
 **One useful thing falls out of the Play collision.** That app advertises routes and turn-by-turn
 navigation; this one deliberately does neither (decision #3). The Description's line *"It does not
@@ -227,9 +234,11 @@ characters of headroom; do not spend them on a feature that is not in
 `positioning.md` §What we may honestly claim.
 
 **Re-measure this block rather than trusting the number, and use the extractor in
-§Re-measuring every field.** This file carried `1837` for a while against a block that measures
-`1826`: a hand count drifts the moment the text is edited and nothing else in the file notices,
-because the description is the one field with no registry entry behind it.
+§Re-measuring every field.** It is now enforced — `description-chars-listing` in
+`scripts/docs/registry.mjs` extracts the fenced block and compares it, so a wrong number here reds
+`docs:check` rather than sitting. That entry exists because this file carried `1837` against a block
+that has always measured `1826`: **the text never drifted, the count was simply wrong from the day
+it was typed**, and by eye the two are indistinguishable.
 
 **Five sentences in there are load-bearing and must not be tidied:**
 
@@ -575,7 +584,7 @@ resolve against.
 
 The description is the fenced block in §Description. **Count it with the extractor below rather
 than by hand** — a hand count is what put `1837` in this file against a block that measures
-`1826`, and by eye the two are indistinguishable:
+`1826`:
 
 ```bash
 python3 - <<'PY'

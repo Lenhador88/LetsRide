@@ -5,7 +5,22 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * PD-223 — "the filter bar still blinks out on a filter tap".
+ * **This gates PD-210, and PD-223 is NOT what it sounds like.**
+ *
+ * PD-210 collapsed the two gates into `if (!filters.data || !rides.data)`, so a
+ * new filter — a cache entry with no data yet — swapped the BAR for the skeleton
+ * along with the list. That defect is real, it has recurred once, and nothing
+ * measured it until this file. Reintroduce that condition on the page and this
+ * test reds on element identity; that is the whole reason it exists.
+ *
+ * **It does not gate the blink PD-223 reports, because that has a different
+ * cause and this shape cannot see it.** Measured in a real browser on a
+ * production build (PD-223, 2026-09-19): when the RSC payload fetch *fails*
+ * rather than merely being slow, `next/link` falls back to a **hard
+ * full-document reload** — which empties the module-level query cache, resets
+ * the bar's horizontal scroll, and produces every reported symptom. A mocked
+ * `next/link` that calls `preventDefault()` can never reload a document, so no
+ * test of this shape will ever reproduce it. Do not widen this file trying.
  *
  * Mounts the REAL `/rides` page component with only its data sources and
  * heavier presentational children stubbed out, and drives a filter tap the
@@ -176,5 +191,21 @@ describe('PD-223 — the rides filter bar survives a filter tap', () => {
     expect(sawBarMissing.some(Boolean), 'the bar must never be absent from the DOM mid-transition').toBe(
       false
     )
+
+    // ** WITHOUT THIS THE WHOLE FILE IS VACUOUS. ** Verified: delete the
+    // `setSearch` call from the `next/link` mock above and every assertion
+    // below still passes — a bar that never had to survive anything is
+    // trivially the same element. So the tap has to be PROVED to have landed,
+    // and `aria-current` is the proof that travels furthest: it moves only if
+    // the click reached the router stand-in, the page re-parsed the search
+    // string, and the real bar re-rendered with a new `active`.
+    expect(
+      tile!.getAttribute('aria-current'),
+      'the tapped tile must be selected AFTER the tap — otherwise the navigation never landed and this test proves nothing'
+    ).toBe('true')
+    expect(
+      barBefore!.querySelector('a[aria-current="true"]'),
+      'exactly one tile is current, and it is the tapped one'
+    ).toBe(tile)
   })
 })
