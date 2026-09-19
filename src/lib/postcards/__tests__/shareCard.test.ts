@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  composeShareCard,
   resolveShareCardLayout,
   resolveShareCardText,
   truncateToWidth,
@@ -12,8 +13,9 @@ import {
  * context, none of which exist under `environment: 'node'`, and a jsdom canvas
  * is a stub that draws nothing — so a test of the *render* would assert that a
  * mock was called, which pins nothing a refactor could reverse. What a session
- * can genuinely verify is the geometry, the copy and the truncation, and each
- * of those is a module for exactly that reason.
+ * can genuinely verify is the geometry, the copy, the truncation — each a
+ * module for exactly that reason — and the orchestration around the drawing,
+ * which is ordinary control flow and has its own block at the bottom.
  *
  * The device half — whether iOS's share sheet accepts the file — is the same
  * verification boundary the push epic has and is not claimed here.
@@ -181,5 +183,97 @@ describe('truncateToWidth', () => {
     // A pill drawn with nothing in it reads as a rendering bug; `…` reads as a
     // name too long to show.
     expect(truncateToWidth(ctx, 'Amsterdam', 1)).toBe('…')
+  })
+})
+
+/**
+ * `composeShareCard` itself — the orchestration, not the pixels.
+ *
+ * The header is right that a *render* assertion would pin nothing: canvas is a
+ * stub under jsdom and absent under `environment: 'node'`, so a test of the
+ * drawing would only prove a mock was called. But two things in this function
+ * are ordinary control flow, and review found both deletable with the whole
+ * suite green — which is the definition of untested.
+ */
+describe('composeShareCard', () => {
+  const originalDocument = globalThis.document
+  const originalFetch = globalThis.fetch
+  const originalCreateImageBitmap = globalThis.createImageBitmap
+
+  let close: ReturnType<typeof vi.fn>
+  let toBlob: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    close = vi.fn()
+    toBlob = vi.fn((cb: (b: Blob | null) => void) => cb(new Blob(['jpeg'], { type: 'image/jpeg' })))
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, blob: async () => new Blob(['src']) }))
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 1600, height: 1200, close }))
+    vi.stubGlobal('document', {
+      createElement: () => ({
+        width: 0,
+        height: 0,
+        getContext: () => ({
+          drawImage: vi.fn(),
+          fillRect: vi.fn(),
+          fillText: vi.fn(),
+          beginPath: vi.fn(),
+          moveTo: vi.fn(),
+          arcTo: vi.fn(),
+          closePath: vi.fn(),
+          fill: vi.fn(),
+          createLinearGradient: () => ({ addColorStop: vi.fn() }),
+          measureText: (t: string) => ({ width: t.length * 10 }),
+        }),
+        toBlob,
+      }),
+    })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    globalThis.document = originalDocument
+    globalThis.fetch = originalFetch
+    globalThis.createImageBitmap = originalCreateImageBitmap
+  })
+
+  const postcard = (overrides = {}) => ({
+    image_url: 'https://example.test/signed.jpg',
+    taken_place_name: 'Amsterdam',
+    taken_country_code: 'NL',
+    created_at: '2026-08-14T09:30:00.000Z',
+    ...overrides,
+  })
+
+  it('refuses a postcard whose signed URL is missing rather than fetching undefined', async () => {
+    // `image_url` is nullable — `lib/data/postcards.ts` sets it null when
+    // signing failed — so this is a state the card genuinely reaches. Without
+    // the guard it becomes `fetch(undefined)`, which resolves against the
+    // app's own origin and decodes an HTML page as an image.
+    await expect(composeShareCard(postcard({ image_url: null }))).rejects.toThrow()
+    expect(globalThis.fetch).not.toHaveBeenCalled()
+  })
+
+  it('reports a signed URL that has expired rather than drawing a blank card', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 403 }))
+    await expect(composeShareCard(postcard())).rejects.toThrow(/403/)
+  })
+
+  it('closes the bitmap even when encoding fails', async () => {
+    // The `finally` is the whole point: an ImageBitmap holds decoded pixels
+    // outside the JS heap, and a feed where every failed share leaks one is a
+    // browser tab that grows until it is killed.
+    toBlob.mockImplementation((cb: (b: Blob | null) => void) => cb(null))
+
+    await expect(composeShareCard(postcard())).rejects.toThrow()
+    expect(close).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes the bitmap on the happy path too, and answers a JPEG', async () => {
+    const blob = await composeShareCard(postcard())
+
+    expect(blob.type).toBe('image/jpeg')
+    expect(close).toHaveBeenCalledTimes(1)
+    expect(toBlob).toHaveBeenCalledWith(expect.any(Function), 'image/jpeg', 0.9)
   })
 })

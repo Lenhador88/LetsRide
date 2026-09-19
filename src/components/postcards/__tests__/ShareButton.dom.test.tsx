@@ -76,11 +76,15 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
+function button() {
+  const el = container.querySelector('button')
+  if (!el) throw new Error('The share control did not render.')
+  return el
+}
+
 function tap() {
-  const button = container.querySelector('button')
-  if (!button) throw new Error('The share control did not render.')
   return act(async () => {
-    button.click()
+    button().click()
   })
 }
 
@@ -145,7 +149,7 @@ describe('ShareButton', () => {
 
     // The label is this control's only channel — it has no banner to raise —
     // so an outcome the rider cannot see for themselves has to reach it.
-    expect(container.querySelector('button')?.getAttribute('aria-label')).toBe(
+    expect(button().getAttribute('aria-label')).toBe(
       'Could not share the link'
     )
   })
@@ -156,6 +160,83 @@ describe('ShareButton', () => {
 
     await tap()
 
-    expect(container.querySelector('button')?.getAttribute('aria-label')).toBe('Link copied')
+    expect(button().getAttribute('aria-label')).toBe('Link copied')
+  })
+
+  /**
+   * **The activation window** — `navigator.share` needs a transient user
+   * activation, and awaiting the composition inside the handler spends it.
+   * Chrome's window is about five seconds, so a cache-missed photo on a slow
+   * link makes *both* share calls reject `NotAllowedError` and the clipboard
+   * fallback too, landing the rider on "Could not share the link" where the
+   * old code opened the sheet at once.
+   *
+   * So a composition that does not arrive in time is not waited for. Without
+   * this the feature is worse than what it replaced on exactly the connections
+   * that need it most, and no other test can see it: the two transport suites
+   * stub `navigator` wholesale.
+   */
+  it('shares the link rather than waiting out the user activation', async () => {
+    vi.useFakeTimers()
+    try {
+      // Never settles — the unbounded-wait case, which is the one that costs
+      // the activation.
+      composeShareCard.mockReturnValue(new Promise(() => {}))
+
+      const done = act(async () => {
+        button().click()
+        await vi.advanceTimersByTimeAsync(2000)
+      })
+      await done
+
+      expect(calls).toEqual(['compose', 'link'])
+      expect(shareImageFile).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('still shares the image when it arrives inside the budget', async () => {
+    // The other half of the rule above, and the one that fails if someone
+    // "simplifies" the budget down to something the ordinary cached path
+    // cannot meet — which would silently turn the feature off.
+    await tap()
+    expect(calls).toEqual(['compose', 'image'])
+  })
+
+  it('starts composing on pointerdown, before the tap, and only once', async () => {
+    // The warm-up is what makes the image path the common one rather than the
+    // lucky one: `pointerdown` precedes `click` by the length of the press, so
+    // the budget above is usually never reached. Asserted in two steps because
+    // only the first catches the warm-up being dropped — a click-only version
+    // still composes exactly once and would satisfy the total alone.
+    await act(async () => {
+      button().dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+    })
+    expect(composeShareCard).toHaveBeenCalledTimes(1)
+
+    await tap()
+    expect(composeShareCard).toHaveBeenCalledTimes(1)
+  })
+
+  /**
+   * A second tap while the first is still working opens a second sheet:
+   * `navigator.share` rejects `InvalidStateError`, which reads as a failure,
+   * and the link path then runs behind the sheet the rider already has open.
+   */
+  it('ignores a second tap while the first is still in flight', async () => {
+    let release: (blob: Blob) => void = () => {}
+    composeShareCard.mockReturnValue(new Promise<Blob>((resolve) => { release = resolve }))
+
+    await act(async () => {
+      button().click()
+      button().click()
+    })
+    await act(async () => {
+      release(new Blob(['x'], { type: 'image/jpeg' }))
+    })
+
+    expect(shareImageFile).toHaveBeenCalledTimes(1)
+    expect(shareAppLink).not.toHaveBeenCalled()
   })
 })
