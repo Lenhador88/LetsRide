@@ -447,7 +447,8 @@ Deno.serve(async (req: Request) => {
     // exists, which is a no-op. The other order would leave a dead token
     // receiving nothing for ever while the row reads `sent`.
     if (next.invalidateDevice) {
-      await db.rpc('invalidate_push_device', { p_token: claim.token })
+      // By installation, never by token — see `PushClaim.installationId`.
+      await db.rpc('invalidate_push_device', { p_installation_id: claim.installationId })
     }
 
     await db.rpc('complete_push_delivery', {

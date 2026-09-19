@@ -37,6 +37,7 @@ const claim = (over: Partial<PushClaim> = {}): PushClaim => ({
   notificationId: 'n1',
   attempts: 1,
   platform: 'ios',
+  installationId: 'install-1',
   token: 'tok',
   title: 'Sofia liked your postcard',
   body: 'Tap to see it',
@@ -234,7 +235,11 @@ describe('nextDeliveryState', () => {
 describe('the provider payloads', () => {
   it('renders an APNs alert and carries the deep-link path outside aps', () => {
     const payload = toApnsPayload(claim()) as {
-      aps: { alert: { title: string; body: string }; 'content-available'?: number }
+      aps: {
+        alert: { title: string; body: string }
+        'content-available'?: number
+        'thread-id'?: string
+      }
       path: string
     }
     expect(payload.aps.alert).toEqual({
@@ -246,6 +251,9 @@ describe('the provider payloads', () => {
     // combination at background priority, which is how a push quietly stops
     // arriving promptly.
     expect(payload.aps['content-available']).toBeUndefined()
+    // And no `thread-id`: the only value available here is unique per row, so
+    // grouping by it is identical to not grouping. See `toApnsPayload`.
+    expect(payload.aps['thread-id']).toBeUndefined()
   })
 
   it('wraps FCM in the v1 message envelope, with string-valued data', () => {

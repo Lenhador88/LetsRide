@@ -228,6 +228,19 @@ export type PushClaim = {
   notificationId: string
   attempts: number
   platform: 'ios' | 'android'
+  /**
+   * The device's stable key, and the argument `invalidate_push_device` takes.
+   *
+   * **Not the token**, even though the token is what the provider refused.
+   * `push_devices` is `unique (installation_id)` — design D3, which chose that
+   * over `unique (user_id, token)` because the second keeps two live rows for a
+   * shared phone — so the installation is the thing that identifies a row and
+   * the token is a value that moves underneath it. Invalidating by token races
+   * a re-registration: a rider whose token was reissued between the claim and
+   * the refusal has a fresh row that a token match would either miss or, worse,
+   * delete.
+   */
+  installationId: string
   token: string
   title: string
   body: string
@@ -245,13 +258,21 @@ export type PushClaim = {
  * payload carrying both an alert and a background flag is delivered at the
  * background priority on iOS, which is the quiet way a push stops arriving
  * promptly.
+ *
+ * **`thread-id` is absent too, and that is a decision rather than an omission.**
+ * It groups notifications in Notification Center, and the only value available
+ * here is the notification's own id — unique per row, so grouping by it is
+ * identical to not grouping at all. A field that reads as grouping and never
+ * groups is worse than no field. Grouping by SUBJECT would work and is not
+ * available on purpose: this file is handed rendered strings precisely so it
+ * cannot re-derive a postcard or club id, which is the property that keeps the
+ * visibility gate in one place.
  */
 export function toApnsPayload(claim: PushClaim): Record<string, unknown> {
   return {
     aps: {
       alert: { title: claim.title, body: claim.body },
       sound: 'default',
-      'thread-id': claim.notificationId,
     },
     path: claim.path,
   }
