@@ -328,14 +328,14 @@ repointed. `docs/ENVIRONMENTS.md` is the contract. **Never promote a Vercel prev
 — both Supabase variables are inlined at build time and promote does not rebuild. **Check drift
 rather than claiming it**: `npm run db:drift` compares migration *names*.
 
-**Applied state: 117 files, DEV at `118` and PROD at `116` — measured 2026-09-18.** DEV-ahead
+**Applied state: 118 files; DEV is at `118` and PROD at `116` — measured 2026-09-18.** DEV-ahead
 is the resting state between a merge and its promotion; promote everything the gap contains, in
 filename order, per `docs/ENVIRONMENTS.md` §Migrations, and record each file's ordering in
 `docs/reference/migrations.md` §Applied state. Count rather than trust it — `list_migrations`
-against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV answers 121 rows to 117 files
-here, and FOUR of that gap have no file** — the three long-standing hand-applied ones plus `117`,
-whose file is on an unmerged branch; PROD has none. **So `ls` skips `116` → `118`** — take the next
-number off `list_migrations`, never off the tree.
+against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV answers 121 rows to 118
+files and THREE of that gap have no file** — the long-standing hand-applied ones; PROD has none.
+**Two sessions took the same number on one afternoon**, because a board slot locks issues and not
+migration numbers: take the next number off `list_migrations`, never off the tree.
 **`113` then `114` was a required order on the PROD promotion and must not be collapsed** if it is
 ever replayed: `114` refuses a NULL country, so applied ahead of the bundle that writes one it
 strands every new signup in a wizard with no skip. PROD's last four rows are `home_country`,
@@ -362,7 +362,7 @@ before it applies** — every affected path exercised on DEV, in a rolled-back t
 recorded statement that does not equal `md5sum` of its file is the NORM; compare the OBJECT
 (`docs/reference/migrations.md` §Applying a large file, §What reads as drift).
 
-Suite **3850** assertions — re-derive rather than trust it:
+Suite **3889** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs.
 

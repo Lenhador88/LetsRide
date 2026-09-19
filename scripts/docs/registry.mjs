@@ -424,19 +424,16 @@ export const claims = [
     // refs because there is no direction to infer, and the day they diverge
     // again the sentence has to name them and this pattern has to move with it.
     // Two edits, one commit. Still never a relaxed regex.
-    // 2026-09-18: `117` (an unmerged branch's) and `118` (PD-459) are on DEV
-    // alone and this went red for the THIRTEENTH time, on the LEVEL sentence
-    // again. Pinned back to DEV AHEAD with both `at \`NNN\`` captures. What is
-    // new here is the FILE COUNT's relationship to them: `117`'s file is on a
-    // branch that has not merged, so `ls` counts 117 files whose highest prefix
-    // is `118` — the count and the level differ by more than the gap, and
-    // neither number reveals it. That belongs in the prose beside the sentence
-    // rather than in this pattern, exactly as the 2026-09-06 note ruled for the
-    // deliberately-unapplied `109`, and it is there. Two edits, one commit.
+    // 2026-09-18: `117` (PD-398) applied to DEV alone and this went red on cue.
+    // Pinned to DEV AHEAD, naming both refs. New trap, and the reason this entry
+    // is not merely another flip: `118` reached DEV from a CONCURRENT session's
+    // unmerged branch 21 minutes later, so the file count and the DEV ref moved
+    // independently. The captures still agree because only the file half is
+    // compared — read the ref off `list_migrations`, never off `wc -l`.
     //
     // ** The DEV-AHEAD shape is blind in the direction the LEVEL shape was not,
     // and this is the first time that is written down. ** Both level numbers are
-    // non-capturing `\d+`, so `DEV at \`999\` and PROD at \`999\`` matches and
+    // non-capturing `\d+`, so `DEV is at \`999\` and PROD at \`999\`` matches and
     // passes. The LEVEL shape went red the moment the two diverged, which is how
     // this entry caught twelve of its thirteen flips; the DEV-AHEAD shape does
     // NOT go red when they converge, because the sentence still matches with
@@ -447,7 +444,7 @@ export const claims = [
     // blind spot the 2026-09-08 note recorded from the other side. The fix is to
     // re-read this sentence on every promotion, which is what the promotion
     // checklist in `docs/ENVIRONMENTS.md` §Migrations is for.
-    pattern: /\*\*Applied state: (\d+) files, DEV at `\d+` and PROD at `\d+` — measured/,
+    pattern: /\*\*Applied state: (\d+) files; DEV is at `\d+` and PROD at `\d+` — measured/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
