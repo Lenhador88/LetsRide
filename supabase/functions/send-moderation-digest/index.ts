@@ -68,7 +68,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
-import { sendDigestMail } from './mail.ts'
+import { missingMailSecrets, sendDigestMail } from './mail.ts'
 import { BATCH_SIZE, renderDigest, type DigestEntry } from './shape.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
@@ -133,6 +133,32 @@ Deno.serve(async (req: Request) => {
   if (refusal) return refusal
 
   // Rule 2: the request body is never read. There is no argument.
+
+  /**
+   * The mail secrets are checked BEFORE anything is claimed, and the ordering is
+   * the whole of this block.
+   *
+   * `sendDigestMail` already refuses without them, but it refuses from *inside*
+   * the send: by then a batch is claimed and its `attempts` incremented, and
+   * `NOT_CONFIGURED` classifies as `failed` — right for a provider that rejected
+   * a mail, wrong for a secret nobody has set yet. So a function deployed ahead
+   * of its secrets walks real reports to the attempt cap a tick at a time, and
+   * every one of them then needs the hand re-arm in
+   * `docs/reference/observability.md` to come back. Nothing is lost either way;
+   * the cost is the owner's time, spent on a state that resolves the instant they
+   * set the secret — which is this function's own criterion for `retry` rather
+   * than `failed`.
+   *
+   * Refusing here costs one wasted tick instead, and says which secret is
+   * missing, in the shape `assertServiceRoleCaller` already uses. The activation
+   * order in `docs/ENVIRONMENTS.md` §`send-moderation-digest`'s secrets — secrets
+   * before schedule — is what makes this unreachable in the intended path; this
+   * is what happens when it is not followed.
+   */
+  const missing = missingMailSecrets()
+  if (missing.length > 0) {
+    return jsonResponse({ error: 'not_configured', missing: missing.join(', ') }, 500)
+  }
 
   // The service-role client. It is used for `.rpc()` and nothing else — rule 5.
   const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {

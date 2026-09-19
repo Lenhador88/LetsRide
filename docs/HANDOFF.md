@@ -61,12 +61,12 @@ history.
   that cannot exist until `android/` does.
 - **Push (`openspec/changes/deliver-push-notifications`): child C (PD-303) is built and delivers
   nothing yet** — `121` + `push-notify/` are merged and the function is on DEV, but the job is
-  Vault-gated per project and no-ops on both until the owner runs `121` §10's order. Child B
+  Vault-gated per project and no-ops on both until the owner runs `121` §0c's order. Child B
   (#438, #446) is unverified on a device — 2.15–2.19a want a Push-capable provisioning profile.
   PD-291 stays open until a phone has received one.
 - **The mail rail is merged and sends nothing** (PD-457): `124` + `send-moderation-digest/` are
   inert until the owner deploys, sets the secrets, invokes it once by hand, then schedules —
-  **secrets before schedule**, or the attempt cap burns on every claimed entry.
+  **secrets before schedule**; unset, a tick 500s before it claims, so nothing is delivered.
   **`DIGEST_RECIPIENT` is the owner's private mailbox, never `SUPPORT_EMAIL`** —
   `docs/ENVIRONMENTS.md` §`send-moderation-digest`'s secrets is the control no test can reach.
 - **PD-385 is open on purpose**: 9 DEV rides have a coordinate and no tile, repairable only by

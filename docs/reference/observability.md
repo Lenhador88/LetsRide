@@ -229,9 +229,11 @@ select * from public.moderation_digest_entries
 ```
 
 **Re-arming a capped entry is `update … set attempts = 0, claimed_at = null` on those rows**, after
-fixing whatever spent the cap. The usual cause is the one §`send-moderation-digest`'s secrets in
-`docs/ENVIRONMENTS.md` describes: a deployed function with no provider key, which burns an attempt
-per claimed entry and marks nothing sent.
+fixing whatever spent the cap. **A missing secret is no longer one of the causes** — the function
+reads `missingMailSecrets()` before it claims and 500s `not_configured`, so an unconfigured deploy
+claims nothing and spends nothing. What reaches the cap is a provider answering 4xx five times: a
+revoked key, an unverified sender domain, a recipient the provider refuses. Read the HTTP status in
+`function_edge_logs` before re-arming, or the next five ticks spend the cap again.
 
 **Nothing is lost while this is broken, and that is the design rather than luck.** No outcome
 deletes an entry and no outcome marks a failed send as sent, so the worst state this feature
