@@ -314,7 +314,7 @@ rest is not, and every box that is not carries `[device]`.**
   - [x] 3.10f4 A notification older than the age cut is claimed and marked `suppressed`, not sent.
   - [x] 3.10g `claim_push_batch` claims each row at most once under concurrent calls.
   - [x] 3.10h A recipient with zero tokens completes rather than fails.
-- [ ] 3.11 `npm test` green; label sets compared, not counts. **Not run in the build container — there is no Postgres in it, so CI's `RLS Policy Tests` job is the first execution of §121's 61 assertions.** What was done instead: all eleven function bodies diffed against the applied objects by `md5(prosrc)` (11/11 identical) and all seven pinned literals against the live catalogue (7/7), plus every behavioural claim exercised on DEV in rolled-back transactions.
+- [x] 3.11 `npm test` green; label sets compared, not counts. **3980 assertions, 0 failures, 61 of them `121`** — and CI's `RLS Policy Tests` job agrees on Postgres 17. **The first draft of this line said the suite could not run here and that was false**: Postgres 16 ships in this image, `initdb` into `/tmp` plus `pg_ctl` is three commands, and the whole suite takes 13 seconds (`docs/reference/running-locally.md`, the RLS suite row). Every behavioural claim was ALSO exercised against DEV in rolled-back transactions, and all eleven function bodies plus seven pinned literals diffed by md5 against the applied objects.
 
 ### 3b. The Edge Function
 
@@ -362,7 +362,7 @@ rest is not, and every box that is not carries `[device]`.**
   `pg_net` is specific to running it **inside a rider's transaction**, where it cannot raise and
   parks failures in `net._http_response`; from a cron job outside every rider's write it has none
   of those properties. Do not read D2 as a blanket prohibition — child C stalls on that reading.
-- [ ] 3.23 **[owner]** Deploy `push-notify` to DEV, exercise, then PROD. `deploy_edge_function` is
+- [ ] 3.23 **[owner]** Deploy `push-notify` to DEV, exercise, then PROD. **Exercising it means one `curl` before the schedule starts, and it settles a question nothing in this repo can** (`reviewer` finding 5, 2026-09-19): the gateway runs `verify_jwt` in front of a caller presenting a possibly non-JWT `sb_secret_…` key, and whether it forwards one is a property of Supabase's edge runtime. If it refuses, the schedule 401s every minute and delivers nothing **off a deploy that looks green**. `curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/functions/v1/push-notify" -H "Authorization: Bearer $SERVICE_ROLE_KEY"` must answer `200`, never `401`. `deploy_edge_function` is
   on the `deny` list and there is no `supabase` CLI in the container, so this is an owner action
   on every change under `supabase/functions/` — the function is drift from the moment it merges.
 - [x] 3.23a **Write the scheduled job gated on Vault — `docs/ENVIRONMENTS.md` §Scheduled jobs,

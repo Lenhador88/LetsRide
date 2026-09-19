@@ -51,6 +51,41 @@ describe('the privacy page discloses the push sub-processors', () => {
   })
 
   /**
+   * `reviewer` finding 2, and it is the one that would have shipped to riders
+   * on merge. The first version of this bullet said *"turning notifications off
+   * in Profile stops us sending them"*. **There is no such control anywhere in
+   * the app** — `PushPrimingRow` is mounted on `/notifications` only and its
+   * states are `ask`/`blocked`/`stalled`/`hidden`, so it can offer to turn
+   * notifications ON and nothing else; `grep -rn "push_opt\|pushEnabled\|
+   * notificationsEnabled\|push_enabled" src/` is empty, and the only app-side
+   * route to deleting a device row is `release_push_device` on sign-out.
+   *
+   * What made it plausible is that the analytics bullet further down carries
+   * the same shape — "Open Profile, then the menu, then Privacy" — and that one
+   * is real. So the sentence read as concrete, in the single bullet disclosing
+   * a transfer to a new sub-processor.
+   *
+   * The assertion is therefore two-sided: the page must name the OS control,
+   * which exists, and must NOT claim an in-app one until one is built.
+   */
+  it('points at the phone settings, and claims no in-app switch that does not exist', () => {
+    expect(MARKUP).toMatch(/in your phone&#x27;s own Settings|in your phone’s own Settings/)
+    expect(MARKUP).toMatch(/no switch for it inside the app/)
+    expect(MARKUP).not.toMatch(/turning notifications off in <\/?span[^>]*>?Profile/)
+  })
+
+  /**
+   * The retention windows. `121`'s `sweep_push_retention` comment asserts that
+   * both are written here "in the same words", which was false when it was
+   * written — `reviewer` finding 3. This is the half that makes it true, so the
+   * two must move together.
+   */
+  it('states both retention windows the sweep enforces', () => {
+    expect(MARKUP).toMatch(/60 days/)
+    expect(MARKUP).toMatch(/7 days/)
+  })
+
+  /**
    * The rule the Geoapify and Sentry bullets already carry, applied here: a
    * claim that flips the moment the owner sets a provider key is a claim
    * nothing in CI, `docs:check` or a review can catch, on a public page about

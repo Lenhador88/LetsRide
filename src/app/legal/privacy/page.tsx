@@ -114,9 +114,13 @@ export default function PrivacyPage() {
           </span>{' '}
           It is sent to them unencrypted by us, along with an identifier for your installation of
           the app, because that is the only way either company will deliver a notification at all.
-          It also means the text appears on your lock screen — both phones let you turn that off
-          per app in your own settings, and turning notifications off in{' '}
-          <span className="font-medium">Profile</span> stops us sending them in the first place.
+          It also means the text appears on your lock screen.{' '}
+          <span className="font-medium">
+            To stop this, turn notifications off for LetsRide in your phone&rsquo;s own Settings —
+            there is no switch for it inside the app yet.
+          </span>{' '}
+          We keep the connection to your phone for as long as it stays reachable and drop it after
+          60 days of silence; the record that a notification was sent is deleted after 7 days.
         </li>
         {/* PD-315. Written to the same rule as the Geoapify bullet above: it
             describes what the app does when something happens, never what has

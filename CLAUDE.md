@@ -361,7 +361,7 @@ before it applies** — every affected path exercised on DEV, in a rolled-back t
 recorded statement that does not equal `md5sum` of its file is the NORM; compare the OBJECT
 (`docs/reference/migrations.md` §Applying a large file, §What reads as drift).
 
-Suite **3919** assertions — re-derive rather than trust it:
+Suite **3980** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs.
 
@@ -450,7 +450,7 @@ npm run lint     # eslint
 npx tsc --noEmit # type check
 npm run build    # production build (requires NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY)
 npm run test:unit # Vitest
-npm test         # RLS policy suite (needs Postgres + psql; see supabase/tests/README.md)
+npm test         # RLS policy suite — Postgres 16 IS in this image; running-locally.md, RLS suite row
 npm run functions:check   # deno check on the Edge Functions — needs deno; CI runs it for you
 
 PROD_DATABASE_URL=... DEV_DATABASE_URL=... npm run db:drift   # do repo, DEV and PROD agree?
