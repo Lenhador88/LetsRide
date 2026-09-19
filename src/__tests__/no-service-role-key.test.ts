@@ -15,6 +15,21 @@ import { describe, expect, it } from 'vitest'
  * distinction real rather than a sentence in a comment: the key may exist in the
  * function's own secret store, and nowhere this repo can reach.
  *
+ * ---------------------------------------------------------------------------
+ * PD-303 widened it from one secret format to three
+ * ---------------------------------------------------------------------------
+ * `push-notify` holds the largest secret set in the repository — the APNs auth
+ * key (`.p8`, a PEM private key block) and the FCM service-account JSON, on top
+ * of the service-role key it shares with `delete-account`. Design D11 rules on
+ * that explicitly: rule 1, *the key lives only in the function's secret store*,
+ * **applies and widens**, and this file gains a detector per format.
+ *
+ * The `.p8` is the one worth being nervous about. It is a short file that looks
+ * like configuration, it arrives from App Store Connect as a download rather
+ * than as a dashboard string, and the natural thing to do with a downloaded file
+ * is to put it next to the code that uses it. It also cannot be rotated without
+ * re-signing every push for the team.
+ *
  * It is a source scan, not a secret scanner. It cannot prove a key is absent
  * from git history or from someone's shell; it catches the ordinary case, which
  * is a key pasted into a file while debugging and committed by accident. That is
@@ -92,6 +107,16 @@ function stripCommentLines(source: string): string {
     .filter((line) => {
       const t = line.trim()
       if (t === '') return false
+      // A PEM armour line begins `-----`, which the SQL rule below reads as a
+      // comment — so a `.p8` pasted into a scanned file on its own lines was
+      // stripped before the detector ever saw it. Found by the both-ways check
+      // at the bottom of this file, which is the whole reason that check
+      // exists: the detector read zero and the file was not clean.
+      //
+      // Narrow on purpose. `--` really does start a comment in SQL and in a
+      // `.xcconfig`, and widening this to "any line of dashes" would hand back
+      // the comment trap it is carved out of.
+      if (/^-----(BEGIN|END) /.test(t)) return true
       return !(
         t.startsWith('//') ||
         t.startsWith('#') ||
@@ -106,6 +131,30 @@ function stripCommentLines(source: string): string {
 
 /** A JWT: three base64url segments, payload starting `eyJ`. */
 const JWT = /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g
+
+/**
+ * A PEM private key block, in every label OpenSSL and App Store Connect emit.
+ *
+ * The APNs `.p8` is `BEGIN PRIVATE KEY` (PKCS#8, unlabelled algorithm), which
+ * is the least distinctive of the set — matching only `EC PRIVATE KEY` or
+ * `RSA PRIVATE KEY` would miss the exact file this detector was added for.
+ * The label group is optional for that reason.
+ */
+const PEM_PRIVATE_KEY = /-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----/
+
+/**
+ * A Google service-account JSON, matched on the two fields that only ever
+ * appear together in a real credential file.
+ *
+ * `"type": "service_account"` alone would fire on documentation describing the
+ * file; `private_key` alone is a common-enough field name. Requiring both,
+ * after comment lines are stripped, is what makes this specific to a credential
+ * that was actually pasted in. Whitespace is allowed around the colon because
+ * a key pasted from the console is pretty-printed and a key pasted from an
+ * environment variable is not.
+ */
+const GOOGLE_SERVICE_ACCOUNT_TYPE = /"type"\s*:\s*"service_account"/
+const GOOGLE_SERVICE_ACCOUNT_KEY = /"private_key"\s*:/
 
 /**
  * Every way a service-role credential shows up, checked against real code
@@ -137,6 +186,12 @@ function findViolations(source: string): string[] {
 
   if (/\bservice_role\b/.test(code)) found.push('the identifier service_role')
   if (/NEXT_PUBLIC_[A-Z_]*SERVICE_ROLE/.test(code)) found.push('a NEXT_PUBLIC_ service-role variable')
+
+  // PD-303's two formats. See D11 rule 1.
+  if (PEM_PRIVATE_KEY.test(code)) found.push('a PEM private key block')
+  if (GOOGLE_SERVICE_ACCOUNT_TYPE.test(code) && GOOGLE_SERVICE_ACCOUNT_KEY.test(code)) {
+    found.push('a Google service-account credential')
+  }
 
   return found
 }
@@ -178,6 +233,59 @@ describe('the service-role key never reaches the app', () => {
     const code = stripCommentLines(source)
     expect(/sb_secret_[A-Za-z0-9_-]+/.test(code)).toBe(false)
     expect((code.match(JWT) ?? []).length).toBe(0)
+  })
+
+  /**
+   * PD-303. `push-notify` holds three secrets rather than one, and none of them
+   * may be in the file. The env-var assertions are the half that would survive
+   * a careless edit; the literal assertions are the half that matters.
+   */
+  it('the push sender reads all three secrets from the environment and inlines none', () => {
+    const fn = path.join(repoRoot, 'supabase/functions/push-notify/index.ts')
+    expect(existsSync(fn)).toBe(true)
+    const source = readFileSync(fn, 'utf8')
+
+    expect(source).toMatch(/Deno\.env\.get\('SERVICE_ROLE_KEY'\)/)
+    expect(source).toMatch(/Deno\.env\.get\('APNS_KEY'\)/)
+    expect(source).toMatch(/Deno\.env\.get\('FCM_SERVICE_ACCOUNT'\)/)
+
+    const code = stripCommentLines(source)
+    expect(findViolations(code).filter((v) => v !== 'the identifier service_role')).toEqual([])
+    expect((code.match(JWT) ?? []).length).toBe(0)
+  })
+
+  /**
+   * Design D11's fifth rule, which `delete-account` did not need: the whole
+   * database reach of a service-role function is a list of RPC names. A
+   * `.from()` here makes the key a general-purpose bypass of every policy in
+   * the schema, which is the layer this project's bugs come from.
+   */
+  it('the push sender issues no .from(), so the service-role key reaches no table directly', () => {
+    const source = readFileSync(
+      path.join(repoRoot, 'supabase/functions/push-notify/index.ts'),
+      'utf8',
+    )
+    const code = stripCommentLines(source)
+    expect(code).not.toMatch(/\.from\(/)
+
+    // And the filter reads the other way: the pattern does match when it is
+    // there, so a zero above is a clean file rather than a broken regex.
+    expect(/\.from\(/.test("db.from('push_devices')")).toBe(true)
+  })
+
+  it('the push sender takes no id from the request, because it takes no request body at all', () => {
+    // D11 rule 2: `delete-account`'s "takes no user id" is replaced by
+    // something stronger here — no rider calls this function, so there is no
+    // body, no query string and no id of any kind. The subject set comes from
+    // `claim_push_batch`.
+    const source = readFileSync(
+      path.join(repoRoot, 'supabase/functions/push-notify/index.ts'),
+      'utf8',
+    )
+    const code = stripCommentLines(source)
+    expect(code).not.toMatch(/req\.json\(\)/)
+    expect(code).not.toMatch(/req\.text\(\)/)
+    expect(code).not.toMatch(/searchParams/)
   })
 
   it('takes no user id from the request, which is what makes it safe to expose', () => {
@@ -235,8 +343,42 @@ describe('the service-role key never reaches the app', () => {
       'a NEXT_PUBLIC_ service-role variable',
     )
 
+    // PD-303, format 2: the APNs `.p8`, exactly as App Store Connect emits it.
+    // PKCS#8, so the BEGIN line carries no algorithm label — the case a
+    // detector written from memory misses.
+    const p8 = [
+      '-----BEGIN PRIVATE KEY-----',
+      'MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQgRFVNTVlLRVlGT1JU',
+      'RVNUSU5HT05MWU5PVFJFQUw=',
+      '-----END PRIVATE KEY-----',
+    ].join('\n')
+    expect(findViolations(`const key = \`${p8}\``)).toContain('a PEM private key block')
+
+    // The labelled variants too, so a swap to a different algorithm does not
+    // walk past the guard.
+    expect(findViolations('-----BEGIN EC PRIVATE KEY-----')).toContain('a PEM private key block')
+    expect(findViolations('-----BEGIN RSA PRIVATE KEY-----')).toContain('a PEM private key block')
+
+    // PD-303, format 3: an FCM service-account credential.
+    const serviceAccount = JSON.stringify({
+      type: 'service_account',
+      project_id: 'letsride-dummy',
+      private_key_id: '0123456789abcdef',
+      private_key: '-----BEGIN PRIVATE KEY-----\\nDUMMY\\n-----END PRIVATE KEY-----\\n',
+      client_email: 'dummy@letsride-dummy.iam.gserviceaccount.com',
+    })
+    expect(findViolations(`const fcm = ${serviceAccount}`)).toContain(
+      'a Google service-account credential',
+    )
+
+    // Both fields are required together, so prose describing the file is not a
+    // finding — otherwise this very repo's design docs would trip it and
+    // somebody would weaken the detector to shut it up.
+    expect(findViolations('the file has "type": "service_account" at the top')).toEqual([])
+
     // And the comment strip works: the same key in a comment is not a finding.
     expect(findViolations("// never put an sb_secret_AbCdEf0123456789 here")).toEqual([])
+    expect(findViolations('// -----BEGIN PRIVATE KEY----- goes in the secret store')).toEqual([])
     expect(findViolations('const ok = "publishable"')).toEqual([])
   })
 })
