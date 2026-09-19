@@ -526,10 +526,10 @@ timeout:**
 
 ## Component tests — which ones need jsdom, and why
 
-Under `environment: 'node'`, all but **twelve** render through `renderToStaticMarkup`, and jsdom is
+Under `environment: 'node'`, all but **thirteen** render through `renderToStaticMarkup`, and jsdom is
 the answer only when something needs a **mounted effect, a layout, an event or a portal**. Check a
 new one's reason against that list rather than against the count,
-because each of the twelve below is there for a different one. Count them with
+because each of the thirteen below is there for a different one. Count them with
 `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'`.
 
 - `ClubTimeline.test.tsx` — a fetch failure and an anchor-hunt latch that only exist inside a
@@ -570,3 +570,7 @@ because each of the twelve below is there for a different one. Count them with
   reached only through a callback the place field raises: a pick whose `countryCode` is absent,
   and a lookup failure. Neither exists on first paint, so `page.test.tsx` beside it covers the
   branch every rider sees and this one covers the two it cannot reach.
+- `ShareButton.dom.test.tsx` (PD-451) — an **event** and the `await`s after it: the whole
+  behaviour is which transport the click handler reaches and in what order, and a static render
+  has nothing to tap. The ordering is the feature — a reversed version shares a login-gated link,
+  reports every outcome identically, and is invisible in a diff.
