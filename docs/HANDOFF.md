@@ -25,20 +25,20 @@ history.
 - **`development` is the default branch and deploys to DEV** (`app-dev.letsride.social`);
   `main` is production (`app.letsride.social`). `development` is normally ahead of `main`, and
   that is the steady state.
-- **Migrations: 122 files; DEV at `123`, PROD at `116`** — `118` is applied to DEV from a branch
-  that never merged, so **take the next number from `list_migrations`, never from the file
-  count**. DEV answers 126 rows, three hand-applied with no file; PROD none.
-  `docs/reference/migrations.md` §Applied state has the per-file log and §Security advisors the
-  advisor counts.
+- **Migrations: 123 files; DEV at `123`, PROD at `116`** — DEV answers 126 rows, the three extra
+  hand-applied with no file; PROD none. **Take the next number from `list_migrations`, never the
+  file count**: `118`, `122` and `123` each reached DEV while their branch was open —
+  ordinary with several sessions building. `docs/reference/migrations.md` §Applied state has the
+  per-file log; §Security advisors the counts.
 - **Edge Functions: the older three AGREE across both projects** — identical `ezbr_sha256`
-  (2026-09-19); equality is not currency. **`push-notify` is on DEV only** — `v1`, deployed by
+  (2026-09-19); equality is not currency. **`push-notify` is DEV-only**, `v1`, deployed by
   `deploy-functions.yml` off PD-303's merge. Read the `deploy` *job's* conclusion, never the
-  run's: without the token the job skips and the run is still green.
+  run's: without the token it skips and the run is green anyway.
 - **The walk is green on DEV** as both fixture accounts (2026-09-06 baselines in
-  `docs/reference/running-locally.md` §The walk). In CI it is still **skipped** — the Actions
-  secrets name PROD and `WALK_CI` is unset (see §Blocked on the owner).
-- **The Linear team is `Let's ride`, not `Pedro & Dave`** — the old name errors,
-  `list_issue_statuses` included. Pass the id `7388c68e-ef17-4998-a9b7-d8ad8ce66038`.
+  `docs/reference/running-locally.md` §The walk). In CI it is **skipped** — the Actions secrets
+  name PROD and `WALK_CI` is unset (§Blocked on the owner).
+- **The Linear team is `Let's ride`, not `Pedro & Dave`** — the old name errors, `list_issue_statuses`
+  included. Pass the id `7388c68e-ef17-4998-a9b7-d8ad8ce66038`.
 - **OpenSpec has 34 open changes and 22 archived**
   (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`).
   **Archiving one is not two commands**: a stale `## MODIFIED Requirements` block drops scenarios
@@ -58,20 +58,20 @@ history.
   and the rider finishes with no town — the 2026-09-08 walk hit that on `Amsterdam`.
   Every walk run spends two credits.
 - **Universal links are built and UNVERIFIED** (PD-205) — Apple fetches the association file onto
-  a device, so a simulator settles nothing. `docs/reference/native-shell.md` §Universal links has
-  the device checks and the owner action. **It stays open**: the Android half needs a signing
-  fingerprint that cannot exist until `android/` does.
+  a device, so a simulator settles nothing; `docs/reference/native-shell.md` §Universal links has
+  the checks and the owner action. **It stays open**: the Android half needs a signing fingerprint
+  that cannot exist until `android/` does.
 - **Push (`openspec/changes/deliver-push-notifications`): child C (PD-303) is built and delivers
   nothing yet** — `121` + `push-notify/` are merged, the function is deployed to DEV, and it is
   **inert** until the rest run in `121`'s order: `pg_cron`+`pg_net`, the two provider secrets,
   the Vault trio, one `curl` proving the gateway forwards a non-JWT bearer, *then* the schedule.
-  The job is Vault-gated per project, so it no-ops on both today. Child B (#438, #446) is
+  The job is Vault-gated per project and no-ops on both today. Child B (#438, #446) is
   unverified on a device — 2.15–2.19a want a Push-capable provisioning profile. PD-291 stays
   open until a phone has received one.
-- **PD-385 is open on purpose**: 9 DEV rides carry a coordinate and no tile, repairable only by
-  their own organizers.
+- **PD-385 is open on purpose**: 9 DEV rides have a coordinate and no tile, repairable only by
+  their organizers.
 
-Re-derive rather than trust the list: `list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`
+Re-derive rather than trust it: `list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`
 filtered by status, and `list_pull_requests state=open`.
 
 ## Blocked on the owner

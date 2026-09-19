@@ -297,9 +297,11 @@ export async function moderateRideThread(
  * duplicates.** supabase-js's `upsert` default is merge-duplicates, which plans
  * `on conflict do update` — and `122` grants `authenticated` no UPDATE on this
  * table, so the default form 42501s **every** report including a rider's first.
- * Measured through PostgREST against DEV, and pinned at `122.3` in the RLS
- * suite in the emitted form, because nothing in `tsc`, lint or the unit suite
- * can see this option go.
+ * Measured through PostgREST against DEV. `122.3` pins the two emitted forms in
+ * the RLS suite, which proves the mechanism and **cannot see which form this
+ * file sends**; the tripwire for the option disappearing from here is
+ * `__tests__/report-upserts-ignore-duplicates.test.ts`, which reads this
+ * source, and the grant half is `122.7`'s catalogue assertion.
  */
 export async function reportRideThread(threadId: string): Promise<ActionState> {
   const parsed = reportRideThreadSchema.safeParse({

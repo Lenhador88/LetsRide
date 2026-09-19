@@ -38642,8 +38642,11 @@ select assert_rejected($$
   on conflict (reporter_id, thread_id) do update set reason = excluded.reason$$,
   '42501', '122.3: ** and DROPPING that option breaks the FIRST report, not the second ** —
    supabase-js''s `upsert` default is merge-duplicates, which plans `on conflict do update` against a
-   table with no UPDATE grant, so every report 42501s including a riders first one. `addCountry` shipped exactly this bug;
-   this assertion is what goes red instead');
+   table with no UPDATE grant, so every report 42501s including a rider''s FIRST one. ** This assertion
+   proves the MECHANISM and cannot see which form the client sends ** — the tripwire for the option
+   disappearing from the action is
+   src/lib/actions/__tests__/report-upserts-ignore-duplicates.test.ts, which reads the source;
+   the grant half is 122.7/123.8''s has_table_privilege assertion. `addCountry` shipped this class');
 select assert_allowed($$
   insert into ride_thread_reports (reporter_id, thread_id, reason)
   values ('00000000-0000-0000-0000-000001220003', '00000000-0000-0000-0000-0000012200f2', 'other')$$,
@@ -39388,8 +39391,11 @@ select assert_rejected($$
   on conflict (reporter_id, comment_id) do update set reason = excluded.reason$$,
   '42501', '123.6: ** and DROPPING that option breaks the FIRST report, not the second ** —
    supabase-js''s `upsert` default is merge-duplicates, which plans `on conflict do update` against a
-   table with no UPDATE grant, so every report 42501s including a riders first one. `addCountry` shipped exactly this bug;
-   this assertion is what goes red instead');
+   table with no UPDATE grant, so every report 42501s including a rider''s FIRST one. ** This assertion
+   proves the MECHANISM and cannot see which form the client sends ** — the tripwire for the option
+   disappearing from the action is
+   src/lib/actions/__tests__/report-upserts-ignore-duplicates.test.ts, which reads the source;
+   the grant half is 122.7/123.8''s has_table_privilege assertion. `addCountry` shipped this class');
 select assert_allowed($$
   insert into postcard_comment_reports (reporter_id, comment_id, reason)
   values ('00000000-0000-0000-0000-000001230003', '00000000-0000-0000-0000-0000012300f2', 'other')$$,

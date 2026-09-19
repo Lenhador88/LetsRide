@@ -60,7 +60,8 @@ pre-flight, §7 is the ordering, and §7 is the one part that cannot be reordere
 
 ## 1. `118` — `public.ride_thread_reports`
 
-- [x] 1.1 Create `supabase/migrations/118_report_a_ride_thread.sql` with a header stating: the
+- [x] 1.1 Create `supabase/migrations/122_report_a_ride_thread.sql` (**`118`/`119` were both spent
+  before this was built — see the note at the top of this file**) with a header stating: the
   subject, why a new table rather than a widened one (`094` §2, the third reason decides it), the
   inherited audience quoted from 0.2, the cascade list from 0.6, the ordering (`036`'s hand-exercise
   gate does **not** fire — no trigger on a shipped write path, no function replaced), and the
@@ -126,7 +127,7 @@ pre-flight, §7 is the ordering, and §7 is the one part that cannot be reordere
 
 ## 4. `119` — `public.postcard_comment_reports`, the same file structure
 
-- [x] 4.1 Create `supabase/migrations/119_report_a_postcard_comment.sql`. Header states why the
+- [x] 4.1 Create `supabase/migrations/123_report_a_postcard_comment.sql`. Header states why the
   subject is the **comment** and not the postcard (`094` §2's reasoning applied: different author,
   different subject, a live queue whose join is unconditional), and that
   `public.moderate_comment` (`011` §1b) is untouched.

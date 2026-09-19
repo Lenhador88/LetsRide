@@ -137,7 +137,8 @@ export async function reportPostcard(
  * duplicates** — the same reason `hidePostcard` above states for
  * `postcard_hides`. `123` grants `authenticated` no UPDATE on this table, so
  * the default merge-duplicates form 42501s **every** report including a rider's
- * first. Pinned at `123.6` in the emitted form.
+ * first. `123.6` pins the emitted forms; what sees the option leave *this file*
+ * is `__tests__/report-upserts-ignore-duplicates.test.ts`.
  */
 export async function reportPostcardComment(commentId: string): Promise<ActionState> {
   const parsed = reportPostcardCommentSchema.safeParse({
