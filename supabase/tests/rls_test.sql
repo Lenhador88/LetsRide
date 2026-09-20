@@ -40283,6 +40283,187 @@ select assert_eq(
   true, '124.15e: ** the advisory lock key is a STABLE LITERAL CONSTANT. ** A key derived per invocation is a no-op that still reads as protection, which is worse than no lock at all. Read 124 §0c before trusting the lock for anything: it is transaction-scoped and the claim commits before the provider is called, so it serialises the marker INSERT and nothing else');
 
 rollback to savepoint moderation_digest_124;
+\echo ''
+\echo '# 125 — the volatile label is not a method gate: the comment stops giving a false reason'
+
+reset role;
+select set_config('test.uid', '', false);
+select set_config('request.jwt.claims', '', false);
+
+savepoint volatile_label_125;
+
+-- ---------------------------------------------------------------------------
+-- 125.1  public.ride_invite_link_preview(text) — 091's comment, corrected.
+--        Scoped to THIS function's comment, never to a count of comments or of
+--        functions, so a later file restamping something else cannot absorb a
+--        regression here.
+--
+--        ** THE LABEL IS NOT THE DEFECT AND MUST NOT MOVE. ** 125.1c refuses
+--        the "fix" the corrected prose invites: a session reading "the volatile
+--        reason was false" and concluding the function should become `stable`
+--        breaks claim_ride_invite_link's `for share`, which is the half of the
+--        reason that DID survive measurement.
+--
+--        125.1d is both the anti-vacuity probe and the real regression guard:
+--        125 reissues the WHOLE comment, so the failure mode that matters is
+--        not "the correction is missing" but "the eight-column projection
+--        contract was dropped while rewriting the last sentence".
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select obj_description(oid, 'pg_proc') like '%ONLY THE FIRST HALF OF THE REASON%'
+     from pg_proc where oid = 'public.ride_invite_link_preview(text)'::regprocedure),
+  true, '125.1a: 091''s comment now says only the FIRST half of its volatile reason survived measurement — PD-440. A volatile function IS served over GET on this deployment; what keeps a live capability token out of the URL is that supabase-js POSTs, and nothing in the database enforces it');
+select assert_eq(
+  (select obj_description(oid, 'pg_proc') like '%which would put a live capability token%'
+     from pg_proc where oid = 'public.ride_invite_link_preview(text)'::regprocedure),
+  false, '125.1b: ... and the FALSE half is gone, not merely contradicted later in the same paragraph. A reader who stops at the first sentence must not come away with "the URL cannot reach a request log, so it is safe to hand out"');
+select assert_eq(
+  (select provolatile from pg_proc where oid = 'public.ride_invite_link_preview(text)'::regprocedure),
+  'v'::"char", '125.1c: ** and the function is STILL VOLATILE. ** 125 corrects a REASON and never a label. `for share` is refused outright in a non-volatile function, so claim_ride_invite_link genuinely requires volatile and this preview matches it; "the stated reason was false, therefore make it stable" is the repair this assertion exists to refuse');
+select assert_eq(
+  (select obj_description(oid, 'pg_proc') like '%EXACTLY EIGHT NAMED COLUMNS of exactly one ride%'
+      and obj_description(oid, 'pg_proc') like '%which 091.13 asserts%'
+     from pg_proc where oid = 'public.ride_invite_link_preview(text)'::regprocedure),
+  true, '125.1d ANTI-VACUITY AND REGRESSION GUARD: the rest of 091''s comment survived the reissue. `comment on function` REPLACES rather than appends, so rewriting the last sentence is a rewrite of the whole contract — losing the eight-column projection bound would be a far worse regression than the defect 125 fixes, and it would be invisible to 125.1a/b');
+
+-- ---------------------------------------------------------------------------
+-- 125.2  public.club_invite_link_preview(text) — 093's comment, same shape.
+--        Asserted separately rather than folded into a two-function loop,
+--        because the two comments are independent objects and a file that
+--        restamps one and forgets the other is exactly the state 125 found.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select obj_description(oid, 'pg_proc') like '%ONLY THE FIRST HALF OF THE REASON%'
+     from pg_proc where oid = 'public.club_invite_link_preview(text)'::regprocedure),
+  true, '125.2a: 093''s comment carries the same correction — PD-440. It shipped with 091''s sentence copied verbatim, which is how a measured-false claim propagates: by being good prose');
+select assert_eq(
+  (select obj_description(oid, 'pg_proc') like '%which would put a live capability token%'
+     from pg_proc where oid = 'public.club_invite_link_preview(text)'::regprocedure),
+  false, '125.2b: ... and its false half is gone too');
+select assert_eq(
+  (select provolatile from pg_proc where oid = 'public.club_invite_link_preview(text)'::regprocedure),
+  'v'::"char", '125.2c: ** and it is STILL VOLATILE ** — claim_club_invite_link takes `for share` on the link row for 091''s reason, so the label stays for the half of the reason that holds');
+select assert_eq(
+  (select obj_description(oid, 'pg_proc') like '%EXACTLY SIX NAMED COLUMNS of exactly one club%'
+      and obj_description(oid, 'pg_proc') like '%which 093.27 asserts%'
+     from pg_proc where oid = 'public.club_invite_link_preview(text)'::regprocedure),
+  true, '125.2d ANTI-VACUITY AND REGRESSION GUARD: the rest of 093''s comment survived the reissue — the six-column bound and the single-site rule included');
+
+rollback to savepoint volatile_label_125;
+
+\echo ''
+\echo '# 126 — two sinks the bypass key cannot enumerate'
+
+reset role;
+select set_config('test.uid', '', false);
+select set_config('request.jwt.claims', '', false);
+
+savepoint bypass_key_sinks_126;
+
+-- ---------------------------------------------------------------------------
+-- 126.1  public.password_reset_grants — 026 revoked from anon and
+--        authenticated and never named service_role, so Supabase's project
+--        default stood (PD-413).
+--
+--        ** THIS PAIR CANNOT FAIL LOCALLY, and 076's note is why. ** The
+--        privilege 126 revokes is installed by the HOSTED project's
+--        `pg_default_acl`, which this scratch database has none of, so deleting
+--        the revoke from 126 leaves these green. They state the intent; the
+--        measurement is 126 §Verification against the hosted project, where the
+--        service_role census moved 29 kept / 8 revoked -> 27 / 10. 126.1c is
+--        the anti-vacuity probe that proves the predicate can read a real
+--        grant, so its `false` is a measurement of the ACL rather than a
+--        misspelled object name.
+--
+--        Named by ROLE rather than attempted as a statement: this suite runs as
+--        the table owner, for whom neither the grant nor RLS applies — 031's
+--        lesson. Scoped to the GRANTEE per CLAUDE.md, because postgres and
+--        service_role hold everything by default and a table-wide count reads
+--        high against a correct database.
+--
+--        Both of CLAUDE.md's accepted forms are used, and which is which
+--        matters because a grep for one finds NONE of the other:
+--          126.1a / 126.2a — has_table_privilege, per verb
+--          126.1b / 126.2b — a grantee-scoped role_table_grants COUNT
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select bool_or(has_table_privilege('service_role', 'public.password_reset_grants', p))
+     from unnest(array['select','insert','update','delete']) p),
+  false, '126.1a: ** service_role holds nothing on password_reset_grants ** — one row per recovery session spent on a reset, reached only through consume_password_reset_grant() and has_password_reset_grant(). 026''s own table comment already claimed "no role holds a grant on it"; 126 is what made that true, four months late (intent locally; 126 §Verification against the hosted project is the measurement)');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'password_reset_grants'
+      and grantee = 'service_role'),
+  0, '126.1b: ... and it holds a grant of NO kind on it, read off role_table_grants rather than inferred — CLAUDE.md''s second accepted form, grantee-scoped so postgres''s ownership does not read high');
+
+savepoint prg_acl_probe_126;
+grant select on public.password_reset_grants to service_role;
+select assert_eq(
+  has_table_privilege('service_role', 'public.password_reset_grants', 'select'),
+  true, '126.1c ANTI-VACUITY: the assertion above CAN read a real grant on this table, so its false is a statement about the ACL and not about a misspelled relation name');
+rollback to savepoint prg_acl_probe_126;
+select assert_eq(
+  has_table_privilege('service_role', 'public.password_reset_grants', 'select'),
+  false, '126.1d: ... and the probe left nothing behind');
+
+-- ---------------------------------------------------------------------------
+-- 126.2  public.club_removals — 111 revoked from public, anon and
+--        authenticated and never named service_role either.
+--
+--        ** THE CRITERION IS THE ROWS, NOT rls_enabled_no_policy. ** That lint
+--        is a candidate set worth checking and never the test: it excludes
+--        postcard_reports and club_thread_reports, which are revoked and carry
+--        two policies each, so a mechanical rule built on it would have
+--        re-opened exactly that exposure. What qualifies these rows is that
+--        they are (club, rider) pairs an admin removed, over a table whose own
+--        comment says NOBODY READS IT and whose spec requires that nothing
+--        anywhere record who removed whom.
+--
+--        111.7 already asserts anon and authenticated hold nothing here; this
+--        is the third grantee and the one Supabase grants by default.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select bool_or(has_table_privilege('service_role', 'public.club_removals', p))
+     from unnest(array['select','insert','update','delete']) p),
+  false, '126.2a: ** service_role holds nothing on club_removals ** — the one credential that bypasses RLS must not be able to enumerate the removal history the product deliberately refused to keep, private clubs included (intent locally; 126 §Verification is the measurement)');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'club_removals'
+      and grantee = 'service_role'),
+  0, '126.2b: ... and it holds a grant of NO kind on it, grantee-scoped off role_table_grants');
+
+savepoint removals_acl_probe_126;
+grant select on public.club_removals to service_role;
+select assert_eq(
+  has_table_privilege('service_role', 'public.club_removals', 'select'),
+  true, '126.2c ANTI-VACUITY: the assertion above CAN read a real grant on this table');
+rollback to savepoint removals_acl_probe_126;
+select assert_eq(
+  has_table_privilege('service_role', 'public.club_removals', 'select'),
+  false, '126.2d: ... and the probe left nothing behind');
+
+-- ---------------------------------------------------------------------------
+-- 126.3  ** THE CASCADE STILL REACHES, WITH THE REVOKE IN PLACE. ** A
+--        referential cascade runs as the constraint's system trigger and does
+--        not consult privileges, so account deletion is unaffected — but
+--        getting that wrong takes account deletion down and nothing else in CI
+--        would notice, so it is asserted here as well as hand-exercised on DEV
+--        in a rolled-back transaction (126 §The cascade). club_removals is the
+--        one worth asserting: it cascades from BOTH clubs and profiles.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where conrelid = 'public.club_removals'::regclass
+      and contype = 'f' and confdeltype = 'c'),
+  2, '126.3a: both of club_removals'' FKs are still ON DELETE CASCADE — the whole retention window for a bar, and the reason delete-account needs no step for this table. 126 revokes a grant and must not have touched them');
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where conrelid = 'public.password_reset_grants'::regclass
+      and contype = 'f' and confdeltype = 'c'),
+  1, '126.3b: ... and password_reset_grants'' user_id FK into auth.users is still ON DELETE CASCADE, which is the row delete-account actually removes');
+
+rollback to savepoint bypass_key_sinks_126;
+
 rollback;
 
 \echo ''
