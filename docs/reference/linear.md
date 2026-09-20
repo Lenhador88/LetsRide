@@ -432,6 +432,16 @@ to the block, and do not drop it from the table.
 
 - **Moving an issue is part of doing the work, not paperwork after it.** `Development (AI)` when
   you start, `Deployed to DEV` when the PR merges, in the same session.
+
+  **It moves FORWARD. `Development (AI)` is a claim, not a hand-off** — a session starts work from
+  `Queued (AI)` and nothing takes work out of `Development (AI)`, so a finished story moved back
+  into it holds a build slot and hands it to nobody. Measured 2026-09-19: PD-465 (`Deployed to
+  DEV` since 01:42Z, its PR on `development` since 01:35Z) and PD-223 (parked in `Needs decision`
+  since 01:11Z) were both moved into `Development (AI)` at 21:23Z, and the stall alarm fired
+  against that board eighteen minutes later — an owner interruption spent on work already done.
+  **To hand a story to a session, queue it**; to record that one is finished, leave it where the
+  session that finished it left it.
+
 - **Verify before you write.** An issue asserting a stale fact is worse than no issue, because a
   tracker reads as current by construction.
 - **A new owner action goes in Linear the moment it is found**, labelled `Owner only` — unless

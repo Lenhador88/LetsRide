@@ -539,6 +539,22 @@ Ask how long the oldest of these has been true:
   from it rather than starting the story over, which `unknown` gives them no way to know. **Name
   the branch only when the loop above named it**, since that sentence is an instruction to resume
   from it and the cost of naming the wrong one is a session building on unrelated work.
+
+  **Then say which of DEAD and SLOW it looks like, from the one number the loop just printed** —
+  the tip's age. `unknown` at 3h and `unknown` at 20h are the same sentence twice, and the owner
+  has to open the board to learn anything from either; *looks dead — 22h since its last commit* is
+  the same honesty with the reading attached. **It changes the sentence and never the action:
+  still never clear the slot yourself.**
+
+  **The signal is silence at the TIP; a slow START is not one.** Measured on PD-450, 2026-09-19:
+  claimed 07:43:46Z, three commits between 07:56 and 08:01:40Z, then nothing for 22 hours while
+  four unrelated stories merged past it. The tempting second reading — how long the session took
+  to reach its FIRST commit — is the trap. PD-450's was **12m31s** and discriminated nothing; the
+  11:44Z alarm above calls four hours before a first commit *ordinary* for a `size: L` story whose
+  body sequences `openspec` first; and the command a careful person writes for it,
+  `git log --reverse --format=%cI <branch> | head -1`, answers with the repo's ROOT commit —
+  measured 2026-08-05, a 45-day gap that labels every slot dead for ever.
+
 - **A `Needs help` issue** — `get_issue` → `stateHistory[].startedAt`. **This clock is now the
   whole backstop, and before this change it was a second one.** The freeze used to make a parked
   story impossible to miss; nothing does that any more, so a parked story that nobody comes back to
