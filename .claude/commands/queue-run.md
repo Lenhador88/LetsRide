@@ -539,6 +539,22 @@ Ask how long the oldest of these has been true:
   from it rather than starting the story over, which `unknown` gives them no way to know. **Name
   the branch only when the loop above named it**, since that sentence is an instruction to resume
   from it and the cost of naming the wrong one is a session building on unrelated work.
+
+  **Then say which of DEAD and SLOW it looks like, from the one number the loop just printed** —
+  the tip's age. `unknown` at 3h and `unknown` at 20h are the same sentence twice, and the owner
+  has to open the board to learn anything from either; *looks dead — 22h since its last commit* is
+  the same honesty with the reading attached. **It changes the sentence and never the action:
+  still never clear the slot yourself.**
+
+  **The signal is silence at the TIP; a slow START is not one.** Measured on PD-450, 2026-09-19:
+  claimed 07:43:46Z, three commits between 07:56 and 08:01:40Z, then nothing for 22 hours while
+  four unrelated stories merged past it. The tempting second reading — how long the session took
+  to reach its FIRST commit — is the trap. PD-450's was **12m31s** and discriminated nothing; the
+  11:44Z alarm above calls four hours before a first commit *ordinary* for a `size: L` story whose
+  body sequences `openspec` first; and the command a careful person writes for it,
+  `git log --reverse --format=%cI <branch> | head -1`, answers with the repo's ROOT commit —
+  measured 2026-08-05, a 45-day gap that labels every slot dead for ever.
+
 - **A `Needs help` issue** — `get_issue` → `stateHistory[].startedAt`. **This clock is now the
   whole backstop, and before this change it was a second one.** The freeze used to make a parked
   story impossible to miss; nothing does that any more, so a parked story that nobody comes back to
@@ -558,25 +574,6 @@ Ask how long the oldest of these has been true:
 you did**, as a comment beginning `<!-- stall-alarm slot:<N> band:<B> -->` on that issue, or
 `<!-- stall-alarm slot:none band:<B> -->` where there is no label. A slot holds several issues, so
 look for the marker across all of them and write it on just one.
-
-**Say WHICH of dead and slow it looks like, with the two numbers that separate them.** The alarm's
-honesty about `unknown` is right and stays — no session can read another's transcript, and
-returning a story a live build is still working is the one failure worse than a held slot. But a
-notification that says `unknown` at 3h and again at 20h is the same sentence twice, and the owner
-has to open the board to learn anything. These two readings are cheap and they discriminate:
-
-```
-tip age                git log -1 --format=%ci <branch>     — how long since ANY commit
-claim-to-first-commit  the gap between stateHistory[].startedAt and the branch's OLDEST commit
-open PRs               list_pull_requests state=open        — the WHOLE repo, not base=development
-```
-
-**A live `size: L` build is quiet between commits; it is not silent for a working day with no PR.**
-Measured on PD-450, 2026-09-20: claimed 07:43:46Z, first commit 07:56Z, tip 08:01:40Z, then nothing
-for 22 hours while four unrelated stories merged past it — eighteen minutes of work and then a
-flat line. That shape is worth naming in the message as *looks dead — 22h since its last commit,
-18m after the claim*, because it is what turns the owner's next action from "go and look" into
-"clear it". **Still never clear it yourself.**
 
 **`<B>` is the age band the subject has reached, and every band has an explicit token:** `3h`,
 `24h`, `72h`, `7d`, then **`14d`, `21d`, `28d` and so on in 7-day steps** — for an age of **7 days

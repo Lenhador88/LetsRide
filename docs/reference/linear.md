@@ -128,9 +128,6 @@ it does, permanently.
 > **Only queue what is buildable now.** `Queued (AI)` means *eligible today*, not *approved
 > eventually* — so everything in it is order-independent by construction. Work that must wait
 > waits in `Todo AI`, and the owner queues it when its blocker reaches `Deployed to DEV`.
->
-> **And not already built**, which is the half that has actually gone wrong. See §Keep it
-> current — the premise check belongs to whoever QUEUES a story, not only to whoever builds it.
 
 - **Not everything you notice is a story.** Product owner, 2026-08-09: *"It seems we are creating
   too many stories. If it seems within the context of the build, and recommended, just do it."*
@@ -435,6 +432,16 @@ to the block, and do not drop it from the table.
 
 - **Moving an issue is part of doing the work, not paperwork after it.** `Development (AI)` when
   you start, `Deployed to DEV` when the PR merges, in the same session.
+
+  **It moves FORWARD. `Development (AI)` is a claim, not a hand-off** — a session starts work from
+  `Queued (AI)` and nothing takes work out of `Development (AI)`, so a finished story moved back
+  into it holds a build slot and hands it to nobody. Measured 2026-09-19: PD-465 (`Deployed to
+  DEV` since 01:42Z, its PR on `development` since 01:35Z) and PD-223 (parked in `Needs decision`
+  since 01:11Z) were both moved into `Development (AI)` at 21:23Z, and the stall alarm fired
+  against that board eighteen minutes later — an owner interruption spent on work already done.
+  **To hand a story to a session, queue it**; to record that one is finished, leave it where the
+  session that finished it left it.
+
 - **Verify before you write.** An issue asserting a stale fact is worse than no issue, because a
   tracker reads as current by construction.
 - **A new owner action goes in Linear the moment it is found**, labelled `Owner only` — unless
@@ -444,17 +451,6 @@ to the block, and do not drop it from the table.
 - **A story's premise ages, and nothing marks it done except someone re-measuring.** Check it
   before building, not after — `.claude/commands/queue-pickup.md` STEP 3 is the procedure, and
   it applies to a story picked up by hand just as much as to one a dispatch takes off the queue.
-
-  **It applies to QUEUEING too, and that is where it failed.** On 2026-09-19 three stories were
-  moved into `Queued (AI)` in one session without their comments being read, and all three were
-  already done: one had been **merged** (PD-175, `#464`), one had reached `Deployed to DEV` and was
-  hand-moved back (PD-465), and one had been parked in `Needs decision` after a browser session
-  found the cause (PD-223). A queuer who skips the check spends a firing per story, and the
-  builder inherits a premise nobody tested.
-
-  **Status is the thing that lies, in both directions** — `Todo AI` can mean shipped, and
-  `Queued (AI)` can mean merged. `list_comments` on the issue is the check, and it is cheaper than
-  the build it saves. Read it before the move, not after.
   **A stale story goes to `Needs decision` with the command and its output in a comment, never
   to `Needs help`** — that column is read as *a session is stuck and needs you now*, and every
   firing repeats it in the owner's notification until it moves, so parking a measurement there
