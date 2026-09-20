@@ -13031,8 +13031,9 @@ select assert_eq(has_column_privilege('authenticated', 'public.rides', 'map_card
 -- The UPDATE grant on geocode_confidence STAYS, and this assertion is the
 -- tripwire for the hardening that must not land early. resolve-ride-location
 -- writes as the CALLER (anon key plus the rider's own Authorization header),
--- not as service_role — delete-account is the only place a service-role key
--- exists — so revoking this ahead of a redeployed function raises 42501 on
+-- not as service_role (which THREE Edge Functions now hold a key for —
+-- delete-account, push-notify and send-moderation-digest — though none of them
+-- writes this column) — so revoking this ahead of a redeployed function raises 42501 on
 -- every geocode, fail-open, and every ride silently stops getting a tile.
 select assert_eq(has_column_privilege('authenticated', 'public.rides', 'geocode_confidence', 'UPDATE'),
   true, '067: authenticated STILL holds update (geocode_confidence) — 051 granted it and the geocoder writes as the caller, so revoking it before that function is redeployed takes every tile down silently (tasks.md §8)');
@@ -40390,9 +40391,18 @@ select assert_eq(
   (select bool_or(has_table_privilege('service_role', 'public.password_reset_grants', p))
      from unnest(array['select','insert','update','delete']) p),
   false, '126.1a: ** service_role holds nothing on password_reset_grants ** — one row per recovery session spent on a reset, reached only through consume_password_reset_grant() and has_password_reset_grant(). 026''s own table comment already claimed "no role holds a grant on it"; 126 is what made that true, four months late (intent locally; 126 §Verification against the hosted project is the measurement)');
+-- ** ONE literal, read by both the assertion and its anti-vacuity probe. **
+-- Spelling it twice is what the probe is FOR, and duplicating it reopens the
+-- hole one level up: misspell 126.1b's copy alone and it counts 0, asserts 0,
+-- passes vacuously, and the probe below goes on passing against its own
+-- correct copy. Setting it once makes the two move together by construction.
+-- `current_setting` without the missing_ok argument RAISES on an unset key,
+-- which is deliberate: the missing_ok form returns NULL and would count 0.
+select set_config('letsride.probe_relation', 'password_reset_grants', true);
 select assert_eq(
   (select count(*)::int from information_schema.role_table_grants
-    where table_schema = 'public' and table_name = 'password_reset_grants'
+    where table_schema = 'public'
+      and table_name = current_setting('letsride.probe_relation')
       and grantee = 'service_role'),
   0, '126.1b: ... and it holds a grant of NO kind on it, read off role_table_grants rather than inferred — CLAUDE.md''s second accepted form, grantee-scoped so postgres''s ownership does not read high');
 
@@ -40403,7 +40413,8 @@ select assert_eq(
   true, '126.1c ANTI-VACUITY: the assertion above CAN read a real grant on this table, so its false is a statement about the ACL and not about a misspelled relation name');
 select assert_eq(
   (select count(*)::int from information_schema.role_table_grants
-    where table_schema = 'public' and table_name = 'password_reset_grants'
+    where table_schema = 'public'
+      and table_name = current_setting('letsride.probe_relation')
       and grantee = 'service_role'),
   1, '126.1c2 ANTI-VACUITY for the OTHER form: 126.1b''s role_table_grants COUNT reads this same staged grant, so its 0 above is a statement about the ACL and not about a misspelled table_name LITERAL — which returns 0 and passes silently. The two forms need two probes for the same reason the file header gives for using both: a grep for either finds none of the other, so a probe for either proves nothing about the other');
 rollback to savepoint prg_acl_probe_126;
@@ -40431,9 +40442,11 @@ select assert_eq(
   (select bool_or(has_table_privilege('service_role', 'public.club_removals', p))
      from unnest(array['select','insert','update','delete']) p),
   false, '126.2a: ** service_role holds nothing on club_removals ** — the one credential that bypasses RLS must not be able to enumerate the removal history the product deliberately refused to keep, private clubs included (intent locally; 126 §Verification is the measurement)');
+select set_config('letsride.probe_relation', 'club_removals', true);
 select assert_eq(
   (select count(*)::int from information_schema.role_table_grants
-    where table_schema = 'public' and table_name = 'club_removals'
+    where table_schema = 'public'
+      and table_name = current_setting('letsride.probe_relation')
       and grantee = 'service_role'),
   0, '126.2b: ... and it holds a grant of NO kind on it, grantee-scoped off role_table_grants');
 
@@ -40444,7 +40457,8 @@ select assert_eq(
   true, '126.2c ANTI-VACUITY: the assertion above CAN read a real grant on this table');
 select assert_eq(
   (select count(*)::int from information_schema.role_table_grants
-    where table_schema = 'public' and table_name = 'club_removals'
+    where table_schema = 'public'
+      and table_name = current_setting('letsride.probe_relation')
       and grantee = 'service_role'),
   1, '126.2c2 ANTI-VACUITY for the OTHER form: 126.2b''s role_table_grants COUNT reads this same staged grant, so its 0 is about the ACL rather than about a misspelled table_name literal');
 rollback to savepoint removals_acl_probe_126;

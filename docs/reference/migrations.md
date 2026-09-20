@@ -528,7 +528,8 @@ movement, and that is the expected answer** — both tables were ALREADY in `rls
 `CLAUDE.md`'s "one INFO per table whose client grants were revoked outright" gains no member here.
 `md5(obj_description('public.club_removals'::regclass,'pg_class'))` on DEV equals the digest
 computed from the committed file (`955db3084f218e5a83a70dbf2441c29e`). RLS suite **4233 → 4245**,
-**+10** labels, all `126.x`, including two savepoint-staged anti-vacuity probes because the
+**+12** labels, all `126.x`, including FOUR savepoint-staged anti-vacuity probes — two per table,
+one for each accepted assertion form — because the
 privilege this file revokes is installed by the hosted project's `pg_default_acl` and the scratch
 database has none — so the pair **cannot fail locally** and states intent, exactly as `124.1b` does.
 DEV-only until the promotion.

@@ -164,15 +164,17 @@ members, measured on DEV 2026-09-19: `moderation_digest_entries` (`124`), `push_
 (`120`, `117`) — **and the two in `private` are outside the rule rather than unexamined**, having no
 client reach to revoke. It read *three* until `117`/`120`/`121` landed, which is the direction this
 paragraph warns about: the set grows by ordinary work, so re-run it. Checking the four in `public`
-found **two that are not revoked and should be** — each because its migration named client roles and
-stopped, leaving Supabase's default in place: `026:189` (`anon, authenticated`) and `111:83`
+found **two that were not revoked and should have been — closed by `126` (PD-413), and both now
+read `false`** — each because its migration named client roles and stopped, leaving Supabase's
+default in place: `026:189` (`anon, authenticated`) and `111:83`
 (`public, anon, authenticated` — and revoking from `PUBLIC` does not touch `service_role`'s own
 direct grant, which is *why* the default survived). Their readership argument is `076` §3b's, made
 per table: `password_reset_grants` says who is mid-password-reset, and `club_removals` holds the
 (club, rider) pairs an admin removed, over a table whose own comment says *"NOBODY READS IT"* and
 against a `manage-club-riders` requirement that *"nothing anywhere SHALL record who removed
-whom"*. **PD-413.** `111` shipped that way *while this paragraph was being written*, which is why
-the candidate set is worth re-running rather than trusting any list here:
+whom"*. `111` shipped that way *while this paragraph was being written*, which is why
+the candidate set is worth re-running rather than trusting any list here — and note that closing
+both moved the census and **not** this lint, which counts policies rather than grants:
 
 ```sql
 select count(*) filter (where sr)                          as kept,
@@ -181,13 +183,15 @@ select count(*) filter (where sr)                          as kept,
   from (select c.relname, has_table_privilege('service_role', c.oid, 'SELECT') as sr
           from pg_class c join pg_namespace n on n.oid = c.relnamespace
          where n.nspname='public' and c.relkind='r') t;
--- 29 kept · 8 revoked · club_thread_reports, feedback, moderation_digest_entries,
---                        postcard_comment_reports, postcard_reports, push_deliveries,
---                        push_devices, ride_thread_reports
---   (DEV, 2026-09-19, after 124. `121` added push_deliveries; 122 and 123 added two report tables
+-- 27 kept · 10 revoked · club_removals, club_thread_reports, feedback,
+--   moderation_digest_entries, password_reset_grants, postcard_comment_reports,
+--   postcard_reports, push_deliveries, push_devices, ride_thread_reports
+--   (DEV, 2026-09-20, after 126. `121` added push_deliveries; 122 and 123 added two report tables
 --    and two to the denominator, so `kept` did not move and 36 tables was the new total; `124`
 --    then added `moderation_digest_entries` as a 37th AND revoked `feedback`, which is the one
---    line here that moves `kept` DOWN — an existing table changing side.)
+--    line here that moves `kept` DOWN — an existing table changing side. `126` is the other
+--    shape: it added NO table and revoked two that were already counted, so 29/8 became 27/10
+--    against an unchanged 37.)
 -- It names them because a COUNT cannot see a swap: revoke one new sink while another is
 -- re-granted and the count stays 3 while the trio named above is silently wrong.
 ```
@@ -197,15 +201,18 @@ select count(*) filter (where sr)                          as kept,
 and `authenticated`, and only `push_devices` also named `service_role`. It is **not** the revoked
 trio above, which overlaps it only in `push_devices`.
 
-**All three `service_role` revokes DO carry a local, grantee-scoped assertion — in two different forms, and that
-is the trap.** `postcard_reports`, `club_thread_reports`, `ride_thread_reports` (`122.8`) and
-`postcard_comment_reports` (`123.8`) use a savepoint-staged
+**Every `service_role` revoke DOES carry a local, grantee-scoped assertion — in two different
+forms, and that is the trap.** (This read *"all three"* until `122`/`123`/`124`/`126` took it to
+ten; the forms are what matter, not the count.) `postcard_reports`, `club_thread_reports`, `ride_thread_reports` (`122.8`) and
+`postcard_comment_reports` (`123.8`), `password_reset_grants` and `club_removals` (`126.1a`,
+`126.2a`) use a savepoint-staged
 `has_table_privilege` (`rls_test.sql` :1630, :25674), which is needed because `service_role` is a
 bare role in `harness.sql` and a naked `has_table_privilege` reads false for *every* table there —
 passing for the wrong reason. `push_devices` instead counts `information_schema.role_table_grants`
 scoped to the grantee (**`078.1j`**), which is sound without staging. **A grep for one form finds
-none of the other** — there are 14 `role_table_grants` sites — and that is exactly how a review of
-this paragraph concluded `push_devices` had no assertion at all. §The comment trap's rule applies
+none of the other** — `grep -c role_table_grants supabase/tests/rls_test.sql` is the reading, and
+counting rather than quoting it is the whole point of this paragraph — and that is exactly how a
+review of this paragraph concluded `push_devices` had no assertion at all. §The comment trap's rule applies
 to a grep for an *assertion* as much as to one for a retired pattern: verify the filter both ways
 before writing down an absence.
 
