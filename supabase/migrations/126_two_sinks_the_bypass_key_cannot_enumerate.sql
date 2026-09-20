@@ -1,0 +1,152 @@
+-- ===========================================================================
+-- 126 — two sinks the bypass key cannot enumerate (PD-413)
+-- ===========================================================================
+-- `076` §3b names the shape: a table that revoked from `anon, authenticated`
+-- and never named `service_role`, so Supabase's project default stood. Two are
+-- left, and both are restricted-readership sinks by the criterion `CLAUDE.md`
+-- §Supabase Rules states — rows the ONE credential that bypasses RLS must not
+-- be able to enumerate.
+--
+--   026:189  revoke all on public.password_reset_grants from anon, authenticated;
+--   111:83   revoke all on table public.club_removals from public, anon, authenticated;
+--
+-- MEASURED ON DEV 2026-09-19, before this file:
+--
+--   table                  RLS  policies  service_role SELECT
+--   push_devices            on     0      false   <- 078, already correct
+--   postcard_reports        on     2      false   <- 076, already correct
+--   club_thread_reports     on     2      false   <- 094, already correct
+--   password_reset_grants   on     0      TRUE    <- and INSERT/UPDATE/DELETE
+--   club_removals           on     0      TRUE    <- and INSERT/UPDATE/DELETE
+--
+-- ** THE CRITERION IS A JUDGEMENT ABOUT THE ROWS AND NOT A MECHANICAL
+-- PROPERTY. ** `rls_enabled_no_policy` is a candidate set worth checking and is
+-- NEVER the criterion: it excludes `postcard_reports` and `club_thread_reports`,
+-- which are revoked and carry two policies each, and an earlier mechanical test
+-- built on it would have re-opened exactly that exposure. Do not turn the two
+-- revokes below into a rule a later session can apply without reading the rows.
+--
+-- WHY THESE TWO ROWS QUALIFY, each in its own words:
+--
+--   `club_removals` — its own table comment says NOBODY READS IT and that it
+--   "is not an audit trail and must not grow into one", and
+--   `manage-club-riders` requires that *nothing anywhere SHALL record who
+--   removed whom*. The rows are exactly (club, rider) pairs an admin removed.
+--   A credential that can list them reconstitutes the removal history the
+--   product deliberately refused to keep — including for PRIVATE clubs, whose
+--   membership is not otherwise enumerable by anyone outside them.
+--
+--   `password_reset_grants` — one row per recovery session spent on a reset.
+--   `026`'s own table comment ALREADY asserts the posture this file delivers
+--   ("no role holds a grant on it and it carries no policies, both on
+--   purpose"), so this is a file making a four-month-old claim true rather
+--   than a new decision. It needs no restamp for the same reason.
+--
+-- ---------------------------------------------------------------------------
+-- THE CASCADE, MEASURED RATHER THAN REASONED — the gate `076` set
+-- ---------------------------------------------------------------------------
+-- A referential cascade runs as the constraint's system trigger and does not
+-- consult privileges, so account deletion SHOULD be unaffected. Getting that
+-- wrong takes account deletion down and nothing in CI would notice, so it was
+-- measured on DEV in two rolled-back transactions, both with the revokes below
+-- staged inside the transaction. `club_removals` is the one to exercise: it
+-- cascades from BOTH `clubs` and `profiles`.
+--
+--   A. 076's exact method — `set local role service_role;
+--      delete from public.profiles where id = <rider>;`
+--      club_removals 1 -> 0, profiles 1 -> 0, and
+--      bool_or(has_table_privilege('service_role','public.club_removals',p))
+--      false THROUGHOUT.
+--
+--   B. The row `delete-account` actually removes — `delete from auth.users
+--      where id = <rider>;` (run as the owner: this connection cannot
+--      `set role supabase_auth_admin`, which is the role the Auth admin API
+--      uses, and `service_role` holds no DELETE on `auth.users` at all —
+--      measured, and itself the reason the deletion path is not the role being
+--      revoked here). profiles 1 -> 0, club_removals 1 -> 0,
+--      password_reset_grants 1 -> 0, with service_role holding nothing on
+--      either table throughout.
+--
+-- Both rolled back; DEV's counts were re-read afterwards and were unchanged.
+-- `delete-account` needs no new step and `111`'s and `026`'s "the cascade is
+-- the whole retention window" claims are unaffected.
+--
+-- ---------------------------------------------------------------------------
+-- PROD SEQUENCING — measured, not inherited from the issue body
+-- ---------------------------------------------------------------------------
+-- PD-413's body (2026-09-06) says `111` was not yet promoted, so `club_removals`
+-- would not exist on PROD and this file would need a `to_regclass` guard to
+-- survive the promotion. ** THAT IS NOW STALE AND THE FILE IS WRITTEN FOR THE
+-- OTHER BRANCH. ** Measured 2026-09-19 against `zwprydcyryvudhurbnye`:
+-- `list_migrations` carries `a_removal_bars_a_live_invite_link` (`111`, applied
+-- 2026-09-07) and `password_reset_grant` (`026`), and
+--
+--   select to_regclass('public.club_removals'),
+--          to_regclass('public.password_reset_grants'),
+--          has_table_privilege('service_role','public.password_reset_grants','SELECT');
+--   --  club_removals | password_reset_grants | true
+--
+-- Both tables EXIST on PROD and PROD carries the same gap, so a plain `revoke`
+-- is correct on both projects and NO `do $$ ... if to_regclass(...) is not null`
+-- GUARD IS PRESENT ON PURPOSE. A guard here would be worse than absent: it
+-- turns a missing table into silent success, which is precisely how a revoke
+-- gets believed on a project where it never ran. If a later session ever
+-- replays this file against a project without `111`, the right answer is to
+-- promote `111` first, not to soften this file.
+--
+-- ORDERING: `revoke` from a NON-CLIENT role only. No shipped bundle holds the
+-- service-role key (`src/__tests__/no-service-role-key.test.ts` is the
+-- tripwire), no policy, grant to `anon`/`authenticated`, trigger, column or
+-- function changes, and the only server-side holder of that key is
+-- `delete-account`, whose path is exercised above. So this file has no unsafe
+-- side in either direction and promotes to PROD in the ordinary way.
+
+-- ---------------------------------------------------------------------------
+-- §1. public.password_reset_grants — 026's omission
+-- ---------------------------------------------------------------------------
+revoke all on public.password_reset_grants from service_role;
+
+-- ---------------------------------------------------------------------------
+-- §2. public.club_removals — 111's omission
+-- ---------------------------------------------------------------------------
+revoke all on table public.club_removals from service_role;
+
+-- ---------------------------------------------------------------------------
+-- §3. `111`'s table comment stops understating the posture
+-- ---------------------------------------------------------------------------
+-- It said "every client role is revoked", which was true and is the first thing
+-- anyone reads off `\d+ club_removals`. After §2 the accurate statement is
+-- stronger — NO role at all — and a comment that describes only the client half
+-- is how the next author concludes the bypass key was a considered exception.
+-- Reissued whole, because `comment on table` replaces rather than appends;
+-- every other sentence is byte-for-byte `111`'s.
+comment on table public.club_removals is
+  'ONE ROW PER (club, rider) PAIR AN ADMIN REMOVED — 111, PD-361. A BAR AND NOT A LOG: it exists to be read by exactly one predicate (private.club_invite_link_reachable_by''s removal conjunct) and by nothing else, and it is DELETED the moment the rider rejoins by any route (private.clear_club_removal_on_join, an AFTER INSERT trigger on club_members). So it ends at readmission and at nothing else — there is no expiry, no sweep and no Clear control, and none is needed while the clearing trigger holds. Written ONLY inside public.remove_club_member, after its authority block, which is what makes the row co-extensive with *an admin decided this* and is why a voluntary leaver has no row: removal and departure both end as an absent club_members row, so the difference has to be captured at the moment of the act. NOBODY READS IT — RLS is on, there is no policy, and NO ROLE HOLDS A GRANT OF ANY KIND, service_role INCLUDED SINCE 126 (PD-413: 111 revoked from public, anon and authenticated and never named service_role, so Supabase''s project default stood and the one credential that bypasses RLS could enumerate every pair an admin removed) — so it is not an audit trail and must not grow into one. NO removed_by COLUMN: manage-club-riders requires that nothing records who removed whom. Both FKs cascade, so deleting the club or the rider''s profile erases the row with no sweep and no step added to the account-deletion Edge Function — MEASURED under the 126 revoke, in a rolled-back transaction, rather than reasoned: a referential cascade runs as the constraint''s system trigger and does not consult privileges. IT CLOSES THE INVITE-LINK DOOR ALONE — a removed rider may still request to join, still accept an in-app invite, and still press Join on a public club, each of which clears this row.';
+
+-- ===========================================================================
+-- Verification — run against the project after applying, do not assume
+-- ===========================================================================
+--
+--   select count(*) filter (where sr)     as kept,
+--          count(*) filter (where not sr) as revoked,
+--          string_agg(relname, ', ' order by relname) filter (where not sr) as revoked_tables
+--     from (select c.relname, has_table_privilege('service_role', c.oid, 'SELECT') as sr
+--             from pg_class c join pg_namespace n on n.oid = c.relnamespace
+--            where n.nspname = 'public' and c.relkind = 'r') t;
+--   -- 29 kept / 8 revoked BEFORE this file, 27 kept / 10 revoked after, the two
+--   -- new names being club_removals and password_reset_grants.
+--
+--   select count(*)::int from information_schema.role_table_grants
+--    where table_schema = 'public'
+--      and table_name in ('password_reset_grants', 'club_removals')
+--      and grantee = 'service_role';
+--   -- 0
+--
+-- SECURITY ADVISORS DO NOT MOVE, and that is the expected answer rather than a
+-- disappointment: both tables ALREADY appear in `rls_enabled_no_policy` (7
+-- findings on DEV, unchanged), which is a statement about POLICIES and not
+-- about grants. `CLAUDE.md`'s "one INFO per table whose client grants were
+-- revoked outright" describes the same set from the other side; this file adds
+-- no table to it, because both were already in it.
+--
+-- Pinned by 126.1 and 126.2 in supabase/tests/rls_test.sql.
