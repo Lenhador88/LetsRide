@@ -1599,8 +1599,15 @@ async function provision(wanted, existing = {}) {
 async function seedRideThread(rideId) {
   if (await firstDetailId(`/rides/detail?id=${rideId}`, '/rides/detail/thread')) return 'present'
 
+  // **A refusal is not a failure, and `WALK_FIXTURES` unset is not even a
+  // refusal.** `provision()`'s caller already draws this distinction and this
+  // mirrors it: silent when the permit is `quiet` (the opt-out), parenthesised
+  // when the PROJECT refused the write. Returning a bare reason here instead
+  // printed `!` on every opt-out run once the seed moved outside
+  // `provision()` — and `!` is the marker a session scans for in the one gate
+  // that renders anything.
   const permit = fixturesPermitted(await authenticatedProjectRef())
-  if (!permit.ok) return permit.why ?? 'WALK_FIXTURES is not set'
+  if (!permit.ok) return permit.why ? `refused:${permit.why}` : 'opted out'
 
   await page.goto(`${BASE}/rides/detail/threads/new?id=${rideId}`, { waitUntil: 'networkidle' })
   const opened = await page
@@ -1754,7 +1761,9 @@ if (isFullWalk) {
   if (owned.ride) {
     const seeded = await seedRideThread(owned.ride)
     if (seeded === 'created') console.log('  + seeded a thread on the fixture ride')
-    else if (seeded !== 'present') {
+    else if (seeded.startsWith('refused:')) {
+      console.log(`  (no ride thread seeded — ${seeded.slice('refused:'.length)})`)
+    } else if (seeded !== 'present' && seeded !== 'opted out') {
       console.log(`  ! the fixture ride thread could not be created — ${seeded}`)
     }
   }

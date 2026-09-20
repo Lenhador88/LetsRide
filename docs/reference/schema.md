@@ -127,10 +127,11 @@ The rule is one paragraph in `CLAUDE.md` §Supabase Rules; this is its reasoning
 `076` §3 is the rule** — surfaced here by PD-409 because it was stated only in that migration's
 body, where the next table's author does not look. Revoke from `service_role` when the table is a
 **restricted-readership sink**: its rows are something the one credential that bypasses RLS must
-not be able to enumerate. Eight are revoked today — `postcard_reports` (`076`),
+not be able to enumerate. Ten are revoked today — `postcard_reports` (`076`),
 `club_thread_reports` (`094`), `ride_thread_reports` (`122`), `postcard_comment_reports` (`123`),
-`push_devices` (`078`), `push_deliveries` (`121`), and `feedback` + `moderation_digest_entries`
-(`124`): four moderation queues whose rows are reporter identities, a device-token store, the push
+`push_devices` (`078`), `push_deliveries` (`121`), `feedback` + `moderation_digest_entries`
+(`124`), and `password_reset_grants` + `club_removals` (`126`, closing `026`'s and `111`'s
+omission): four moderation queues whose rows are reporter identities, a device-token store, the push
 outbox — whose revoke turns on the WRITE half, since an UPDATE grant can undo a suppression and
 re-deliver a push the visibility gate refused — rider feedback, and the digest's own bookkeeping.
 

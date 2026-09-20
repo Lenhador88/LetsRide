@@ -97,9 +97,15 @@
 -- ORDERING: `revoke` from a NON-CLIENT role only. No shipped bundle holds the
 -- service-role key (`src/__tests__/no-service-role-key.test.ts` is the
 -- tripwire), no policy, grant to `anon`/`authenticated`, trigger, column or
--- function changes, and the only server-side holder of that key is
--- `delete-account`, whose path is exercised above. So this file has no unsafe
--- side in either direction and promotes to PROD in the ordinary way.
+-- function changes. ** THREE Edge Functions hold that key, not one ** --
+-- `delete-account`, `push-notify` (121) and `send-moderation-digest` (124) --
+-- and what makes the revoke safe is not that there is one holder but that NONE
+-- of them reads either table: a grep of `supabase/functions/` for
+-- `password_reset_grants` and `club_removals` returns nothing at all, and
+-- `delete-account`'s path is exercised above. Count the holders rather than
+-- trusting a number -- `grep -rn SERVICE_ROLE_KEY supabase/functions/`. So
+-- this file has no unsafe side in either direction and promotes to PROD in the
+-- ordinary way.
 
 -- ---------------------------------------------------------------------------
 -- §1. public.password_reset_grants — 026's omission

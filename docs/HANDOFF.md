@@ -27,8 +27,8 @@ history.
   that is the steady state.
 - **Migrations: 126 files; DEV at `126`, PROD at `116`** — DEV answers 129 rows, the three extra
   hand-applied with no file; PROD none. **Take the next number from `list_migrations`, never the
-  file count and never a DECLARED one** — `125` and `126` were taken past a slot that declared
-  `125` sixteen hours earlier and never wrote it. `docs/reference/migrations.md` §Applied state has the per-file log
+  file count and never a DECLARED one** — a territory comment naming `125` is not a spent
+  number, and the ref is what settles it. `docs/reference/migrations.md` §Applied state has the per-file log
   and §Security advisors the counts.
 - **Edge Functions: the older three AGREE across both projects** — identical `ezbr_sha256`
   (2026-09-19); equality is not currency. **`push-notify` and `send-moderation-digest` are

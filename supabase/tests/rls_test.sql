@@ -40401,6 +40401,11 @@ grant select on public.password_reset_grants to service_role;
 select assert_eq(
   has_table_privilege('service_role', 'public.password_reset_grants', 'select'),
   true, '126.1c ANTI-VACUITY: the assertion above CAN read a real grant on this table, so its false is a statement about the ACL and not about a misspelled relation name');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'password_reset_grants'
+      and grantee = 'service_role'),
+  1, '126.1c2 ANTI-VACUITY for the OTHER form: 126.1b''s role_table_grants COUNT reads this same staged grant, so its 0 above is a statement about the ACL and not about a misspelled table_name LITERAL — which returns 0 and passes silently. The two forms need two probes for the same reason the file header gives for using both: a grep for either finds none of the other, so a probe for either proves nothing about the other');
 rollback to savepoint prg_acl_probe_126;
 select assert_eq(
   has_table_privilege('service_role', 'public.password_reset_grants', 'select'),
@@ -40437,6 +40442,11 @@ grant select on public.club_removals to service_role;
 select assert_eq(
   has_table_privilege('service_role', 'public.club_removals', 'select'),
   true, '126.2c ANTI-VACUITY: the assertion above CAN read a real grant on this table');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'club_removals'
+      and grantee = 'service_role'),
+  1, '126.2c2 ANTI-VACUITY for the OTHER form: 126.2b''s role_table_grants COUNT reads this same staged grant, so its 0 is about the ACL rather than about a misspelled table_name literal');
 rollback to savepoint removals_acl_probe_126;
 select assert_eq(
   has_table_privilege('service_role', 'public.club_removals', 'select'),
