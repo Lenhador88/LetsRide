@@ -559,6 +559,25 @@ you did**, as a comment beginning `<!-- stall-alarm slot:<N> band:<B> -->` on th
 `<!-- stall-alarm slot:none band:<B> -->` where there is no label. A slot holds several issues, so
 look for the marker across all of them and write it on just one.
 
+**Say WHICH of dead and slow it looks like, with the two numbers that separate them.** The alarm's
+honesty about `unknown` is right and stays — no session can read another's transcript, and
+returning a story a live build is still working is the one failure worse than a held slot. But a
+notification that says `unknown` at 3h and again at 20h is the same sentence twice, and the owner
+has to open the board to learn anything. These two readings are cheap and they discriminate:
+
+```
+tip age                git log -1 --format=%ci <branch>     — how long since ANY commit
+claim-to-first-commit  the gap between stateHistory[].startedAt and the branch's OLDEST commit
+open PRs               list_pull_requests state=open        — the WHOLE repo, not base=development
+```
+
+**A live `size: L` build is quiet between commits; it is not silent for a working day with no PR.**
+Measured on PD-450, 2026-09-20: claimed 07:43:46Z, first commit 07:56Z, tip 08:01:40Z, then nothing
+for 22 hours while four unrelated stories merged past it — eighteen minutes of work and then a
+flat line. That shape is worth naming in the message as *looks dead — 22h since its last commit,
+18m after the claim*, because it is what turns the owner's next action from "go and look" into
+"clear it". **Still never clear it yourself.**
+
 **`<B>` is the age band the subject has reached, and every band has an explicit token:** `3h`,
 `24h`, `72h`, `7d`, then **`14d`, `21d`, `28d` and so on in 7-day steps** — for an age of **7 days
 or more**, `<N>d` where `<N>` is the age in whole days rounded DOWN to a multiple of 7. **Under 7
