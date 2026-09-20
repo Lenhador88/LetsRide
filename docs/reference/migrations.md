@@ -531,7 +531,7 @@ computed from the committed file (`955db3084f218e5a83a70dbf2441c29e`). RLS suite
 **+12** labels, all `126.x`, including FOUR savepoint-staged anti-vacuity probes — two per table,
 one for each accepted assertion form — because the
 privilege this file revokes is installed by the hosted project's `pg_default_acl` and the scratch
-database has none — so the pair **cannot fail locally** and states intent, exactly as `124.1b` does.
+database has none — so those four **cannot fail locally** and state intent, exactly as `124.1b` does.
 DEV-only until the promotion.
 
 **The `113`, `114`, `115`, `116` promotion applied to PROD on 2026-09-08, `113` ahead of `114` as

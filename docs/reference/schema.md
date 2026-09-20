@@ -163,7 +163,7 @@ members, measured on DEV 2026-09-19: `moderation_digest_entries` (`124`), `push_
 `password_reset_grants`, `club_removals`, and `private.consent_records` and `private.system_alerts`
 (`120`, `117`) — **and the two in `private` are outside the rule rather than unexamined**, having no
 client reach to revoke. It read *three* until `117`/`120`/`121` landed, which is the direction this
-paragraph warns about: the set grows by ordinary work, so re-run it. Checking the four in `public`
+paragraph warns about: the set grows by ordinary work, so re-run it. Checking the FIVE in `public`
 found **two that were not revoked and should have been — closed by `126` (PD-413), and both now
 read `false`** — each because its migration named client roles and stopped, leaving Supabase's
 default in place: `026:189` (`anon, authenticated`) and `111:83`
@@ -193,26 +193,39 @@ select count(*) filter (where sr)                          as kept,
 --    shape: it added NO table and revoked two that were already counted, so 29/8 became 27/10
 --    against an unchanged 37.)
 -- It names them because a COUNT cannot see a swap: revoke one new sink while another is
--- re-granted and the count stays 3 while the trio named above is silently wrong.
+-- re-granted and the count stays 10 while the list above is silently wrong.
 ```
 
 **Elsewhere this file calls `push_devices`, `password_reset_grants` and `club_removals` tables
-"whose grants were revoked outright"; read that as CLIENT-role grants** — all three revoked `anon`
-and `authenticated`, and only `push_devices` also named `service_role`. It is **not** the revoked
-trio above, which overlaps it only in `push_devices`.
+"whose grants were revoked outright"; read that as CLIENT-role grants**, which is a DIFFERENT AXIS
+from the census above and not a smaller version of it. Client-role revocation is what puts a table
+in `rls_enabled_no_policy` — no policy is needed because no client can reach it — while the census
+reads `service_role`. **Since `126` those three are in both sets**, so the two can no longer be told
+apart by their members and the axis has to be read off the query rather than off a name: seven
+tables are in the lint, ten are revoked from `service_role`, and they overlap in five.
 
 **Every `service_role` revoke DOES carry a local, grantee-scoped assertion — in two different
-forms, and that is the trap.** (This read *"all three"* until `122`/`123`/`124`/`126` took it to
-ten; the forms are what matter, not the count.) `postcard_reports`, `club_thread_reports`, `ride_thread_reports` (`122.8`) and
-`postcard_comment_reports` (`123.8`), `password_reset_grants` and `club_removals` (`126.1a`,
-`126.2a`) use a savepoint-staged
-`has_table_privilege` (`rls_test.sql` :1630, :25674), which is needed because `service_role` is a
-bare role in `harness.sql` and a naked `has_table_privilege` reads false for *every* table there —
-passing for the wrong reason. `push_devices` instead counts `information_schema.role_table_grants`
-scoped to the grantee (**`078.1j`**), which is sound without staging. **A grep for one form finds
-none of the other** — `grep -c role_table_grants supabase/tests/rls_test.sql` is the reading, and
-counting rather than quoting it is the whole point of this paragraph — and that is exactly how a
-review of this paragraph concluded `push_devices` had no assertion at all. §The comment trap's rule applies
+forms, and that is the trap.** One is a savepoint-staged `has_table_privilege` (`postcard_reports`
+is the original, `126.1a`/`126.2a` the newest), needed because `service_role` is a bare role in
+`harness.sql` and a naked `has_table_privilege` reads false for *every* table there — passing for
+the wrong reason. The other counts `information_schema.role_table_grants` scoped to the grantee
+(**`078.1j`** on `push_devices`, `126.1b`/`126.2b` on the two newest), which is sound without
+staging. **Several tables now carry BOTH**, so the forms are not a partition of the revoked set and
+must not be read as one.
+
+**Enumerate them rather than quoting a list from here** — the list is what goes stale, and it is
+the same lesson twice over:
+
+```bash
+grep -n "has_table_privilege('service_role'" supabase/tests/rls_test.sql
+grep -n "role_table_grants"                   supabase/tests/rls_test.sql
+```
+
+**A grep for one form finds none of the other**, and that is exactly how a review of this paragraph
+once concluded `push_devices` had no assertion at all. **Assertion LABELS, never line numbers**:
+`:25674` was cited here for `club_thread_reports`' staged privilege check and actually lands on a
+`094.x` row count, because a hand-copied offset into a 40,000-line file is wrong the next time
+anything is inserted above it, while `094.x` is stable. §The comment trap's rule applies
 to a grep for an *assertion* as much as to one for a retired pattern: verify the filter both ways
 before writing down an absence.
 

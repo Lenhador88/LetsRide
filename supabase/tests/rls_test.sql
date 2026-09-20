@@ -40396,8 +40396,12 @@ select assert_eq(
 -- hole one level up: misspell 126.1b's copy alone and it counts 0, asserts 0,
 -- passes vacuously, and the probe below goes on passing against its own
 -- correct copy. Setting it once makes the two move together by construction.
--- `current_setting` without the missing_ok argument RAISES on an unset key,
--- which is deliberate: the missing_ok form returns NULL and would count 0.
+-- `current_setting` without the missing_ok argument is deliberate: the
+-- missing_ok form returns NULL and would count 0, vacuously. It RAISES only on
+-- a NEVER-set key, so it is the probe below and not this argument that catches
+-- the other shape -- a key set for the PREVIOUS table and not re-set for this
+-- one, which reads STALE rather than raising. Measured: deleting the second
+-- set_config fails at 126.2c2, by the probe.
 select set_config('letsride.probe_relation', 'password_reset_grants', true);
 select assert_eq(
   (select count(*)::int from information_schema.role_table_grants
