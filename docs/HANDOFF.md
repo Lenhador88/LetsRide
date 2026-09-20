@@ -19,24 +19,24 @@ git diff --stat origin/development -- docs/HANDOFF.md   # is this file itself un
 
 ## Position
 
-**Updated 2026-09-19.** Prune the lines that are no longer true when you land work; do not add
+**Updated 2026-09-20.** Prune the lines that are no longer true when you land work; do not add
 history.
 
 - **`development` is the default branch and deploys to DEV** (`app-dev.letsride.social`);
   `main` is production (`app.letsride.social`). `development` is normally ahead of `main`, and
   that is the steady state.
-- **Migrations: 124 files; DEV at `124`, PROD at `116`** — DEV answers 127 rows, the three extra
+- **Migrations: 126 files; DEV at `126`, PROD at `116`** — DEV answers 129 rows, the three extra
   hand-applied with no file; PROD none. **Take the next number from `list_migrations`, never the
-  file count** — `118`, `122` and `123` each reached DEV while their branch was open, which is
-  ordinary with several sessions building. `docs/reference/migrations.md` §Applied state has the
-  per-file log and §Security advisors the counts.
+  file count and never a DECLARED one** — a territory comment naming `125` is not a spent
+  number, and the ref is what settles it. `docs/reference/migrations.md` §Applied state has the per-file log
+  and §Security advisors the counts.
 - **Edge Functions: the older three AGREE across both projects** — identical `ezbr_sha256`
-  (2026-09-19); equality is not currency. **`push-notify` and `send-moderation-digest` are DEV-only
-  `v1`**, each deployed by `deploy-functions.yml` off its own merge. Read the `deploy` *job's*
+  (2026-09-19); equality is not currency. **`push-notify` and `send-moderation-digest` are
+  DEV-only**, each deployed by `deploy-functions.yml` off its own merge. Read the `deploy` *job's*
   conclusion, never the run's: without the token it skips and the run is green anyway.
-- **The walk is green on DEV** as both fixture accounts (2026-09-06 baselines in
-  `docs/reference/running-locally.md` §The walk); in CI it is **skipped**, per §Blocked on the
-  owner.
+- **The walk is green on DEV** — named account **25/25 screens, 89/89 checks** (2026-09-20);
+  `docs/reference/running-locally.md` §The walk has the quota trap. In CI it is
+  **skipped**, per §Blocked on the owner.
 - **Pass the Linear team id `7388c68e-ef17-4998-a9b7-d8ad8ce66038`, never a name** — a stale one
   errors on `list_issue_statuses` and answers `[]` elsewhere, so empty is not proof.
 - **OpenSpec has 35 open changes and 22 archived**

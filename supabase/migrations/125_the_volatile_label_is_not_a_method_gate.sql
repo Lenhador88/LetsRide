@@ -1,0 +1,84 @@
+-- ===========================================================================
+-- 125 — the volatile label is not a method gate (PD-440)
+-- ===========================================================================
+-- `091` and `093` each record, inside their preview function's own
+-- `comment on function`, the reason those functions are `volatile` rather than
+-- `stable`. The sentence has two halves and the SECOND ONE IS FALSE ON THIS
+-- DEPLOYMENT:
+--
+--   "VOLATILE rather than STABLE deliberately — its entry point may take a row
+--    lock, and a stable function is served over GET by PostgREST, which would
+--    put a live capability token in the request log's query string."
+--
+-- MEASURED AGAINST DEV 2026-09-08 with the publishable key alone:
+--
+--   GET /rest/v1/rpc/ride_invite_link_public_preview?t=<live token>  -> 200, full row
+--   GET /rest/v1/rpc/ride_invite_link_preview?t=<live token>         -> 401 / 42501
+--
+-- The second is the CONTROL and is what makes it conclusive: a PRIVILEGE error
+-- raised at execution, not a `405`. The request reaches the function; the
+-- method is not what stops it. **A volatile function IS served over GET here.**
+--
+-- ** WHAT ACTUALLY KEEPS THE TOKEN OUT OF THE URL IS THE CLIENT. **
+-- `supabase-js`'s `.rpc()` POSTs, and `src/lib/data/` is the only caller.
+-- Nothing in the database enforces it.
+--
+-- ** THE `volatile` LABEL ITSELF IS CORRECT AND STAYS. ** Two honest reasons
+-- survive: it is the safe default for these endpoints, and
+-- `claim_ride_invite_link` / `claim_club_invite_link` genuinely require it
+-- because `for share` is refused outright in a non-volatile function. Only the
+-- REASON RECORDED IN THE COMMENT is wrong, so only the comment changes.
+--
+-- ** THE HAZARD IS THE DIRECTION OF THE ERROR, which is why this is worth a
+-- file. ** A later session reads "volatile is POST-only" and concludes that an
+-- invite URL cannot end up in a request log, an intermediary's access log or
+-- browser history — and therefore that it is safe to hand out, log, or paste
+-- somewhere durable. The false half licenses a disclosure; the true half would
+-- only have licensed a redundant precaution.
+--
+-- `115_a_stranger_sees_the_ride.sql` already carries the corrected wording for
+-- the same claim on `public.ride_invite_link_public_preview`, pinned by 115.13,
+-- and `docs/reference/schema.md`'s `ride_invite_links` and `club_invite_links`
+-- rows were corrected by PD-430. This file is the third and last place the
+-- false sentence lives.
+--
+-- ** THIS FILE DOES NOT EDIT `091` OR `093`. ** An applied migration is never
+-- edited. It reissues the WHOLE comment on each function, because
+-- `comment on function` replaces rather than appends — so everything in each
+-- comment except that final sentence is reproduced BYTE FOR BYTE from the live
+-- `obj_description(p.oid, 'pg_proc')` read off DEV before this file was
+-- written. Losing a line of `091`'s eight-column projection contract or
+-- `093`'s six-column one would be a far worse regression than the defect being
+-- fixed.
+--
+-- ORDERING: comments only. No object, policy, grant, trigger, column or
+-- function body changes, so no bundle — old or new — can observe anything this
+-- file does, and it has no unsafe side in either direction. Both projects need
+-- it; it promotes to PROD in the ordinary way.
+
+-- ---------------------------------------------------------------------------
+-- §1. public.ride_invite_link_preview(text) — 091's comment, corrected
+-- ---------------------------------------------------------------------------
+comment on function public.ride_invite_link_preview(text) is
+  'What a token holder is shown before they decide — 091. EXACTLY EIGHT NAMED COLUMNS of exactly one ride: id, title, departure_at, timezone, meeting_point, the organizer''s username and avatar path, and a crew COUNT. Never rides.*, never a roster, never a rider id, never a second ride, and NEVER THE CLUB''S NAME — a private club''s name is not something a bearer token should disclose. Returns ZERO ROWS for every unreachable case and RAISES NOTHING, so expired, revoked, deleted, departed, blocked, un-onboarded, malformed and guessed are one outcome. Resolves through private.ride_invite_link_reachable_by and nothing else: no is_blocked call and no profiles stamp test appears in this body, which 091.13 asserts. VOLATILE rather than STABLE deliberately, AND ONLY THE FIRST HALF OF THE REASON 091 GAVE SURVIVED MEASUREMENT — corrected by 125, PD-440. What holds: this function''s entry point may take a row lock, and `for share` is refused outright in a non-volatile function, which is why claim_ride_invite_link must be volatile and why the label is the safe default here. ** WHAT IS FALSE: 091 also said a stable function is served over GET by PostgREST while a volatile one is POST-only, so that the label was what kept a live capability token out of the request log''s query string. IT IS NOT. ** Measured against DEV 2026-09-08 with the publishable key alone, GET /rest/v1/rpc/ride_invite_link_public_preview?t=<live token> answers 200 with the full row; the control proving the method is not what stops anything is that the same GET against THIS function answers 401/42501 permission denied — a privilege error raised at execution rather than a 405, so the request reached the function. A VOLATILE FUNCTION IS SERVED OVER GET ON THIS DEPLOYMENT. WHAT KEEPS THE TOKEN OUT OF THE URL IS THE CLIENT: supabase-js''s .rpc() POSTs and src/lib/data/ is the only caller, and NOTHING IN THE DATABASE ENFORCES IT. ** A LATER SESSION MUST NOT READ THIS LABEL AS "AN INVITE URL CANNOT REACH A REQUEST LOG, AN INTERMEDIARY''S ACCESS LOG OR BROWSER HISTORY" AND MUST NOT CONCLUDE FROM IT THAT SUCH A URL IS SAFE TO HAND OUT, LOG, OR PASTE SOMEWHERE DURABLE. ** The same correction is on public.club_invite_link_preview (093), was made at source on public.ride_invite_link_public_preview (115.13), and is in docs/reference/schema.md''s ride_invite_links and club_invite_links rows.';
+
+-- ---------------------------------------------------------------------------
+-- §2. public.club_invite_link_preview(text) — 093's comment, corrected
+-- ---------------------------------------------------------------------------
+comment on function public.club_invite_link_preview(text) is
+  'What a club token holder is shown before they decide — 093. EXACTLY SIX NAMED COLUMNS of exactly one club: club_id, name, avatar_path, location_name, members_count and is_public. Never clubs.*, never a roster, never a rider id, never the description, cover, owner or age, and NEVER the coordinates — the landing screen renders neither, and a token must not disclose where a club is for a field nothing draws. is_public is here and is NOT in discoverable_private_clubs'' seven, because that accessor returns private clubs by construction while A TOKEN CAN OUTLIVE A FLIP, and the screen would otherwise assert something false. Returns ZERO ROWS for every unreachable case and RAISES NOTHING, so expired, revoked, club deleted, minter demoted or departed, blocked either way, un-onboarded, already a member, the owner, malformed and guessed are one outcome. Resolves through private.club_invite_link_reachable_by and nothing else: no is_blocked call and no profiles stamp test appears in this body, which 093.27 asserts. VOLATILE rather than STABLE deliberately, AND ONLY THE FIRST HALF OF THE REASON 093 GAVE SURVIVED MEASUREMENT — corrected by 125, PD-440. What holds: this function''s entry point may take a row lock, and `for share` is refused outright in a non-volatile function, which is why claim_club_invite_link must be volatile and why the label is the safe default here. ** WHAT IS FALSE: 093 also said a stable function is served over GET by PostgREST while a volatile one is POST-only, so that the label was what kept a live capability token out of the request log''s query string. IT IS NOT. ** Measured against DEV 2026-09-08 with the publishable key alone, GET /rest/v1/rpc/ride_invite_link_public_preview?t=<live token> answers 200 with the full row; the control proving the method is not what stops anything is that the same GET against 091''s ride_invite_link_preview answers 401/42501 permission denied — a privilege error raised at execution rather than a 405, so the request reached the function. A VOLATILE FUNCTION IS SERVED OVER GET ON THIS DEPLOYMENT. WHAT KEEPS THE TOKEN OUT OF THE URL IS THE CLIENT: supabase-js''s .rpc() POSTs and src/lib/data/ is the only caller, and NOTHING IN THE DATABASE ENFORCES IT. ** A LATER SESSION MUST NOT READ THIS LABEL AS "AN INVITE URL CANNOT REACH A REQUEST LOG, AN INTERMEDIARY''S ACCESS LOG OR BROWSER HISTORY" AND MUST NOT CONCLUDE FROM IT THAT SUCH A URL IS SAFE TO HAND OUT, LOG, OR PASTE SOMEWHERE DURABLE. ** The same correction is on public.ride_invite_link_preview (091), was made at source on public.ride_invite_link_public_preview (115.13), and is in docs/reference/schema.md''s ride_invite_links and club_invite_links rows.';
+
+-- ===========================================================================
+-- Verification — run against the project after applying, do not assume
+-- ===========================================================================
+--
+--   select p.proname, p.provolatile,
+--          obj_description(p.oid, 'pg_proc') like '%ONLY THE FIRST HALF%'  as corrected,
+--          obj_description(p.oid, 'pg_proc') like '%which would put a live capability token%' as false_half_gone
+--     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+--    where n.nspname = 'public'
+--      and p.proname in ('ride_invite_link_preview', 'club_invite_link_preview');
+--   -- provolatile 'v' on BOTH (this file must not change the label),
+--   -- corrected true, false_half_gone false.
+--
+-- Pinned by 125.1 and 125.2 in supabase/tests/rls_test.sql.

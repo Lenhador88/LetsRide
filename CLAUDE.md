@@ -285,11 +285,11 @@ Four rules, each with a test naming the trap it avoids:
 
 ## Supabase Rules
 
-**Five Edge Functions — three on both projects, `push-notify` and `send-moderation-digest` on DEV**: `delete-account` (the only place a
-service-role key exists — the Auth admin API needs it), `resolve-ride-location` (geocodes a
+**Five Edge Functions — three on both projects, `push-notify` and `send-moderation-digest` on DEV**: `delete-account` (the Auth admin API needs a
+service-role key; `121`/`124` hold one too), `resolve-ride-location` (geocodes a
 meeting point and renders its tiles), `search-places` (proxies the typeahead), `push-notify`
 (`121`'s outbox drain) and
-`send-moderation-digest` (`124`'s mail sweep). **Both are DEV-only and inert without the owner's secrets — a merge deploys them, so read `list_edge_functions` rather than this line.**
+`send-moderation-digest` (`124`'s mail sweep). **Both are inert without the owner's secrets, and a merge deploys them — read `list_edge_functions` rather than this line.**
 Four rules on `delete-account`, which is why it does not contradict §What Not To Do — **the function is not the
 app**: the key lives only in the function's secret store (`src/__tests__/no-service-role-key.test.ts`
 is the tripwire); it takes no user id; it verifies the JWT itself; only CI's `functions` job
@@ -333,15 +333,14 @@ repointed. `docs/ENVIRONMENTS.md` is the contract. **Never promote a Vercel prev
 — both Supabase variables are inlined at build time and promote does not rebuild. **Check drift
 rather than claiming it**: `npm run db:drift` compares migration *names*.
 
-**Applied state: 124 files; DEV is at `124` and PROD at `116` — measured 2026-09-19.** DEV-ahead
+**Applied state: 126 files; DEV is at `126` and PROD at `116` — measured 2026-09-20.** DEV-ahead
 is the resting state between a merge and its promotion; promote everything the gap contains, in
 filename order, per `docs/ENVIRONMENTS.md` §Migrations, and record each file's ordering in
 `docs/reference/migrations.md` §Applied state. Count rather than trust it — `list_migrations`
-against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV answers 127 rows and
+against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV answers 129 rows and
 THREE have no file; PROD none** — the long-standing hand-applied ones. **Three sessions build at
 once, so the DEV ref runs ahead of the tree by however many are in flight**: count the FILE-LESS
 rows rather than the gap, and take the next number off `list_migrations` rather than off `wc -l`.
-`118`, `122` and `123` were each spent on DEV while their branch was still open.
 **`113` then `114` was a required order on the PROD promotion and must not be collapsed** if it is
 ever replayed: `114` refuses a NULL country, so applied ahead of the bundle that writes one it
 strands every new signup in a wizard with no skip. PROD's last four rows are `home_country`,
@@ -368,7 +367,7 @@ before it applies** — every affected path exercised on DEV, in a rolled-back t
 recorded statement that does not equal `md5sum` of its file is the NORM; compare the OBJECT
 (`docs/reference/migrations.md` §Applying a large file, §What reads as drift).
 
-Suite **4225** assertions — re-derive rather than trust it:
+Suite **4245** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs.
 
@@ -381,8 +380,9 @@ for whom no barrier exists.
 inside a `security definer` function `current_user` is the owner and the
 `if current_user <> 'authenticated'` guards never run.
 
-**Security advisors: one WARN per `security definer` RPC in `public` and one INFO per table whose
-client grants were revoked outright, and those are chosen.** `115` added a **second WARN class**,
+**Security advisors: one WARN per `security definer` RPC in `public`, and an INFO per table with
+RLS on and no policy — which reads POLICIES, not grants, so it neither matches nor tracks the
+revoked list. Those are chosen.** `115` added a **second WARN class**,
 `anon_security_definer_function_executable` (lint `0028`) — one finding, and it is decision #1's
 named exception rather than a 39th of the `authenticated_*` class, whose count did not move. The
 only outstanding one is `auth_leaked_password_protection`, a dashboard click. Re-derive with `get_advisors(security)`;
@@ -394,10 +394,10 @@ difference between the projects is almost always a pending promotion.
 
 **A new table KEEPS Supabase's default `service_role` grants. Revoking is the exception, for a
 restricted-readership sink** — rows the one credential that bypasses RLS must not be able to
-enumerate (`076` §3). Eight are revoked today, and the criterion is a judgement about the ROWS
+enumerate (`076` §3). Ten are revoked today, and the criterion is a judgement about the ROWS
 with no mechanical test — an earlier mechanical test excluded the two reporting tables and would
 have re-opened the exposure. `rls_enabled_no_policy` is a candidate set worth checking, never the
-criterion; PD-413 holds the two candidates found unrevoked. Re-run rather than trust any list:
+criterion; `126` revoked the last two it surfaced. Re-run rather than trust any list:
 
 ```sql
 select count(*) filter (where sr)                          as kept,
@@ -406,9 +406,10 @@ select count(*) filter (where sr)                          as kept,
   from (select c.relname, has_table_privilege('service_role', c.oid, 'SELECT') as sr
           from pg_class c join pg_namespace n on n.oid = c.relnamespace
          where n.nspname='public' and c.relkind='r') t;
--- 29 kept · 8 revoked · club_thread_reports, feedback, moderation_digest_entries,
---                       postcard_comment_reports, postcard_reports, push_deliveries,
---                       push_devices, ride_thread_reports (2026-09-19).
+-- 27 kept · 10 revoked (2026-09-20):
+-- club_removals, club_thread_reports, feedback, moderation_digest_entries,
+-- password_reset_grants, postcard_comment_reports, postcard_reports,
+-- push_deliveries, push_devices, ride_thread_reports.
 ```
 
 Each revoke carries a grantee-scoped assertion in one of two forms — a savepoint-staged

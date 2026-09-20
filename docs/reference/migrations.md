@@ -329,11 +329,12 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**124 files. DEV is at `124`, answering 127 rows, and PROD at `116` — measured 2026-09-19.**
+**126 files. DEV is at `126`, answering 129 rows, and PROD at `116` — measured 2026-09-20.**
 DEV-ahead is the resting state between a merge and its promotion: `117` (PD-398), `118` (PD-459),
-`119` (PD-175), `120` (PD-458), `121` (PD-303), `122`/`123` (PD-454) and `124` (PD-457) are applied
+`119` (PD-175), `120` (PD-458), `121` (PD-303), `122`/`123` (PD-454), `124` (PD-457), `125` (PD-440)
+and `126` (PD-413) are applied
 to DEV and await the `development` → `main` promotion, which is the only thing that should carry
-them to PROD. Three of the 127 rows are file-less — the long-standing hand-applied ones — and
+them to PROD. Three of the 129 rows are file-less — the long-standing hand-applied ones — and
 nothing else is.
 
 **Three of those numbers were SPENT ON DEV BEFORE THEIR FILE EXISTED HERE, and that is the state
@@ -455,6 +456,83 @@ correct by design rather than an oversight — a table with RLS on, no policy an
 client role is the shape `121`'s `push_deliveries` already has. RLS suite **4158 → 4225**, **+67**
 labels, all `124.x`, none removed. **A grep answers 66 and 66 is wrong** — a label pattern ending
 `[:.]` drops `124.1d`, which carries neither; count with `grep -oE "'124\.[0-9]+[a-z0-9]*"`.
+
+**`125_the_volatile_label_is_not_a_method_gate` (PD-440), applied to DEV 2026-09-19T23:52Z as
+`125_the_volatile_label_is_not_a_method_gate`.** Comments only — it reissues `comment on function`
+on `public.ride_invite_link_preview(text)` (`091`) and `public.club_invite_link_preview(text)`
+(`093`), whose shared final sentence gave a **measured-false** reason for the `volatile` label:
+*"a stable function is served over GET by PostgREST, which would put a live capability token in the
+request log's query string."* A volatile function **is** served over GET on this deployment —
+`GET /rest/v1/rpc/ride_invite_link_public_preview?t=<live token>` answers **200** with the
+publishable key alone, and the control that makes it conclusive is the same GET against
+`ride_invite_link_preview` answering **401 / 42501**, a privilege error raised at execution rather
+than a `405`. What keeps the token out of the URL is that `supabase-js`'s `.rpc()` POSTs and
+`src/lib/data/` is the only caller; **nothing in the database enforces it**. `115` already carried
+the corrected wording on `ride_invite_link_public_preview` (115.13) and PD-430 corrected
+[`docs/reference/schema.md`](schema.md)'s two invite-link rows, so `091` and `093` were the last
+two places the false reason lived. **The `volatile` LABEL is correct and does not move** — `for
+share` is refused outright in a non-volatile function, so the two claim RPCs require it — and
+125.1c / 125.2c exist to refuse the "fix" the corrected prose invites. **Each comment is reissued
+WHOLE**, because `comment on function` replaces rather than appends: every sentence but the last
+was reproduced byte-for-byte from `obj_description(p.oid, 'pg_proc')` read off DEV first, verified
+programmatically against `091`/`093`'s own literals before applying (prefixes identical at 716 and
+1019 characters), and 125.1d / 125.2d assert the eight- and six-column projection bounds survived.
+**Applied in full, not reduced** — `md5(obj_description(...))` on DEV equals the digest computed
+from the committed file for both functions (`f609556190fbac65231bc95a3d24393d` and
+`1b736d3b666af16dddd81cef3fd5f29a`), and `provolatile` reads `v` on both. No object, policy, grant,
+trigger, column or function body changes, so it has no unsafe side in either direction and promotes
+to PROD in the ordinary way. Security advisors **47 → 47, zero movement**; RLS suite
+**4225 → 4233**, **+8** labels, all `125.x`. DEV-only until the promotion.
+
+**`126_two_sinks_the_bypass_key_cannot_enumerate` (PD-413), applied to DEV 2026-09-19T23:54Z as
+`126_two_sinks_the_bypass_key_cannot_enumerate`.** `revoke all ... from service_role` on
+`public.password_reset_grants` (`026`'s omission) and `public.club_removals` (`111`'s), plus a
+restamp of `111`'s table comment. Both are `076` §3b's shape exactly: they revoked from
+`anon, authenticated` and never named `service_role`, so Supabase's project default stood and the
+one credential that bypasses RLS could enumerate, in `club_removals`' case, every (club, rider)
+pair an admin removed — over a table whose own comment says *NOBODY READS IT ... it is not an audit
+trail and must not grow into one*, and whose spec requires that nothing anywhere record who removed
+whom. **`026`'s table comment already claimed the posture** (*"no role holds a grant on it"*), so
+that half is a file making a four-month-old claim true and needs no restamp; `111`'s said "every
+client role is revoked", which understated it after this file, and is reissued whole with two
+sentences changed and the rest byte-for-byte. **The criterion is a judgement about the ROWS and
+`rls_enabled_no_policy` is a candidate set, never the test** — it excludes `postcard_reports` and
+`club_thread_reports`, which are revoked and carry two policies each.
+
+**The cascade was exercised before the revoke, not reasoned** — `076`'s gate, because getting it
+wrong takes account deletion down and nothing in CI would notice. Two rolled-back transactions on
+DEV with the revokes staged inside them: (A) `set local role service_role; delete from
+public.profiles where id = <rider>;` → `club_removals` **1 → 0** with
+`bool_or(has_table_privilege('service_role','public.club_removals',p))` **false throughout**; (B)
+`delete from auth.users where id = <rider>;` → `profiles` **1 → 0**, `club_removals` **1 → 0**,
+`password_reset_grants` **1 → 0**, same privilege answer. (B) ran as the OWNER rather than as
+`supabase_auth_admin`, which this connection cannot `set role` to — and `service_role` holds no
+DELETE on `auth.users` at all (measured), which is itself why the deletion path is not the role
+being revoked. Counts re-read after rollback and unchanged. `delete-account` needs no new step.
+
+**The PROD sequencing question in PD-413's body is STALE and the file is written for the other
+branch.** The issue (2026-09-06) says `111` was unpromoted, so `club_removals` would not exist on
+PROD and the file would need a `to_regclass` guard. Measured 2026-09-19 against
+`zwprydcyryvudhurbnye`: `list_migrations` carries `a_removal_bars_a_live_invite_link` (applied
+2026-09-07) and `to_regclass` answers non-null for **both** tables, with
+`has_table_privilege('service_role','public.password_reset_grants','SELECT')` **true** — PROD
+carries the same gap. So a plain `revoke` is correct on both projects and **no guard is present, on
+purpose**: a guard turns a missing table into silent success, which is how a revoke gets believed
+on a project where it never ran.
+
+**Measured on DEV after, 2026-09-19.** `service_role` census **29 kept / 8 revoked → 27 kept / 10
+revoked**, the two new names being `club_removals` and `password_reset_grants`; grantee-scoped
+`role_table_grants` for `service_role` on the pair **0**. Security advisors **47 → 47, zero
+movement, and that is the expected answer** — both tables were ALREADY in `rls_enabled_no_policy`
+(7 findings, unchanged), which is a statement about POLICIES and not about grants, so
+`CLAUDE.md`'s "one INFO per table whose client grants were revoked outright" gains no member here.
+`md5(obj_description('public.club_removals'::regclass,'pg_class'))` on DEV equals the digest
+computed from the committed file (`955db3084f218e5a83a70dbf2441c29e`). RLS suite **4233 → 4245**,
+**+12** labels, all `126.x`, including FOUR savepoint-staged anti-vacuity probes — two per table,
+one for each accepted assertion form — because the
+privilege this file revokes is installed by the hosted project's `pg_default_acl` and the scratch
+database has none — so those four **cannot fail locally** and state intent, exactly as `124.1b` does.
+DEV-only until the promotion.
 
 **The `113`, `114`, `115`, `116` promotion applied to PROD on 2026-09-08, `113` ahead of `114` as
 its gate required.** The open gap today is `117` and `118`, both DEV-only. The ordering rule stands for the next one, and
@@ -1807,12 +1885,16 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 124 — DEV at 124, PROD at 116. The DEV ref runs AHEAD
+ls supabase/migrations/*.sql | wc -l     # 126 — DEV at 126, PROD at 116. The DEV ref runs AHEAD
                                          # of this count whenever a concurrent branch has applied
                                          # its own file: 118 (PD-459) and 122/123 (PD-454) each
                                          # did, so never infer the next free number from wc -l.
                                          # 122 and 123 were numbered off list_migrations for
                                          # exactly that reason — the tasks file said 118/119.
+                                         # 125/126 (PD-440/PD-413) took the OTHER trap: a slot-2
+                                         # session DECLARED 125 sixteen hours earlier and never
+                                         # wrote or applied it, so list_migrations — not the
+                                         # declaration — is what said 125 was still free.
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```
@@ -1957,10 +2039,22 @@ projects, and it reads exactly like drift. Compare the OBJECT, never the recorde
 
 ## Security advisors
 
-**Security advisors: forty-six on DEV and forty-three on PROD, and only one is outstanding on
-each.** **DEV moved +1 with `117`, +1 with `120` and +1 with `121`, all three
-`rls_enabled_no_policy` INFO on a sink whose client grants were revoked outright, all three
-chosen**, so the three-advisor gap is those files awaiting promotion.
+**Security advisors: FORTY-SEVEN on DEV — measured 2026-09-20 — and forty-three on PROD (measured
+2026-09-19, not re-read since), and only one is outstanding on each.** **DEV moved +1 with `117`,
++1 with `120`, +1 with `121` and +1 with `124`, all four `rls_enabled_no_policy` INFO on a sink
+whose client grants were revoked outright, all four chosen**, so the four-advisor gap is those
+files awaiting promotion. **The headline read forty-six and three until 2026-09-20**, because
+`124`'s `moderation_digest_entries` INFO landed without this sentence moving with it — which is
+what the re-derive line below is for.
+
+**`125` and `126` add NOTHING to this total, and `126` is the one worth understanding**, because
+the intuition it defeats is the reason `CLAUDE.md` states the sink rule as a judgement rather than
+a filter. `126` revokes `service_role` on `password_reset_grants` and `club_removals`, and the
+count does not move **because `rls_enabled_no_policy` counts POLICIES, not grants** — both tables
+were already in that INFO class before the revoke and are still in it after. So a revoke is
+invisible to the advisors in both directions: this class can never confirm one landed, and
+`CLAUDE.md`'s census query is the only thing that can. `125` changes two `comment on function`
+reasons and touches no grant, label or signature at all.
 **PROD's total was recorded as forty-two and that was wrong** — measured 43 on 2026-09-19 — because
 the `anon` class below was counted as DEV-only after `115` had already promoted. The difference is `115`'s pending promotion, in the new
 `anon_security_definer_function_executable` row below. A one- or two-advisor difference between the projects is the ordinary
@@ -1979,7 +2073,7 @@ cannot tell a session whether a new WARN is expected:
 | Count | Advisor | Why it is there |
 |---|---|---|
 | 38 on both | `authenticated_security_definer_function_executable` (WARN) | Every `security definer` RPC in `public` — the onboarding accessors (`021`), the recovery-grant pair (`026`), the moderation and club-management RPCs, the push-device pair (`078`), the ride and club invite RPCs (`083`, `085`, `091`), `introduce_to_club` (`097`), the moderation-reversal accessors (`105`/`106`) and `108`'s two ride-thread RPCs. Every one is `security definer` **by design**, and each is narrow on purpose: takes a row id and never a rider id, writes or answers exactly one row for its caller, and has ONE raise site so it cannot be used as an oracle. **This advisor fires once per such function, so a migration adding two adds two**, and a migration whose functions live in `private` adds none, because PostgREST does not publish `private`. Count them off `get_advisors` rather than off this cell. **`121` is the worked counter-example, and it is why this cell says `security definer` **plus a grant** rather than just "a new function": it adds FIVE such functions in `public` — `public` now holds 49 of them against 38 the advisor names — and the count did NOT move, because `authenticated` holds EXECUTE on none of the five** (they are `service_role`'s). The advisor fires on the grant, not on the property. `078` added two that WERE callable and moved it by two. Measured on DEV 2026-09-19 with the query above plus the same count without the `has_function_privilege` filter |
-| 6 on DEV, 3 on PROD | `rls_enabled_no_policy` on `password_reset_grants`, `push_devices`, `club_removals`, and on DEV also `private.system_alerts` (`117`), `private.consent_records` (`120`) and `public.push_deliveries` (`121`) — the three awaiting promotion (INFO) | Correct by design: `026`, `078` and `111` revoke everything on their table from the client roles, so a policy would be the thing that granted reach. **`club_removals` and `password_reset_grants` still hold Supabase's default `service_role` grant, and should not** — PD-413; `docs/reference/schema.md` §`service_role` grants has the reasoning |
+| 7 on DEV, 3 on PROD | `rls_enabled_no_policy` on `password_reset_grants`, `push_devices`, `club_removals`, and on DEV also `private.system_alerts` (`117`), `private.consent_records` (`120`), `public.push_deliveries` (`121`) and `public.moderation_digest_entries` (`124`) — the four awaiting promotion (INFO) | Correct by design: `026`, `078` and `111` revoke everything on their table from the client roles, so a policy would be the thing that granted reach. **`club_removals` and `password_reset_grants` held Supabase's default `service_role` grant until `126` (PD-413) revoked it** — and the count did NOT move, because this lint reads POLICIES and not grants, which is why it is a candidate set and never the criterion; `docs/reference/schema.md` §`service_role` grants has the reasoning |
 | **1 on BOTH** | `anon_security_definer_function_executable` (lint `0028`, WARN) | **A class this project had never seen before `115`**, and its arrival is a finding in itself: it means the advisor set *can* see the app's only anonymous surface, which the change wrote down as a fact to read rather than predict. It names `public.ride_invite_link_public_preview(t text)` and nothing else, and it is `CLAUDE.md` decision #1's one named exception. **It is NOT a 39th of the row above** — that count did not move — so a session reading only the total would mis-attribute it. **It is 1 on PROD too, measured 2026-09-19** — `115` promoted on 2026-09-08 and this row went on saying "zero on PROD" for eleven days, which is why the count is re-read rather than inherited. A **second** finding in this class is a new decision and not this one extended |
 | 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
 
