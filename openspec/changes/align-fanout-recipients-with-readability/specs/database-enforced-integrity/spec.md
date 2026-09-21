@@ -16,7 +16,7 @@
 > ```bash
 > # A. Every scenario heading in the other delta is present in this one.
 > comm -23 \
->   <(grep '^#### Scenario:' openspec/changes/grant-club-owner-member-reach/specs/database-enforced-integrity/spec.md | sort) \
+>   <(grep '^#### Scenario:' openspec/changes/archive/2026-09-21-grant-club-owner-member-reach/specs/database-enforced-integrity/spec.md | sort) \
 >   <(grep '^#### Scenario:' openspec/changes/align-fanout-recipients-with-readability/specs/database-enforced-integrity/spec.md | sort)
 >
 > # B. No LINE of the other delta's scenarios has been lost from this one.
@@ -24,7 +24,7 @@
 > scen() { awk -v want="#### Scenario: $2" '/^#### Scenario: /{inblk=($0==want)} inblk' "$1"; }
 > for s in "Club owner holding no membership row" "Club admin" \
 >          "Former member who does not own the club" "Blocked rider who owns the club"; do
->   diff <(scen openspec/changes/grant-club-owner-member-reach/specs/database-enforced-integrity/spec.md "$s") \
+>   diff <(scen openspec/changes/archive/2026-09-21-grant-club-owner-member-reach/specs/database-enforced-integrity/spec.md "$s") \
 >        <(scen openspec/changes/align-fanout-recipients-with-readability/specs/database-enforced-integrity/spec.md "$s") \
 >     | grep '^<' && echo "LOST FROM: $s"
 > done
