@@ -329,13 +329,24 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**126 files. DEV is at `126`, answering 129 rows, and PROD at `116` — measured 2026-09-20.**
-DEV-ahead is the resting state between a merge and its promotion: `117` (PD-398), `118` (PD-459),
-`119` (PD-175), `120` (PD-458), `121` (PD-303), `122`/`123` (PD-454), `124` (PD-457), `125` (PD-440)
-and `126` (PD-413) are applied
-to DEV and await the `development` → `main` promotion, which is the only thing that should carry
-them to PROD. Three of the 129 rows are file-less — the long-standing hand-applied ones — and
-nothing else is.
+**126 files. DEV and PROD are both at `126` — measured 2026-09-21.** DEV answers 129 rows, three
+of them file-less (the long-standing hand-applied ones); PROD answers exactly 126.
+
+**`117`–`126` promoted to PROD on 2026-09-21 with #476, nine BEFORE the build and one AFTER.**
+`117` and `119`–`126` were applied in filename order between 14:11:35Z and 14:21:52Z, ahead of the
+merge (14:27:33Z): each is additive or unobservable by a bundle, and `122`/`123` had to lead
+because the promoted bundle writes their tables. **`118` waited for `READY` on `289d7135` with
+`aliasError` null (14:28:39Z) and `/legal/terms` no longer carrying the disclaimer, then applied at
+14:34:42Z** — its header is deploy-first, since `1.0` stamped against the old page records an
+agreement nobody was shown. `121`, `122`, `123` and `124` went up reduced (§Applying a large file);
+the proof is an object diff of PROD against DEV across `public` and `private` — constraints (214),
+indexes (128), policies (88), tables with columns, comments and ACLs (39), triggers (73) and views
+(5) hash identically, and of 146 functions the only differences are five pre-existing and
+comment-only — `sweep_place_search_attempts` and `protect_ride_organizer_membership` (§What reads
+as drift), `enforce_ride_club_audience`, `my_onboarding_state` and
+`propagate_club_privacy_to_rides` (the `060`–`068` entry) — plus `clear_ride_map_tiles`, whose
+body md5 matches and whose `obj_description` alone differs. `pg_cron` is absent on PROD, so `121`'s and `124`'s schedule
+blocks raised their notice and created nothing.
 
 **Three of those numbers were SPENT ON DEV BEFORE THEIR FILE EXISTED HERE, and that is the state
 to plan for rather than the exception.** `118_the_terms_name_a_person` was applied to DEV from
@@ -2039,13 +2050,10 @@ projects, and it reads exactly like drift. Compare the OBJECT, never the recorde
 
 ## Security advisors
 
-**Security advisors: FORTY-SEVEN on DEV — measured 2026-09-20 — and forty-three on PROD (measured
-2026-09-19, not re-read since), and only one is outstanding on each.** **DEV moved +1 with `117`,
-+1 with `120`, +1 with `121` and +1 with `124`, all four `rls_enabled_no_policy` INFO on a sink
-whose client grants were revoked outright, all four chosen**, so the four-advisor gap is those
-files awaiting promotion. **The headline read forty-six and three until 2026-09-20**, because
-`124`'s `moderation_digest_entries` INFO landed without this sentence moving with it — which is
-what the re-derive line below is for.
+**Security advisors: FORTY-SEVEN on both projects — DEV measured 2026-09-20, PROD 2026-09-21
+after `117`–`126` promoted — and only one is outstanding on each.** **Each project moved +1 with
+`117`, +1 with `120`, +1 with `121` and +1 with `124`, all four `rls_enabled_no_policy` INFO on a
+sink whose client grants were revoked outright, all four chosen.**
 
 **`125` and `126` add NOTHING to this total, and `126` is the one worth understanding**, because
 the intuition it defeats is the reason `CLAUDE.md` states the sink rule as a judgement rather than
@@ -2055,9 +2063,7 @@ were already in that INFO class before the revoke and are still in it after. So 
 invisible to the advisors in both directions: this class can never confirm one landed, and
 `CLAUDE.md`'s census query is the only thing that can. `125` changes two `comment on function`
 reasons and touches no grant, label or signature at all.
-**PROD's total was recorded as forty-two and that was wrong** — measured 43 on 2026-09-19 — because
-the `anon` class below was counted as DEV-only after `115` had already promoted. The difference is `115`'s pending promotion, in the new
-`anon_security_definer_function_executable` row below. A one- or two-advisor difference between the projects is the ordinary
+A one- or two-advisor difference between the projects is the ordinary
 shape of a pending promotion, never a finding on its own. Re-derive
 rather than trust the number — `get_advisors(security)`, or, without the payload,
 
@@ -2073,7 +2079,7 @@ cannot tell a session whether a new WARN is expected:
 | Count | Advisor | Why it is there |
 |---|---|---|
 | 38 on both | `authenticated_security_definer_function_executable` (WARN) | Every `security definer` RPC in `public` — the onboarding accessors (`021`), the recovery-grant pair (`026`), the moderation and club-management RPCs, the push-device pair (`078`), the ride and club invite RPCs (`083`, `085`, `091`), `introduce_to_club` (`097`), the moderation-reversal accessors (`105`/`106`) and `108`'s two ride-thread RPCs. Every one is `security definer` **by design**, and each is narrow on purpose: takes a row id and never a rider id, writes or answers exactly one row for its caller, and has ONE raise site so it cannot be used as an oracle. **This advisor fires once per such function, so a migration adding two adds two**, and a migration whose functions live in `private` adds none, because PostgREST does not publish `private`. Count them off `get_advisors` rather than off this cell. **`121` is the worked counter-example, and it is why this cell says `security definer` **plus a grant** rather than just "a new function": it adds FIVE such functions in `public` — `public` now holds 49 of them against 38 the advisor names — and the count did NOT move, because `authenticated` holds EXECUTE on none of the five** (they are `service_role`'s). The advisor fires on the grant, not on the property. `078` added two that WERE callable and moved it by two. Measured on DEV 2026-09-19 with the query above plus the same count without the `has_function_privilege` filter |
-| 7 on DEV, 3 on PROD | `rls_enabled_no_policy` on `password_reset_grants`, `push_devices`, `club_removals`, and on DEV also `private.system_alerts` (`117`), `private.consent_records` (`120`), `public.push_deliveries` (`121`) and `public.moderation_digest_entries` (`124`) — the four awaiting promotion (INFO) | Correct by design: `026`, `078` and `111` revoke everything on their table from the client roles, so a policy would be the thing that granted reach. **`club_removals` and `password_reset_grants` held Supabase's default `service_role` grant until `126` (PD-413) revoked it** — and the count did NOT move, because this lint reads POLICIES and not grants, which is why it is a candidate set and never the criterion; `docs/reference/schema.md` §`service_role` grants has the reasoning |
+| 7 on both | `rls_enabled_no_policy` on `password_reset_grants`, `push_devices`, `club_removals`, `private.system_alerts` (`117`), `private.consent_records` (`120`), `public.push_deliveries` (`121`) and `public.moderation_digest_entries` (`124`) (INFO) | Correct by design: `026`, `078` and `111` revoke everything on their table from the client roles, so a policy would be the thing that granted reach. **`club_removals` and `password_reset_grants` held Supabase's default `service_role` grant until `126` (PD-413) revoked it** — and the count did NOT move, because this lint reads POLICIES and not grants, which is why it is a candidate set and never the criterion; `docs/reference/schema.md` §`service_role` grants has the reasoning |
 | **1 on BOTH** | `anon_security_definer_function_executable` (lint `0028`, WARN) | **A class this project had never seen before `115`**, and its arrival is a finding in itself: it means the advisor set *can* see the app's only anonymous surface, which the change wrote down as a fact to read rather than predict. It names `public.ride_invite_link_public_preview(t text)` and nothing else, and it is `CLAUDE.md` decision #1's one named exception. **It is NOT a 39th of the row above** — that count did not move — so a session reading only the total would mis-attribute it. **It is 1 on PROD too, measured 2026-09-19** — `115` promoted on 2026-09-08 and this row went on saying "zero on PROD" for eleven days, which is why the count is re-read rather than inherited. A **second** finding in this class is a new decision and not this one extended |
 | 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
 
