@@ -24,7 +24,7 @@ history.
 
 - **`development` is the default branch and deploys to DEV** (`app-dev.letsride.social`);
   `main` is production (`app.letsride.social`). `development` is normally ahead of `main`, and
-  that is the steady state. **The last promotion is #476 (2026-09-21).**
+  that is the steady state.
 - **Migrations: 126 files; DEV and PROD both at `126`** — DEV answers 129 rows, the three extra
   hand-applied with no file; PROD answers exactly 126. **Take the next number from `list_migrations`, never the
   file count and never a DECLARED one** — a territory comment naming `125` is not a spent
@@ -73,6 +73,9 @@ history.
   `docs/ENVIRONMENTS.md` §`send-moderation-digest`'s secrets is the control no test can reach.
 - **PD-385 is open on purpose**: 9 DEV rides have a coordinate and no tile, repairable only by
   their organizers.
+- **Xcode Cloud (PD-474) is `Development (AI)`** — #479 carries `ios/App/ci_scripts/`, a shared
+  scheme and the owner checklist in `docs/reference/native-shell.md`. No build can pass until a
+  promotion puts it on `main`; the story closes when a phone installs a TestFlight build.
 
 Re-derive rather than trust it: `list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`
 filtered by status, and `list_pull_requests state=open`.
@@ -95,17 +98,15 @@ body carries its own steps.
 ## Next action
 
 **The first TestFlight build, then a phone.** Push (child B), universal links and the camera
-prompt are all built and have never run on a device, because nothing has ever been archived.
-PD-474 builds the Xcode Cloud route: every merge to `main` archives and delivers to TestFlight
-internal testing. Its build script runs from `main`, so the owner creates the workflow only after
-a promotion carries `ios/App/ci_scripts/`; the owner checklist lands with it.
+prompt are all built and have never run on a device, because no Xcode archive has ever been made.
+Once PD-474 (§In flight) reaches `main`, the owner creates the Xcode Cloud workflow from its
+checklist, and the first TestFlight build is what the device checks wait on.
 
 **Then the standing specs' known-stale text**, which no archive could fix because no change owns
-it: `club_thread_waves` (dropped by `101`) still described, the pre-join sheet PD-418 changed,
-`enforce-creator-membership`'s "no admin row exists today" (false since `088`), and
-`photo-capture-metadata` describing the composer before PD-275. **`add-account-deletion` must
-have its role block rewritten against the standing spec before it archives** — its banner says
-how. *Verify shipped from `src/` and `supabase/migrations/`, never from `tasks.md`*, whose tick
+it: the pre-join sheet PD-418 changed, `enforce-creator-membership`'s "no admin row exists today"
+(false since `088`), and `photo-capture-metadata` describing the composer before PD-275.
+**`add-account-deletion` must have its role block rewritten against the standing spec, and its
+pre-PD-98 succession answer replaced by `107`'s, before it archives** — its banner says how. *Verify shipped from `src/` and `supabase/migrations/`, never from `tasks.md`*, whose tick
 counts are wrong in both directions.
 
 ## Test accounts

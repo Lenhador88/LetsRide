@@ -546,7 +546,7 @@ database has none — so those four **cannot fail locally** and state intent, ex
 DEV-only until the promotion.
 
 **The `113`, `114`, `115`, `116` promotion applied to PROD on 2026-09-08, `113` ahead of `114` as
-its gate required.** The open gap today is `117` and `118`, both DEV-only. The ordering rule stands for the next one, and
+its gate required.** The ordering rule stands for the next one, and
 `114`'s entry below is why: it is the narrowing half and must not reach a project until the same
 bundle is serving there. **`115` carried no such gate against the other two** — it creates one
 object nothing existing calls, so it neither depended on `113`/`114` nor was depended on by them.

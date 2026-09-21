@@ -344,7 +344,7 @@ rows rather than the gap, and take the next number off `list_migrations` rather 
 **A file's own header names its side of the deploy, and some want the build SERVING first**:
 `114` refuses a NULL country, so ahead of the bundle that writes one it strands every signup in a
 wizard with no skip; `118` stamps a terms version, so ahead of the page that shows it every consent
-records an agreement nobody saw. Both went after `READY` on their promotion sha.
+records an agreement nobody saw.
 `docs/reference/migrations.md` §Applied state has each promotion's order.
 
 **The sequencing rule: additive first, deploy, destructive last — and "additive, so the order does
