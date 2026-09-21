@@ -17,7 +17,7 @@ changing a policy or a grant is paired with a task adding assertions to `supabas
 > outside this session's territory (Q1). Build the defaults.
 
 > **Territory.** Slot-2 holds `src/lib/actions/`, `src/lib/data/`, `src/components/`,
-> `supabase/migrations/` and `openspec/changes/report-ride-threads-and-postcard-comments/`. This
+> `supabase/migrations/` and `openspec/changes/archive/2026-09-21-report-ride-threads-and-postcard-comments/`. This
 > change writes `supabase/migrations/124_*.sql` (a new file, no edit to theirs),
 > `supabase/functions/send-moderation-digest/`, `supabase/tests/rls_test.sql` (append),
 > `src/__tests__/` and its own change directory. It touches no file of theirs.
