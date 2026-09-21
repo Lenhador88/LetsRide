@@ -50,7 +50,7 @@ import { useEffect, useRef } from 'react'
  * hidden, which is the moment those messages are genuinely on screen.
  *
  * This is the one rule here that is not in
- * `openspec/changes/add-ride-chat-unread/`; it was added at build time and the
+ * `openspec/changes/archive/2026-09-21-add-ride-chat-unread/`; it was added at build time and the
  * delta spec was extended to match, rather than the code quietly exceeding the
  * contract.
  *

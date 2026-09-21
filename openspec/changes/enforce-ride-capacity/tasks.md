@@ -151,7 +151,7 @@ dispatched under. Filed as its own issue so it is not lost with this change dire
 - [x] 6.2 **DONE — PD-264, 2026-09-07.** Deleted the `Unenforced capacity is recorded, not
       silently assumed` scenario from
       `openspec/changes/add-account-deletion/specs/database-enforced-integrity/spec.md` and
-      `openspec/changes/add-ride-map-tiles/specs/database-enforced-integrity/spec.md`. Both
+      `openspec/changes/archive/2026-09-21-add-ride-map-tiles/specs/database-enforced-integrity/spec.md`. Both
       carried it verbatim, and archiving replaces a requirement wholesale — so whichever of the
       three archived last would have reinstated it. Claimant list re-derived first, and it is
       still exactly these three.

@@ -19,30 +19,32 @@ git diff --stat origin/development -- docs/HANDOFF.md   # is this file itself un
 
 ## Position
 
-**Updated 2026-09-20.** Prune the lines that are no longer true when you land work; do not add
+**Updated 2026-09-21.** Prune the lines that are no longer true when you land work; do not add
 history.
 
 - **`development` is the default branch and deploys to DEV** (`app-dev.letsride.social`);
   `main` is production (`app.letsride.social`). `development` is normally ahead of `main`, and
   that is the steady state.
-- **Migrations: 126 files; DEV at `126`, PROD at `116`** — DEV answers 129 rows, the three extra
-  hand-applied with no file; PROD none. **Take the next number from `list_migrations`, never the
+- **Migrations: 126 files; DEV and PROD both at `126`** — DEV answers 129 rows, the three extra
+  hand-applied with no file; PROD answers exactly 126. **Take the next number from `list_migrations`, never the
   file count and never a DECLARED one** — a territory comment naming `125` is not a spent
   number, and the ref is what settles it. `docs/reference/migrations.md` §Applied state has the per-file log
   and §Security advisors the counts.
-- **Edge Functions: the older three AGREE across both projects** — identical `ezbr_sha256`
-  (2026-09-19); equality is not currency. **`push-notify` and `send-moderation-digest` are
-  DEV-only**, each deployed by `deploy-functions.yml` off its own merge. Read the `deploy` *job's*
-  conclusion, never the run's: without the token it skips and the run is green anyway.
+- **Edge Functions: all five AGREE across both projects** — identical `ezbr_sha256`
+  (2026-09-21, after #476 deployed `push-notify` and `send-moderation-digest` to PROD); equality
+  is not currency, and both new ones are inert on both projects until the owner's secrets land.
+  Read the `deploy` *job's* conclusion, never the run's: without the token it skips and the run is
+  green anyway.
 - **The walk is green on DEV** — named account **25/25 screens, 89/89 checks** (2026-09-20);
   `docs/reference/running-locally.md` §The walk has the quota trap. In CI it is
   **skipped**, per §Blocked on the owner.
 - **Pass the Linear team id `7388c68e-ef17-4998-a9b7-d8ad8ce66038`, never a name** — a stale one
   errors on `list_issue_statuses` and answers `[]` elsewhere, so empty is not proof.
-- **OpenSpec has 35 open changes and 22 archived**
-  (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`).
-  **Archiving one is not two commands** — `docs/reference/journal.md` §The open OpenSpec changes
-  has the mechanism and the check that proves nothing was lost.
+- **OpenSpec has 9 open changes and 48 archived**
+  (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`). Every one
+  left is open for a reason its own banner or `docs/reference/journal.md` §The open OpenSpec
+  changes names — **archiving one is not two commands**, and that section has the mechanism and
+  the check that proves nothing was lost.
 
 ## In flight
 
@@ -71,6 +73,9 @@ history.
   `docs/ENVIRONMENTS.md` §`send-moderation-digest`'s secrets is the control no test can reach.
 - **PD-385 is open on purpose**: 9 DEV rides have a coordinate and no tile, repairable only by
   their organizers.
+- **Xcode Cloud (PD-474) is `Todo Human`** — #479 merged `ios/App/ci_scripts/`, a shared scheme
+  and the owner checklist (`docs/reference/native-shell.md` §Xcode Cloud). No build can pass until
+  a promotion puts it on `main`; the story closes when a phone installs a TestFlight build.
 
 Re-derive rather than trust it: `list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`
 filtered by status, and `list_pull_requests state=open`.
@@ -92,27 +97,17 @@ body carries its own steps.
 
 ## Next action
 
-**Archive `require-a-home-country-at-onboarding` FIRST.** Not a preference: two requirements
-`onboarding-takes-a-town-and-its-country` MODIFIES live only in that change's delta, so the wrong
-order leaves them with no base. `a-club-says-where-it-is-based` shares its `ride-start-location`
-requirement with the unarchived `inline-place-search-with-recent-starts`, and **only one order is
-safe**: the sibling FIRST — the other way drops two scenarios, because a MODIFIED block replaces
-them wholesale and the sibling predates those two.
+**The first TestFlight build, then a phone.** Push (child B), universal links and the camera
+prompt are all built and have never run on a device, because no Xcode archive has ever been made.
+Once PD-474 (§In flight) reaches `main`, the owner creates the Xcode Cloud workflow from its
+checklist, and the first TestFlight build is what the device checks wait on.
 
-**Then the rest.** Each one left is refused for a reason its message names; the shapes, their cost
-and the current ordering chain are in `docs/reference/journal.md` §The open OpenSpec changes.
-**Re-probe the order rather than reading a list — archiving one change moves the others.**
-
-**Two things no gate enforces.** *Verify shipped first, and never from `tasks.md`* — tick counts
-are wrong both ways (`add-club-timeline` 0/38 is live; `capture-photo-time-and-place` 3/81 is
-live), so read `src/` and `supabase/migrations/`, matching a migration by SUBJECT rather than the
-filename its proposal guessed. **The tool accepting a change is not evidence it shipped**: three
-it accepts are verified NOT BUILT and must not be archived —
-`place-backdated-postcards-on-the-timeline`, `postcard-audience-follows-its-entry-point` and
-`page-the-club-timeline-on-scroll`. `enforce-ride-capacity` (PD-436) stays open, and so does
-`add-account-deletion`: Q4 answered, tasks remain, it collides with `enforce-creator-membership`,
-and **its spec still records the pre-PD-98 succession answer, which must be fixed before it
-archives.**
+**Then the standing specs' known-stale text**, which no archive could fix because no change owns
+it: the pre-join sheet PD-418 changed, `enforce-creator-membership`'s "no admin row exists today"
+(false since `088`), and `photo-capture-metadata` describing the composer before PD-275.
+**`add-account-deletion` must have its role block rewritten against the standing spec, and its
+pre-PD-98 succession answer replaced by `107`'s, before it archives** — its banner says how. *Verify shipped from `src/` and `supabase/migrations/`, never from `tasks.md`*, whose tick
+counts are wrong in both directions.
 
 ## Test accounts
 

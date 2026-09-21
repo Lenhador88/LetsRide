@@ -494,7 +494,105 @@ rather than through a single label on the whole section.
 | Universal links | the entitlement, the association file and the listener all landed 2026-09-18 (PD-205) and **not one of them has been exercised** — Apple fetches the file from its own CDN onto a real device, so a simulator settles nothing. §Universal links has what a device run has to check |
 | The location prompt | not exercised; the string is verified in the bundle, the dialog is not. **The camera prompt joins it as of PD-453** — and it is the one whose absence was a process kill rather than a silent no-op, so it is worth exercising first on the next device run |
 | `clearSessionStore`'s sweep | **still unexercised.** Sign-out was run, but auth-js removes the `sb-` keys by name first, so the sweep had nothing to find |
-| A device build, the archive, TestFlight | none attempted |
+| A device build, the archive, TestFlight | none attempted. **The pipeline that would archive every merge to `main` exists since 2026-09-21 and has never run** — §Xcode Cloud; a pipeline existing is not an archive having succeeded |
+
+### Xcode Cloud — every merge to `main` archives to TestFlight, built 2026-09-21 and never run
+
+**TestFlight internal testing only.** Nothing submits to App Review; releasing a build to the store
+stays a manual button in App Store Connect. The repo half is three files; the rest is the owner
+checklist below, done by hand in Xcode and App Store Connect.
+
+| File | Why it exists |
+|---|---|
+| `ios/App/ci_scripts/ci_post_clone.sh` | Apple runs it after the clone and before `xcodebuild`. A bare clone cannot archive (§The shell has why: three gitignored Copy Bundle Resources inputs, plugins resolved out of `node_modules`), so it installs Node, builds the bundle, syncs it and gates it under `set -eu` — the steps and their order are the script's and the test's `STEPS`, not this cell's |
+| `ios/App/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme` | Xcode Cloud builds only **shared** schemes, and the Capacitor template ships none |
+| `scripts/native/__tests__/xcode-cloud.test.mjs` | Runs the script against stub tools and pins the order, the refusals and the execute bit |
+
+**The script refuses, by name and before running anything, on a branch other than `main`, a
+missing required variable, or a canonical origin that is not exactly `RELEASE_ORIGIN`** — that last
+because `release:check` cannot see a wrong non-`localhost` origin: the `og:image` fallback and
+`public/app-version.json` put `RELEASE_ORIGIN` into every bundle whatever the variable says. The branch guard is the one thing `release:check` cannot do — it reads
+what a bundle points at, not which branch built it — and without it a manual build of `development`
+reaches TestFlight carrying PROD's backend. **It also fails when `cap sync` leaves `ios/` different
+from the commit**, rather than warning: Xcode Cloud resolves SwiftPM from the committed
+`Package.resolved` with automatic resolution off, so a `Package.swift` rewritten in the cloud either
+dies later on an error naming neither cause or archives a plugin graph nobody committed. The fix is
+the local `npx cap sync ios` and a commit. `--no` stops `npx` fetching a registry package called
+`cap` when `@capacitor/cli` is absent, which it would otherwise do silently because Xcode Cloud sets
+`CI`.
+
+**Build numbers need no script.** *"Xcode Cloud assigns a build number to each build it performs …
+When you distribute an Xcode Cloud build with TestFlight … App Store Connect uses the build number
+of the Xcode Cloud build"* (Apple, *Setting the next build number for Xcode Cloud builds*, read
+2026-09-21). `CURRENT_PROJECT_VERSION = 1` stays. The one collision is a build uploaded by hand
+first; then set Next Build Number (App Store Connect → Xcode Cloud → Settings → Build Number).
+`MARKETING_VERSION` is whatever is committed, and nothing ties it to `package.json`'s `version`.
+
+**Node comes from Homebrew's `node@22`, which Homebrew marks for deprecation on 2026-10-28.** It
+keeps installing, with a warning, until Homebrew disables it; then the build fails at the first
+step, and the fix is `.nvmrc`, `engines` and `ci.yml` together (docs/ENVIRONMENTS.md §The repo now
+decides Vercel's Node version). Re-read it rather than trusting the date:
+`curl -s https://formulae.brew.sh/api/formula/node@22.json | jq '.deprecation_date, .disable_date'`.
+
+**Compute: 25 hours a month come with the Developer Program membership** (developer.apple.com/xcode-cloud,
+read 2026-09-21). A build's cost is unmeasured until the first one runs.
+
+**The workflow's environment variables** — every one is `NEXT_PUBLIC_*`, so it ships in the bundle
+and none is a secret; *Keep value redacted* is harmless and buys nothing. Values live where the
+right column says, never in the repo:
+
+| Variable | Set it? | PROD value from |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | **Required** — the script refuses without it | Vercel → Production. `release:check` refuses any ref but `letsride`'s |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | **Required** | Vercel → Production (the publishable key). **Nothing checks it belongs to PROD** — DEV's key beside PROD's URL passes every gate and fails every request |
+| `NEXT_PUBLIC_CANONICAL_ORIGIN` | **Required** | `RELEASE_ORIGIN` in `scripts/native/release-guards.mjs`, exactly — the script refuses anything else. Never on Vercel |
+| `NEXT_PUBLIC_SENTRY_DSN` | Optional — unset is a silent no-op | Vercel → Production, once `observability.md` §The owner action still outstanding lands |
+| `NEXT_PUBLIC_SENTRY_ENVIRONMENT` | With the DSN: `production` | The TestFlight binary is the one the store later releases. Unset reports `unknown` |
+| `NEXT_PUBLIC_POSTHOG_KEY` | Optional | Vercel → Production — the Production-only key, for the same reason |
+| `NEXT_PUBLIC_POSTHOG_HOST` | Only if Vercel Production sets it | Code defaults to the EU host |
+
+**Never set** `CAPACITOR_BUILD` (`build:native` sets it), `NODE_ENV` (`production` makes `npm ci`
+drop the devDependencies `cap sync` needs), `VERCEL_PROJECT_PRODUCTION_URL` (its fallback is
+correct), or any name containing `SERVICE_ROLE` or `GEOAPIFY` — nothing in `src/` reads
+`NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY` or `NEXT_PUBLIC_GEOAPIFY_KEY`; the tripwire tests that
+refuse them are their only code mentions.
+
+**Owner checklist** — in this order:
+
+1. **Get this change onto `main`.** Xcode Cloud runs the `ci_scripts` of the commit it builds, and
+   the script refuses every other branch, so no build can pass before the promotion.
+2. **App Store Connect app record**, if missing: Apps → + → New App, iOS, bundle ID
+   `social.letsride.app`, and the name `app-store-listing.md` records. Xcode offers to create
+   it in step 5 if you skip this.
+3. **Push Notifications and Associated Domains on the `social.letsride.app` App ID**
+   (Certificates, Identifiers & Profiles). The archive's entitlements carry both, and signing
+   fails without them — §Universal links and §Push registration have why.
+4. **An internal tester group**: App Store Connect → TestFlight → Internal Testing → +. Apple
+   requires one before the TestFlight post-action can be added.
+5. **Xcode → Product → Xcode Cloud → Create Workflow** on a checkout of `main`, product `App`,
+   team `6V6M44T7KV`. When asked, grant GitHub access to `Lenhador88/LetsRide` — signed in to
+   GitHub as `Lenhador88`, because a personal account's repository can only be granted by its
+   owner; choose *Only select repositories*.
+6. **Edit the workflow before its first build:**
+   - **Start Conditions** — delete the suggested one: it follows the repository's default branch,
+     which is `development`, and adds pull requests. Add **Branch Changes → Custom Branches →
+     `main`**. No Pull Request or Tag condition.
+   - **Actions** — **Archive**, platform **iOS**, scheme **App** (Release is the scheme's archive
+     configuration), Deployment Preparation **TestFlight and App Store**. *TestFlight (Internal
+     Testing Only)* builds can never be released, which would take the manual store button away.
+   - **Post-Actions** — **TestFlight Internal Testing**, the group from step 4. Nothing else: no
+     external group, no App Store Connect upload for review.
+   - **Environment** — the latest released Xcode, and the variables in the table above.
+7. **Start Build on `main`** and read the result as below. Export compliance is already answered
+   by `ITSAppUsesNonExemptEncryption` in `Info.plist` (§The shell).
+
+**Reading a failed build.** Xcode → Report navigator → Cloud → the build → expand the failed action
+→ **Logs** (or App Store Connect → the app → Xcode Cloud → Builds). The post-clone script is its own
+log section: each step prints `==> <command>`, and every refusal starts `error: ci_post_clone.sh:`
+and says what to change. A `release:check` refusal lists each problem under *This bundle must not
+be submitted* — that means a variable holds a value that is not PROD's. A SwiftPM error about an
+out-of-date `Package.resolved` means the committed resolution is stale: resolve in Xcode locally
+and commit it. Logs and artifacts expire after 30 days.
 
 ### Universal links — built 2026-09-18, unverified
 

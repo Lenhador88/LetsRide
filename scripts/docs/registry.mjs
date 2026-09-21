@@ -678,6 +678,35 @@ export const claims = [
     about: 'app-store-listing.md §Description: the character count vs the fenced block',
   },
 
+  // ---- Keyword field BYTES (the one listing field with no headroom) --------
+  //
+  // The entry above guards the field with 2174 characters to spare and this
+  // one guards the field with five bytes, which is the wrong way round to
+  // leave it. Apple caps Keywords at 100 **bytes**, refuses the upload rather
+  // than truncating, and a human pastes the line in by hand.
+  //
+  // `len(b.encode())`, never `len(b)`: the cap is bytes and the line is ASCII
+  // today, so the two agree and a non-ASCII keyword — `motorrijders` has no
+  // accent, the next one might — would silently split them. That is this
+  // field's documented trap, and a guard that measures characters reproduces
+  // it instead of catching it.
+  //
+  // It cannot see the other two traps (a keyword under three characters, a
+  // comma-space), which stay with the loop in §Re-measuring every field: this
+  // registry compares one stated integer against one measured integer, and
+  // those are predicates.
+  {
+    id: 'keyword-bytes-listing',
+    file: 'docs/reference/app-store-listing.md',
+    pattern: /## Keywords — (\d+) of 100 bytes/,
+    extractStated: (m) => Number(m[1]),
+    kind: 'shell',
+    // Same no-backslash discipline as the entry above: the command crosses a
+    // JS template literal and then a shell. `chr(96)*3` is the fence.
+    cmd: `python3 -c "import io;f=chr(96)*3;s=io.open('docs/reference/app-store-listing.md',encoding='utf-8').read();b=s[s.index('## Keywords'):].split(f)[1].strip(chr(10));print(len(b.encode('utf-8')))"`,
+    about: 'app-store-listing.md §Keywords: the byte count vs the fenced block',
+  },
+
   // ---- Icon count (prose vs the generator's committed source) --------------
   //
   // The one piece of the 2026-08-16 generated-artifact alarms that IS a doc

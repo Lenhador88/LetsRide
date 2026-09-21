@@ -1,3 +1,13 @@
+> **⚠ BEFORE ARCHIVING — the succession answer below is pre-PD-98 and SHALL be replaced.** The
+> scenario *A club with no remaining members goes with its owner ONLY if no third-party content
+> remains* still says a club left with third-party postcards is "transferred to the author of the
+> oldest such postcard". PD-98 decided otherwise and `107` built it: `private.transfer_owned_clubs`
+> keeps that club with `owner_id` NULL and deletes it only when nothing third-party remains — except
+> the welcome club, which it never keeps ownerless. `openspec/specs/club-ownerless-lifecycle/spec.md`
+> is the standing text.
+> Rewrite the scenario to that answer before this change archives, or it lands a rule the database
+> contradicts.
+
 ## Purpose
 
 What a deletion actually does to eleven tables, one Storage bucket and every other rider's

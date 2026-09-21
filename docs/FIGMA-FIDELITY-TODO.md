@@ -402,7 +402,7 @@ is a drawn value this repo no longer builds:
       **Closed 2026-08-24 (PD-280): the mock was right.** Both Options frames (`4181:6897`
       owner, `4181:6930` member) draw `Delete club` under a hairline below `Edit club`, and
       `ClubOptionsMenu` deliberately omitted it —
-      `openspec/changes/add-ride-club-edit-delete/design.md` §D4 (PD-101) put deletion at
+      `openspec/changes/archive/2026-09-21-add-ride-club-edit-delete/design.md` §D4 (PD-101) put deletion at
       the foot of the edit screen, and siting one destructive control in two places is how it
       gets tapped by accident. The product owner settled it the other way, so that the club
       menu and the new `RideOptionsMenu` offer the same rows. The old argument is kept by the

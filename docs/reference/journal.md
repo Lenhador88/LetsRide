@@ -29,7 +29,7 @@ PD-430 on `guard.ts` + `supabase/migrations/` + `rls_test.sql` + `walk.mjs`, PD-
 
 **Reading the file list rather than the territory is what made this firing non-idle.** slot-1
 declares `openspec/` wholesale; its PR touches only
-`openspec/changes/require-a-home-country-at-onboarding/`. PD-264 touches three entirely different
+`openspec/changes/archive/2026-09-21-require-a-home-country-at-onboarding/`. PD-264 touches three entirely different
 change directories, so the declared collision was not a real one. **A finished-but-unmerged slot is
 the one case where this substitution is sound** — the session has ended, so the file list cannot
 grow. Do not generalise it to a live build.
@@ -1246,7 +1246,7 @@ one became a High-priority issue offering to revert a live migration.
 ## The removal bar is proposed, not built — 2026-09-06
 
 **PD-361, [PR #403](https://github.com/Lenhador88/LetsRide/pull/403) — the proposal only, and the
-story stays open.** `openspec/changes/refuse-a-removed-rider-a-live-invite-link/` specifies a
+story stays open.** `openspec/changes/archive/2026-09-21-refuse-a-removed-rider-a-live-invite-link/` specifies a
 `public.club_removals` row keyed on `(club_id, user_id)`, an eighth conjunct in
 `private.club_invite_link_reachable_by`, and a trigger that clears the row on readmission. **No
 code, and no migration number** — the build was deferred by the concurrency cap, not by any
@@ -1745,7 +1745,7 @@ public one, are still refused.
 
 - **`Narrow` was a stated ASSUMPTION, not an owner decision.** Nobody was available; the proposal
   says so at the top and
-  `openspec/changes/scope-the-strand-guard-to-the-transition/design.md` §Open questions Q1 carries
+  `openspec/changes/archive/2026-09-21-scope-the-strand-guard-to-the-transition/design.md` §Open questions Q1 carries
   `Wide` (drop the guard) with its evidence. Wide is Narrow *minus one predicate*, so shipping this forecloses nothing — but if the
   owner wanted Wide, PD-338 is not fully answered.
 - **The guard is advisory and always was.** The `rides` UPDATE policy carries **no `is_public`
@@ -2112,7 +2112,7 @@ npx vitest run src/lib/data/__tests__/announcement-rule.test.ts
 
 **PD-375, branch `claude/pd-375-club-timeline-load-more`.** `CLUB_TIMELINE_LIMIT` was a hard stop at
 20 entries with no `load more`; the club timeline now extends as the rider scrolls, via
-`openspec/changes/page-the-club-timeline-on-scroll/` (proposal reviewed once, revised against 8
+`openspec/changes/archive/2026-09-21-page-the-club-timeline-on-scroll/` (proposal reviewed once, revised against 8
 findings, then implemented — read `design.md` before touching any of this again). **This is what
 closes PD-374's hole**, which was cancelled on 2026-09-02 on the assumption that scrolling back
 through the timeline — rather than a second door on the members list — was the fix: an
@@ -2289,18 +2289,31 @@ the ride screen read it; the ride card carries it now, and both ends of that tri
 
 ## The open OpenSpec changes, and the collision between two of them
 
-**`npm run openspec -- list --json` is the live view** — read it rather than a table here. Six
-are in flight as of 2026-08-10, and `add-ride-club-edit-delete` is one of them: `PD-101` shipped
-to production, but the change sits at 42/44 in `changes/` rather than `archive/`, so **archiving
-it is a real outstanding action** rather than a bookkeeping detail. Status per change belongs to
-Linear; the *content* belongs to the change directory. What follows is only what neither holds.
+**`npm run openspec -- list --json` is the live view** of which changes are open. Status per change
+belongs to Linear; the *content* belongs to the change directory. What neither holds is why a
+change nobody is building stays open, so it is here — the nine left after 2026-09-21's round:
 
-**`add-account-deletion` carries an open product decision inside it — the postcard half of
-1.6b.** `account-erasure-cascade` claims a club with no members left holds postcards "entirely
-their own by construction"; a rider can leave a club while their postcards stay, so the branch
-designed to protect third-party content can destroy it. `032` fixed the *rides* half. The
-proposal's default for the postcards half hands the club to the author of the oldest surviving
-postcard — which gives a club to someone who never joined it. Decide it before group 3.
+| Change | Why it stays open |
+|---|---|
+| `add-account-deletion` | Tasks remain; its spec carries the pre-PD-98 succession answer (below); its block of *Club membership role SHALL NOT be self-assignable* must be rewritten against the standing text |
+| `enforce-ride-capacity` | PD-436 — `077` dropped the cap this change specifies |
+| `deliver-push-notifications` | The Android half is unbuilt (no `android/`, PD-442), child B is unverified on a device, and child C is Vault-gated |
+| `tag-postcards-to-rides` | The Journal screen (tasks 4.8, 4.9) was never built — the postcards went onto the ride timeline — so its `ride-journal` spec describes a screen that does not exist |
+| `deferred-club-join-introduction` | Built (PD-392), but PD-418 reversed its `Post` / `Join later` behaviour with no spec, so archiving would add rules the code contradicts |
+| `replace-postcard-region-with-a-named-place` | Built (`072`–`074`), but all five MODIFIED blocks name requirements that never stood (refusal shape 4 below); archiving means re-specifying five requirements, and the standing `photo-capture-metadata` still describes the composer before PD-275 |
+| `postcard-location-defaults-to-a-region` | Not built — `DEFAULT_PHOTO_LOCATION_MODE` is still `'hide'` |
+| `postcard-audience-follows-its-entry-point` | Not built — `CreatePostcardForm.tsx` still draws both selects the change removes |
+| `place-backdated-postcards-on-the-timeline` | Decision only, by design (PD-377, Needs decision) |
+
+**`add-account-deletion`'s succession answer is out of date, and SHALL be replaced before it
+archives.** PD-98 decided the postcard half of 1.6b and `107` built it: when a departing owner leaves
+no member behind, `private.transfer_owned_clubs` keeps the club with `owner_id` NULL if anyone
+else's postcard is in it and deletes it only when nothing third-party remains — except the welcome
+club, which it never keeps ownerless (`club-ownerless-lifecycle` is the standing spec). The change's `account-erasure-cascade`
+delta still carries the default it proposed before that — hand the club to the author of the oldest
+surviving postcard, which gives a club to someone who never joined it — and its scenario *A club
+with no remaining members goes with its owner ONLY if no third-party content remains* must be
+rewritten to `107`'s answer first.
 
 **Every change old enough to matter carries a STALE `## MODIFIED Requirements` block, and that
 is most of the cost of clearing this backlog — measured 2026-09-08 on PD-359.** A MODIFIED block
@@ -2319,12 +2332,23 @@ capability, not by count** — a count cannot tell a dropped scenario from a rew
 ```bash
 git show HEAD:openspec/specs/<cap>/spec.md | grep "^#### Scenario:" | sort > /tmp/a
 grep "^#### Scenario:" openspec/specs/<cap>/spec.md | sort > /tmp/b
-comm -23 /tmp/a /tmp/b        # must be empty — anything here was dropped by the archive
+comm -23 /tmp/a /tmp/b        # each line is a drop: a deliberate one the commit names, or a loss
 ```
 
 **The tool's refusal is not a full guard**, which is why that check runs anyway: it compares the
 block against the standing text and cannot see a scenario whose *header* survived while its body
 was replaced by an older one.
+
+**It cannot see prose at all.** Many blocks restate only the paragraphs they change, or condense
+the rest, and a MODIFIED block replaces the prose wholesale — so every standing paragraph the block
+leaves out vanishes with no refusal and nothing in `comm -23`. Diff the prose too, at sentence level,
+against the standing requirement before archiving; on 2026-09-21 three requirements had to be
+restored after the fact because this was checked late.
+
+**A deliberate rename cannot pass the tool either.** `openspec archive` refuses every scenario-name
+drop, including a scenario the change renamed or retired because it had become false. Remove the old
+scenario from the standing requirement in the same commit and name old → new in the message; the
+check above then lists exactly those names.
 
 **14 archived on 2026-09-08, and what is left is refused for one of three reasons — in rising
 cost.** Read the refusal message; it names which.
@@ -2336,6 +2360,9 @@ cost.** Read the refusal message; it names which.
 2. **A stale `MODIFIED` block** — the expensive one, above.
 3. **A delta targeting a spec that does not exist yet**, which is an ordering constraint rather
    than a defect: the change that `ADDED` that capability has to archive first.
+4. **A delta written against names that never stood** — a rename filed as MODIFIED under the new
+   header (it needs a `RENAMED` section), a new requirement filed under MODIFIED, or one bullet of a
+   standing requirement restated as a requirement of its own. The refusal reads *"not found"*.
 
 **Re-probe the order rather than trusting a written list — archiving one change moves every other
 change's refusal.** Measured 2026-09-08, after the 14: `club-timeline-engagement` and
@@ -2348,11 +2375,13 @@ and `an-introduction-appears-only-as-its-announcement` have no target at all unt
 
 **The tool accepting a change is NOT evidence the change shipped, and this is the trap that would
 write a spec for a feature no rider can reach.** `openspec archive` reasons about spec text and
-knows nothing about `src/`. Three changes it accepts are verified NOT BUILT:
-`place-backdated-postcards-on-the-timeline` (decision-only by design),
+knows nothing about `src/`. Two changes it accepts are verified NOT BUILT:
+`place-backdated-postcards-on-the-timeline` (decision-only by design) and
 `postcard-audience-follows-its-entry-point` (`CreatePostcardForm.tsx` still draws both the club and
-ride selects the change removes) and `page-the-club-timeline-on-scroll` (no paging in
-`src/lib/data/club-timeline.ts` or `ClubTimeline.tsx`). **`tasks.md` cannot answer this either**,
+ride selects the change removes). **The check errs the other way too**:
+`page-the-club-timeline-on-scroll` was listed here as not built and had merged as #380 —
+`ClubTimeline.tsx` pages through `ScrollSentinel` — so read the component that renders the
+feature, not only its data module. **`tasks.md` cannot answer this either**,
 in either direction — `add-club-timeline` reads 0/38 and is live, `capture-photo-time-and-place`
 reads 3/81 and is live. Read `src/` and `supabase/migrations/`, matching a migration by SUBJECT:
 proposals routinely name a file that was later renamed (`081_club_threads.sql` for what shipped as
@@ -2374,12 +2403,11 @@ so an unstaged `openspec archive` leaves it opening paths that no longer exist a
 with `ENOENT` before any assertion. That failure also drops the unit-test total — 3705 to 3679 on
 2026-09-08 — which reads exactly like deleted tests and is not.
 
-**`enforce-creator-membership` and `add-account-deletion` collide, and OpenSpec will not warn
-you.** Both carry a delta modifying
-`database-enforced-integrity`'s *Club membership role SHALL NOT be self-assignable*, and
-archiving replaces a requirement wholesale — so **whichever archives second silently discards
-the first one's edit**. Both delta files now open with a coordination banner carrying the merged
-text they should converge on. Read it before archiving either.
+**`add-account-deletion`'s block of *Club membership role SHALL NOT be self-assignable* predates
+the two other claimants, and both have archived** (`manage-club-riders`, `enforce-creator-membership`,
+2026-09-21) with the merged text its banner describes. Archiving replaces a requirement wholesale,
+so that block must be rewritten against the standing requirement first; `openspec archive` refuses
+it until then only because the standing scenarios are missing from it.
 
 ## Ride chat is shipped but has never been loaded against production
 
@@ -2531,7 +2559,7 @@ share the new value. The reset was one SQL `update` on `auth.users.encrypted_pas
 
 **The two `walk-fixture*` accounts are a PAIR and the second is the point.** A club's owner is
 exempt from the introduction prompt (`097`, and
-`openspec/changes/introduce-yourself-on-joining-a-club/design.md` §D7), so walking as the owner alone
+`openspec/changes/archive/2026-09-21-introduce-yourself-on-joining-a-club/design.md` §D7), so walking as the owner alone
 renders a code path the feature does not have. Walk as **both** when the club detail changes.
 
 **Replacing them, if they are ever lost or you want fresh ones:** sign up through

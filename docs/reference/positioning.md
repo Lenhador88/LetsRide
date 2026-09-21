@@ -195,21 +195,24 @@ Three consequences, and the second is the one that is easy to get wrong:
   `CLAUDE.md` holds open. Do not localise the listing ahead of the app to buy search terms.
 
 **A store listing localises by LANGUAGE, not by country — and getting that backwards is how a
-launch plan misses the people it was written for.** Checked 2026-09-07 rather than recalled, but
-**the two halves have different provenance and the weaker one is Google's**: Apple's help page is
-directly reachable from this container and was fetched; `support.google.com` is refused at the
-egress proxy, so the Play half comes from search results quoting those help pages rather than
-from the pages. Re-verify the Play half from a machine that can reach it before betting a launch
-on it.
+launch plan misses the people it was written for.** Both halves are now read from the vendors'
+own pages — Apple's on 2026-09-07, Google's on 2026-09-21, once `support.google.com` stopped being
+refused at the egress proxy.
 
 - **App Store Connect localisations are per language/locale.** `Dutch`, `Portuguese (Portugal)`
   and `Portuguese (Brazil)` are three separate listing languages; there is no way to write
   different copy for the Netherlands storefront than for Belgium's. Which one a customer sees
   depends on their device language, the App Store language for their region, the languages you
   added and your primary language — **and when nothing matches, they get the primary language**.
-- **Play is the same for translations, and has a separate feature for the other axis.** Store
-  listing translations are per language; *custom store listings* are the country/region tool,
-  they are not auto-translated, and they are not what "localise the listing" usually means.
+- **Play is the same for translations, and has a separate feature for the other axis**
+  (`.../answer/9859152` and `.../answer/9867158` under
+  `support.google.com/googleplay/android-developer`, fetched 2026-09-21). The default language is
+  `en-US`, you *"can add one localized name per language"*, and a rider sees a localisation when
+  *"their language preferences match the languages that you've added"*. *Custom store listings*
+  are the country/keyword/campaign axis, and not what "localise the listing" usually means.
+- **Play machine-translates a listing you have not translated, and Apple does not**: a rider
+  *"can view an automated translation … using Google Translate"*, labelled as automatic. The
+  English listing does not simply stay English on a Dutch-set phone the way it does on Apple.
 
 **What that establishes is that a Dutch listing is IRRELEVANT to the expat — neutrality, not
 support, and the distinction matters.** A Dutch localisation reaches devices set to Dutch
@@ -218,7 +221,8 @@ state-1 expat gets the **primary-language** listing either way. Two things follo
 first is an argument for the decision: the English listing is not a fallback here, it is the one
 that has to be good. The second cuts the other way — **since a Dutch localisation costs the wedge
 nothing, these mechanics are a reason it would be cheap, not a reason to skip it.** The reason to
-skip it is the first bullet above, that a Dutch listing over an English app is a mismatch. Do not
+skip it is the consistency one above, that a Dutch listing over an English app is a mismatch — and
+Play's automatic translation is a weaker form of the same mismatch, arriving unasked. Do not
 let the vendor mechanics appear to vote on a product-consistency question.
 
 Two things to carry into any later localisation:
@@ -266,15 +270,16 @@ copy rather than trusting this line:
 grep -n "^const TITLE\|^const DESCRIPTION" src/app/layout.tsx
 ```
 
-**The brand is contested on both stores, found 2026-09-19, and this section was written without
-knowing it.** An App Store app holds the exact string `LetsRide.` (a private-hire taxi firm), and
-a **motorcycle** app on Google Play trades under this brand with routes and turn-by-turn
-navigation in its copy. That does not necessarily block the name — Apple collides on the exact
-string — but it does undercut the argument every naming decision below rests on, which is that
-brand search converts. **Read `docs/reference/app-store-listing.md` §Two apps already trade under
-this brand before treating anything in this section as settled**, including its provenance
-caveat: the store hosts are refused at this container's egress proxy, so the finding is read from
-search results and wants ten seconds in the App Store app to confirm.
+**The brand is contested on both stores, and both records were read from the stores themselves on
+2026-09-21.** An App Store app holds the exact string `LetsRide.` (`id1572666713`, a private-hire
+taxi firm, category Travel, live in the NL storefront), and a **motorcycle** app on Google Play
+trades under this brand with route generation and turn-by-turn navigation in its copy. That does
+not necessarily block the name — Apple collides on the exact string — but it does undercut the
+argument every naming decision below rests on, which is that brand search converts: a search for
+`letsride` in the NL storefront returns 24 apps at `limit=25` — taxis, e-scooters, bike-share,
+cycling and two horse-riding apps — and **not one of them is a motorcycle app**.
+**Read `docs/reference/app-store-listing.md` §Two apps already trade under this brand before
+treating anything in this section as settled.**
 
 **"Ride together" is already the app's own tagline** — `LetsRide — Ride Together` is what
 unfurls from every shared link today. Keep it. A store subtitle that says something different
@@ -298,9 +303,9 @@ measures correctly, and the first line carrying `—`, `–`, `’` or `…` is 
 everything around it is right. Those are exactly the characters a copy pass introduces.
 **`LC_ALL=C.UTF-8 wc -m`, or `python3 -c "print(len(…))"`.**
 
-**Every App Store row below was re-read from Apple's own help pages on 2026-09-19** and the
-citations are in `docs/reference/app-store-listing.md` §What is verified, what is inherited, what
-is a guess. The Play rows were not, and are inherited.
+**Every App Store row below was re-read from Apple's own help pages on 2026-09-19, and the Play
+rows from Google's own page on 2026-09-21** — citations in
+`docs/reference/app-store-listing.md` §What is verified, what is inherited, what is a guess.
 
 | Field | Cap | Notes |
 |---|---|---|
@@ -309,9 +314,9 @@ is a guess. The Play rows were not, and are inherited.
 | App Store — keywords | **100 bytes** | **Bytes, not characters** — identical for ASCII and not for anything else. Each keyword must be **longer than two characters**, which is what killed `near,me`. Comma-separated, **no spaces after commas**; Apple's own wording says not to repeat the app name or company name, and not repeating the subtitle is this file's inference |
 | App Store — promotional text | 170 | **Editable without a new version — the only marketing copy field Apple documents that way** (*"without requiring an updated submission"*). Subtitle, description and keywords carry only *"editable depending on the app status"*, so treat them as shipped with the build |
 | App Store — description | 4000 | Almost nobody expands it **[unvalidated]**; write for the first ~3 lines. Apple says it feeds web search results, which is this product's only SEO surface |
-| Play — title | 30 | **[inherited]** — not re-checked; `play.google.com` and `support.google.com` are both refused at this container's egress proxy |
-| Play — short description | 80 | **[inherited]**. The one that appears above the fold |
-| Play — full description | 4000 | **[inherited]**. Indexed for search, unlike Apple's |
+| Play — title | 30 | Read 2026-09-21 from `support.google.com/googleplay/android-developer/answer/9859152` — *"30 character limit"*. The older `answer/113469` `301`s here |
+| Play — short description | 80 | Same page. The one that appears above the fold |
+| Play — full description | 4000 | Same page. Indexed for search, unlike Apple's. **All three count CHARACTERS, not bytes** — *"Character limits apply to both full-width and half-width characters"* — which is the opposite of Apple's keyword field |
 
 **These caps move.** Check them against App Store Connect and the Play Console before a
 submission rather than against this table — which is exactly how the two corrections above were
@@ -375,9 +380,11 @@ the name already owns is *wasted* in another field. Dropping it is what makes th
 | `Tell your story, ride together` | 30 | `together`, but `ride` nearly duplicates the brand |
 | `Join group rides, share trips` | 29 | `group rides` as a phrase |
 
-**The recommended set — the name carries the category, the subtitle says what happens:**
+**DECIDED by the product owner, 2026-09-21 — this name and this subtitle, with the brand
+collision and the corrected census both on the table when it was taken.** Everything either side
+of this block is the reasoning, and is reopenable on its own terms; the two fields are not.
 
-| Field | Proposed | Chars |
+| Field | Decided | Chars |
 |---|---|---|
 | Name | `LetsRide: Motorcycle Clubs` | 26 |
 | Subtitle | `Join rides, tell your story` | 27 |
@@ -402,14 +409,15 @@ The brand half is fixed, so the name is one decision: which nine characters foll
 nothing longer than nine fits without dropping something — `Community` is exactly nine, `Clubs`
 is five.
 
-**The recommendation is `LetsRide: Motorcycle Clubs` (26)**, and the census below is the whole
-argument for it. Read that first: every alternative here is judged against it.
+**`LetsRide: Motorcycle Clubs` (26) is the decided name** (owner, 2026-09-21), and the census
+below is the argument it was decided on. Read that first: every alternative here is judged
+against it, and none of them is live.
 
 | Name | Chars | For | Against |
 |---|---|---|---|
-| `LetsRide: Motorcycle Clubs` | 26 | **The recommendation.** Exactly true of the product — clubs *are* the social graph — and the one second-slot word **no app in the census uses** | `motorclub` carries a connotation in Dutch it does not carry in English (below) |
-| `LetsRide: Motorcycle Rides` | 26 | Two plain category words, both true of the product | `Rides` is **3 of 7** in the census — as contested as `Community` — and it echoes both the brand and the subtitle |
-| `LetsRide: Motorcycle Community` | 30 | Says "social" outright, which is the pitch | **3 of 7**, and three incumbents have optimised for it. Spends every character, leaving no room for a later word |
+| `LetsRide: Motorcycle Clubs` | 26 | **The decided name.** Exactly true of the product — clubs *are* the social graph — and the one second-slot word **no rated app uses** | `motorclub` carries a connotation in Dutch it does not carry in English (below), and one 0-rating app holds `Clubs` |
+| `LetsRide: Motorcycle Rides` | 26 | Two plain category words, both true of the product | `Rides` is **3 of 5** in the census, including the only incumbent with mass, and it echoes both the brand and the subtitle |
+| `LetsRide: Motorcycle Community` | 30 | Says "social" outright, which is the pitch | Spends every one of the 30 characters, leaving no room for a later word. The census objection is weaker than it looks — the one name holding `Community` has zero ratings — but `Clubs` is the truer word for this product |
 | `LetsRide: Motorcycle Meetups` | 28 | `meetup` is a social word | Suggests events; this app plans rides |
 | `LetsRide: Motorcycle Riders` | 27 | Names the person rather than the activity | Close to the brand, adds little |
 | `LetsRide: Riders & Clubs` | 24 | Two product-true nouns | **Drops `Motorcycle`, which is disqualifying** — see the census |
@@ -418,38 +426,54 @@ argument for it. Read that first: every alternative here is judged against it.
 that the brand is already `LetsRide` where it is expensive to change — the domain, the OG
 `siteName`, the icon. Two spellings is two brands.
 
-### What the category actually named itself — read 2026-09-07
+### What the category actually named itself — re-read from the store 2026-09-21
 
 Search volume sits behind a paid ASO tool. The one honest proxy available without one:
 **every competitor has already done this research, and their store names are the answer they
 bought.**
 
-| Store name | Category word | Second slot |
-|---|---|---|
-| `REVER - Motorcycle GPS & Rides` | Motorcycle | GPS, **Rides** |
-| `MotoVerse - Motorcycle Community` | Motorcycle | **Community** |
-| `MOTOSPOT Motorcycle Social App` | Motorcycle | Social |
-| `TONIT Motorcycle App` | Motorcycle | — |
-| `MotoCommunity — Find Your Ride` | Moto | **Community**, **Ride** |
-| `MotoMate: Group Rides` | Moto | Group **Rides** |
-| `EatSleepRIDE` | **none** | — (its tagline says "the motorcycle community") |
+**`TONIT Motorcycle App`, `MotoCommunity — Find Your Ride` and `EatSleepRIDE` have no App Store
+record**: no search of the NL, US or CA storefronts returns any of them, and the nearest live name
+to the middle one is `MyRideDNA - Moto Community` (Navigation, 2 ratings). They are names that
+surface in web search results with no listing behind them, which is how they reached an earlier
+version of this table — **do not put them back without a lookup**. Ratings below are the US
+storefront, where this category has its mass; in NL every row is 0 except REVER's 125.
 
-**Six of the seven NAMES carry `Motorcycle` or `Moto`.** The seventh is the interesting one and
-must not be counted as a confirmation: `EatSleepRIDE`'s name carries no category word at all. It
-is also a decade-old brand with an established community, which is the condition under which a
-name can be pure brand. **A new app with no ratings does not have that option**, so the rule
-stands as *table stakes for us* rather than as a law — stated that way because the exception is
-sitting in the same table.
+| Store name | Category word | Second slot | Genre | Ratings |
+|---|---|---|---|---|
+| `REVER - Motorcycle GPS & Rides` | Motorcycle | GPS, **Rides** | Navigation | 16,349 |
+| `MOTOSPOT Motorcycle Social App` | Motorcycle | Social | Social Networking | 929 |
+| `MotoVerse-Motorcycle Community` | Motorcycle | **Community** | Social Networking | 0 |
+| `MotoMate: Group Rides` | Moto | Group **Rides** | Lifestyle | 0 |
+| `Revva — Rides & Moto Clubs` | Moto | **Rides**, **Clubs** | Social Networking + Travel | 0 |
 
-**The second slot is where the census earns its place.** `Community` is **3 of 7** (MotoVerse,
-MotoCommunity, EatSleepRIDE's tagline) and `Rides`/`Ride` is **3 of 7** (REVER, MotoCommunity,
-MotoMate) — **equally contested, which is why neither is recommended**. `Clubs` is **0 of 7**,
-and it is the one word exactly true of this product. A new app with no ratings does not out-rank
-three incumbents on a phrase they have all optimised for; a narrower term with matching intent
-is the standard answer, fewer impressions and more installs.
+**These five are a named-competitor list, not a top-N, and no query produces them** — searching
+`motorcycle` in the US storefront returns nine apps at `limit=10`, seven of them games. They are the names this
+file has tracked since 2026-09-07 that have App Store records, plus Revva. **Bigger apps outside
+the list corroborate its one rule**: Detecht (3,847), Cardo Ride (3,090), Scenic (7,436), MyRide
+(1,521) and CycleTrader (24,419) all carry the category word in their names; the one that does not
+is `Harley-Davidson` (39,216). **And a rating count is not a user count** — Revva has 0 while its
+own copy claims *"125,000+ kilometres shared by 10,000+ riders"*, so read "has won nothing" as
+"has no ratings", the weaker claim.
+
+**All five NAMES carry `Motorcycle` or `Moto`.** The nearest thing to an exception is
+`EatSleepRIDE`, a decade-old brand whose name is pure brand — and it has no App Store record, so
+it is not evidence that the option exists here. **A new app with no ratings does not have it
+either way**: the rule is table stakes for us rather than a law.
+
+**The second slot is where the census earns its place.** `Community` is held by **one** name and
+that name has **zero** ratings, while the two apps that have won anything spend the slot on
+`GPS & Rides` and `Social` — so nobody is defending `Community` from strength. `Clubs` is held by
+exactly one name too: `Revva — Rides & Moto Clubs`, which shipped 2026-06-13, was updated three
+days before this reading, and also has no ratings.
+
+**The argument behind the decision is unchanged.** `Clubs` is the second-slot word exactly true of
+this product, contested only by an app that has won nothing, while `Rides` sits under the one
+incumbent with mass. A new app does not out-rank a 16,000-rating listing on the phrase it owns; a
+narrower term with matching intent is the standard answer, fewer impressions and more installs.
 
 **The limit of the method, which is a real one.** A census of names is a proxy for volume, not
-volume — nothing here can measure volume, and no claim in this section should be read as one. In
+volume — the API returns what exists, never how a term ranks or how often it is typed. In
 particular it cannot tell whether *"motorcycle clubs"* is searched by riders looking for a club
 to join or by people interested in outlaw-MC culture, and **that distinction decides whether the
 recommendation above is an opportunity or a trap**. See §Blocked, and needed from the owner.
@@ -460,7 +484,9 @@ riders search. Dutch media also carries a strong outlaw association the English 
 driven by a run of high-profile club bans — but that sense is normally *marked*
 (`verboden motorclub`, `criminele motorclub`, `OMG`). **[unvalidated]** as an effect on installs.
 So it is a reason to watch the Dutch listing's wording if one is ever written, **not** a reason
-to reject `Clubs` in an English name — which is how an earlier draft of this file used it.
+to reject `Clubs` in an English name — which is how an earlier draft of this file used it. **As a
+KEYWORD the word is decided on other evidence entirely**, and not by this paragraph: the NL result
+set returns no motorcycle app for it (§The name does not have to carry everything).
 
 ### The name does not have to carry everything
 
@@ -469,24 +495,35 @@ across the fields, so **a word already in the name or subtitle is wasted if repe
 asserted from knowledge and worth confirming in App Store Connect, unlike the localisation rules
 above which were checked. With `LetsRide: Motorcycle Clubs` and `Join rides, tell your story`,
 the two fields already own `motorcycle`, `clubs`, `join`, `rides`, `tell`, `story`. The keyword
-field spends its 100 bytes on what they do not — **97 of them, so the headroom is 3**:
+field spends its 100 bytes on what they do not — **95 of them, so the headroom is 5**:
 
 ```
-group,riders,nearby,community,social,meetup,biker,motorbike,crew,tour,bike,trip,share,photos,moto
+group,riders,nearby,community,social,meetup,biker,motorbike,bike,share,photos,moto,motorrijders
 ```
 
-**That line changed on 2026-09-19 and the earlier one is worth naming, because it measured
-green.** It read `group,riders,near,me,…` at 86 characters, comfortably inside a cap this file
-called 100 *characters*. The cap is 100 **bytes** and Apple additionally refuses any keyword of
-two characters or fewer, so `me` would have been rejected at upload with the count looking fine.
-`nearby` replaces the pair; `photos` and `moto` spend what that frees. 97 bytes, and
+**`motorrijders` is in and `motorclub` is not, and the two NL result sets are the reason** — the
+commands are in §Blocked, run 2026-09-21, and **a count means nothing without its `limit=`**. At
+`limit=15`, `motorrijders` returns 11 rows of which **four are riders' apps** (the KNMV, the Dutch
+motorcyclists' association, then BikeMeet, MotoConnect and MotoVibe) and seven are racing games;
+`motorclub` returns 13 with **not one motorcycle app** among them, and at `limit=50` it returns 43
+with the first rider-relevant row **27th**, below car clubs, roadside assistance and a caravan
+club. The index reads the compound as `motor` plus `club`, so it is **unrankable**
+rather than merely tainted — which is what the next session reaching for it needs to know.
+
+**`crew`, `tour` and `trip` paid for it**: the three cuts free 15 bytes, `motorrijders` costs 13,
+and the 2 left over widen the headroom from 3 to 5. `crew` is this app's word for the attendee
+list rather than a searched one; `tour` and `trip` both fall to the `route` rule below, and
+**`trip` falls hardest** — the top eight US results for `motorcycle trip` are **seven
+Navigation-genre route planners** (REVER, Scenic, Detecht, Cardo Ride, calimoto, onX Offroad,
+Blucap) and Harley-Davidson, the one cohort this app must not bid against. A keyword of two characters or fewer is
+refused too, which killed the `near,me` this line used to carry;
 `docs/reference/app-store-listing.md` §Keywords has the check that refuses both traps.
 
 So `community` and `group rides` are still bid for — just not in the 30 characters where they
 would cost the uncontested word. **Not `friends`**: the app has no such concept (see the
-do-not-say table), and a keyword is a claim like any other — which is also why `route` is out.
-It is a high-volume word in this category and it would bid for riders looking for route
-planning, which is the one thing decision #3 says this app will never do.
+do-not-say table), and a keyword is a claim like any other — which is also why `route`, `tour`
+and `trip` are out. All three are high-volume words in this category and all three bid for riders
+looking for route planning, which is the one thing decision #3 says this app will never do.
 
 **Regenerate that line whenever the name OR the subtitle changes** — it is derived from both, and
 this file has already got it wrong twice by editing one field and not the line below it. The
@@ -495,16 +532,31 @@ already own while giving away the one they do not.
 
 ### Blocked, and needed from the owner
 
-Two capabilities would turn this section's central argument from a proxy into a measurement, and
-neither can be restored from inside a session:
+**The egress block is gone — the owner opened this container's network policy to full on
+2026-09-20.** `apps.apple.com`, `itunes.apple.com`, `play.google.com` and `support.google.com` all
+answer, and every store fact in this file was re-read from them on 2026-09-21. **A named app's
+name, category, rating count, install range and copy are all checkable, so check them rather than
+label them.** A result set is one command:
 
-- **`apps.apple.com`, `itunes.apple.com` and `play.google.com` are refused at this container's
-  egress proxy** (`403` to `CONNECT`, logged in its own failure list). So the seven names above
-  are read from search-result titles rather than from the listings, and no subtitle, description
-  or rating count could be read at all.
-- **No ASO tool.** A free tier (App Radar, AppTweak) returns estimated volume and difficulty per
-  keyword per storefront, which settles `Clubs` vs `Community` in an hour and resolves the
-  outlaw-MC ambiguity above. It needs a login.
+```bash
+curl -s "https://itunes.apple.com/search?term=motorrijders&country=nl&entity=software&limit=15" \
+  | python3 -c "import json,sys; [print(r['trackName'],'|',r['primaryGenreName'],'|',r.get('userRatingCount')) for r in json.load(sys.stdin)['results']]"
+```
+
+**The other endpoint is `itunes.apple.com/lookup?id=<trackId>&country=nl`** — one app's whole
+record, seller to full description, and the source of every single-app claim in these two files.
+
+**Three traps.** A `403` with an **empty body** is Apple rate-limiting after roughly a dozen calls
+a minute, and it looks exactly like an egress refusal — wait rather than conclude the block is
+back. **`resultCount` is capped by `limit=`, so a count quoted without one is not a finding**:
+`motorclub`/NL answers 13, 22 and 43 at limits of 15, 25 and 50. And **the Search API is not App
+Store in-app search** — absence from it is good evidence an app does not exist, its ORDER is not
+the store's ranking, and neither is evidence about volume.
+
+**What is still missing is search VOLUME, and it is not a network problem. [unvalidated]** A free
+ASO tier (App Radar, AppTweak) returns estimated volume and difficulty per keyword per storefront,
+which is what would settle `Clubs` against `Community` in an hour and resolve the outlaw-MC
+ambiguity above. It needs a login, and only the owner can make one.
 
 ### Description — the first three lines
 
@@ -518,6 +570,10 @@ the class this file cannot measure), so write as though the whole pitch lives in
 > into a ride with a map, a time and a crew list.
 
 Then the feature list, drawn only from the claimable table above.
+
+**A live App Store app makes effectively that pitch**, measured 2026-09-21, though below its own
+fold rather than in its opening — read `docs/reference/app-store-listing.md` §Description before
+rewriting these lines, and decide it there. The copy is unchanged pending that decision.
 
 ## The two listing fields nobody owns yet
 
