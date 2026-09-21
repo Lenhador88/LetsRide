@@ -1246,7 +1246,7 @@ one became a High-priority issue offering to revert a live migration.
 ## The removal bar is proposed, not built — 2026-09-06
 
 **PD-361, [PR #403](https://github.com/Lenhador88/LetsRide/pull/403) — the proposal only, and the
-story stays open.** `openspec/changes/refuse-a-removed-rider-a-live-invite-link/` specifies a
+story stays open.** `openspec/changes/archive/2026-09-21-refuse-a-removed-rider-a-live-invite-link/` specifies a
 `public.club_removals` row keyed on `(club_id, user_id)`, an eighth conjunct in
 `private.club_invite_link_reachable_by`, and a trigger that clears the row on readmission. **No
 code, and no migration number** — the build was deferred by the concurrency cap, not by any
