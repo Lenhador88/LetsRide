@@ -20,8 +20,8 @@
 > delta against *that* text rather than against the version you drafted.
 
 > **⚠ COORDINATION, SECOND AND UNRELATED — `Storage object ownership SHALL remain
-> database-enforced` is modified by this change AND by the active `add-ride-map-tiles`
-> (PD-104) AND by `enforce-ride-capacity` (PD-174).** Same mechanism, different requirement, and
+> database-enforced` is modified by this change AND by `enforce-ride-capacity` (PD-174), and was
+> by `add-ride-map-tiles` (PD-104), which archived on 2026-09-21 — its text is the standing one.** Same mechanism, different requirement, and
 > it needs its own note because a reader who has already absorbed the banner above will not look
 > for a second collision in the same file. **The third claimant was added by PD-264 on
 > 2026-09-07**; neither of the first two knew about it. Re-derive rather than trust it — scoped
@@ -42,11 +42,10 @@
 > merged text keeps **both scenario sets** and one opening paragraph that states neither count
 > from memory.
 >
-> **The count is the thing that will be lost.** The standing text reads *"Fifteen
-> `storage.objects` policies exist across five folders"*, which was measured and is now true of
-> PROD only: `051` is applied to DEV, where it is 18 across six (measured 2026-08-12). Whichever
-> of the two archives second and pastes its own opening paragraph back reinstates whichever
-> number it was drafted with.
+> **The count is the thing that will be lost.** The standing text, as `add-ride-map-tiles` left
+> it, names six folders and tells the reader to re-derive the policy count rather than stating
+> one. An opening paragraph pasted back from an older draft reinstates whichever number it was
+> drafted with.
 >
 > Before archiving whichever of these goes second: re-read
 > `openspec/specs/database-enforced-integrity/spec.md` as the first one left it and rewrite the

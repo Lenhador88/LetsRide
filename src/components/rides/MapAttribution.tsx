@@ -97,7 +97,7 @@ import { cn } from '@/lib/utils'
  * scrolling list".** Those are different placements: the end of the list is
  * below the fold from about the fifth card, so a rider who opens the screen,
  * sees four tiles and taps one is never shown the notice.
- * `openspec/changes/add-ride-map-tiles/specs/ride-map-tiles/spec.md` refuses
+ * `openspec/changes/archive/2026-09-21-add-ride-map-tiles/specs/ride-map-tiles/spec.md` refuses
  * exactly this design in as many words — *"a single shared credit elsewhere on
  * the screen SHALL NOT be accepted as covering the tiles, because a list is
  * scrolled and a card is what a rider sees"* — and that requirement has not been

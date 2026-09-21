@@ -36,6 +36,24 @@
 > *A ride's map tile is visible to exactly the ride's audience*). **All six survive into the
 > merged text.** Neither delta states a policy count any more; do not reintroduce one.
 
+<!--
+REMOVED — `Unenforced capacity is recorded, not silently assumed` (PD-264, 2026-09-07).
+
+It read: WHEN `rides.max_riders` is set, THEN nothing SHALL claim it is enforced — no policy,
+trigger or constraint limits `ride_members` by it.
+
+It is VOID rather than merely false: `063` (PD-174) made it false by adding the trigger, and
+`077` (PD-293, 2026-08-24) then dropped `max_riders` — the column, `018`'s
+`rides_max_riders_range` CHECK and `private.enforce_ride_capacity()` — in full, so its WHEN
+names a column that does not exist.
+
+**The standing spec already says so, under a different scenario name** — the heading
+``#### Scenario: No capacity rule is claimed for `ride_members` `` in
+`openspec/specs/database-enforced-integrity/spec.md`, which cites `077` and the drop. Restoring
+the text above would not overwrite it: archiving replaces the requirement wholesale, so it would
+land a SECOND capacity scenario contradicting the accurate one. Do not restore it.
+-->
+
 ## MODIFIED Requirements
 
 ### Requirement: Storage object ownership SHALL remain database-enforced
@@ -79,6 +97,14 @@ conjunction and hides the arm entirely.
   `club-covers/` or `ride-maps/` outside their own folder
 - **THEN** Storage SHALL refuse the upload
 
+#### Scenario: No capacity rule is claimed for `ride_members`
+- **WHEN** a rider joins a ride
+- **THEN** nothing SHALL limit the size of its crew: `rides.max_riders` was enforced by
+  `063` and dropped, column and trigger together, by `077` (PD-293) — the design draws no
+  capacity affordance anywhere, so the rule could only reach a rider as an unexplained refusal
+- **AND** nothing SHALL claim otherwise: `RIDE_CREW_LIMIT` bounds what the crew rail *renders*
+  and is not a database rule
+
 #### Scenario: A rider cannot read another rider's object whose owning row is invisible to them
 - **WHEN** a rider fetches an object **outside their own folder** while the row naming it is not
   visible to them under that row's own SELECT policy
@@ -101,28 +127,6 @@ conjunction and hides the arm entirely.
   which the same screens render as text to everyone who can see the ride
 - **AND** `private.is_ride_crew` SHALL NOT appear in any `storage.objects` policy
 
-<!--
-REMOVED — `Unenforced capacity is recorded, not silently assumed` (PD-264, 2026-09-07).
-
-It read: WHEN `rides.max_riders` is set, THEN nothing SHALL claim it is enforced — no policy,
-trigger or constraint limits `ride_members` by it.
-
-It is VOID rather than merely false: `063` (PD-174) made it false by adding the trigger, and
-`077` (PD-293, 2026-08-24) then dropped `max_riders` — the column, `018`'s
-`rides_max_riders_range` CHECK and `private.enforce_ride_capacity()` — in full, so its WHEN
-names a column that does not exist.
-
-**The standing spec already says so, under a different scenario name** — the heading
-``#### Scenario: No capacity rule is claimed for `ride_members` `` in
-`openspec/specs/database-enforced-integrity/spec.md`, which cites `077` and the drop. Restoring
-the text above would not overwrite it: archiving replaces the requirement wholesale, so it would
-land a SECOND capacity scenario contradicting the accurate one. Do not restore it.
-
-**Separately, this delta cannot archive until it is refreshed against that scenario — which the
-deletion does not fix, and §7.2 of this change's own `tasks.md` is ticked while still owing it.**
-See `openspec/changes/enforce-ride-capacity/tasks.md` §6.4, which owns the mechanism and the
-exact name to copy.
--->
 
 ## ADDED Requirements
 
