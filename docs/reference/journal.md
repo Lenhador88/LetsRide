@@ -2289,16 +2289,31 @@ the ride screen read it; the ride card carries it now, and both ends of that tri
 
 ## The open OpenSpec changes, and the collision between two of them
 
-**`npm run openspec -- list --json` is the live view** — read it rather than a table here. Status
-per change belongs to Linear; the *content* belongs to the change directory. What follows is only
-what neither holds.
+**`npm run openspec -- list --json` is the live view** of which changes are open. Status per change
+belongs to Linear; the *content* belongs to the change directory. What neither holds is why a
+change nobody is building stays open, so it is here — the nine left after 2026-09-21's round:
 
-**`add-account-deletion` carries an open product decision inside it — the postcard half of
-1.6b.** `account-erasure-cascade` claims a club with no members left holds postcards "entirely
-their own by construction"; a rider can leave a club while their postcards stay, so the branch
-designed to protect third-party content can destroy it. `032` fixed the *rides* half. The
-proposal's default for the postcards half hands the club to the author of the oldest surviving
-postcard — which gives a club to someone who never joined it. Decide it before group 3.
+| Change | Why it stays open |
+|---|---|
+| `add-account-deletion` | Tasks remain; its spec carries the pre-PD-98 succession answer (below); its block of *Club membership role SHALL NOT be self-assignable* must be rewritten against the standing text |
+| `enforce-ride-capacity` | PD-436 — `077` dropped the cap this change specifies |
+| `deliver-push-notifications` | The Android half is unbuilt (no `android/`, PD-442), child B is unverified on a device, and child C is Vault-gated |
+| `tag-postcards-to-rides` | The Journal screen (tasks 4.8, 4.9) was never built — the postcards went onto the ride timeline — so its `ride-journal` spec describes a screen that does not exist |
+| `deferred-club-join-introduction` | Built (PD-392), but PD-418 reversed its `Post` / `Join later` behaviour with no spec, so archiving would add rules the code contradicts |
+| `replace-postcard-region-with-a-named-place` | Built (`072`–`074`), but all five MODIFIED blocks name requirements that never stood (refusal shape 4 below); archiving means re-specifying five requirements, and the standing `photo-capture-metadata` still describes the composer before PD-275 |
+| `postcard-location-defaults-to-a-region` | Not built — `DEFAULT_PHOTO_LOCATION_MODE` is still `'hide'` |
+| `postcard-audience-follows-its-entry-point` | Not built — `CreatePostcardForm.tsx` still draws both selects the change removes |
+| `place-backdated-postcards-on-the-timeline` | Decision only, by design (PD-377, Needs decision) |
+
+**`add-account-deletion`'s succession answer is out of date, and SHALL be replaced before it
+archives.** PD-98 decided the postcard half of 1.6b and `107` built it: when a departing owner leaves
+no member behind, `private.transfer_owned_clubs` keeps the club with `owner_id` NULL if anyone
+else's postcard is in it and deletes it only when nothing third-party remains — except the welcome
+club, which it never keeps ownerless (`club-ownerless-lifecycle` is the standing spec). The change's `account-erasure-cascade`
+delta still carries the default it proposed before that — hand the club to the author of the oldest
+surviving postcard, which gives a club to someone who never joined it — and its scenario *A club
+with no remaining members goes with its owner ONLY if no third-party content remains* must be
+rewritten to `107`'s answer first.
 
 **Every change old enough to matter carries a STALE `## MODIFIED Requirements` block, and that
 is most of the cost of clearing this backlog — measured 2026-09-08 on PD-359.** A MODIFIED block
