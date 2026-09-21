@@ -1,3 +1,50 @@
+<!-- MERGED AT ARCHIVE (2026-09-21), as the block drafted here instructs: `replace-places-index-with-geocoder`
+     archived first and renamed this requirement to its provider-named header, so this block now targets
+     that header. It keeps the geocoder change's prose and its `The attribution page names no
+     contributor that supplied nothing` scenario, adds this block's two surviving rules and three
+     scenarios, and drops what named Overture or a sheet. The block as drafted:
+
+Requirement (as drafted): The right to keep a coordinate SHALL be stated, and the search sheet SHALL link to the attribution page
+
+**This requirement is retained under its original name only so that its falsified text cannot survive
+a fold.** Two of its three premises are gone: there is no sheet, and the licence argument it makes is
+about a data set that no longer exists.
+
+- **The Overture / CDLA Permissive 2.0 reasoning is retired with the data.** `070` dropped
+  `public.places`. Nothing a rider picks today comes from Overture, so a right derived from Overture's
+  licence governs nothing being written. The live statement of the licence basis is the
+  provider-named version of this requirement introduced by the geocoder change, and its open question
+  about what the provider requires of stored and listed results SHALL be answered before production
+  traffic rather than assumed here.
+- **Where the credit is discharged is now owned by `place-search`**, whose attribution requirement
+  states it: on the surface that renders results — the inline list — whenever that list is open with
+  rows in it. This requirement SHALL NOT carry a second, divergent answer.
+- **What survives unchanged is the shape of the obligation**: one credit, on the shared control, never
+  a per-result credit line, and a link that does not navigate a rider away from a half-filled form.
+
+**A fold that leaves two attribution requirements standing SHALL merge them** under the
+provider-named header, keeping this one's "one link, on the shared control, never per-result" rule and
+discarding everything that names Overture or a sheet.
+
+Scenario (as drafted): The credit is reachable from the surface that renders results
+- **WHEN** the suggestion list is open with rows in it
+- **THEN** it SHALL offer the link to `/legal/attributions`
+- **AND** no per-result or per-source credit line SHALL be rendered on a result row
+
+Scenario (as drafted): The link is on the shared control
+- **WHEN** the link is rendered
+- **THEN** it SHALL live in the shared field in `src/components/ui/`, so both callers gain it once
+- **AND** neither caller SHALL ship a second copy
+
+Scenario (as drafted): A stored coordinate has no expiry
+- **WHEN** a picked coordinate and place id are written to a ride
+- **THEN** no deletion deadline, cache window or subscription condition SHALL apply to them
+- **AND** the retention that governs them SHALL be the ride's own, per this spec's retention
+  requirement
+- **AND** the basis for that SHALL be the provider's own terms as recorded by the geocoder change,
+  marked inferred until read, rather than the retired data set's licence
+-->
+
 ## MODIFIED Requirements
 
 <!-- `ride-start-location` became a STANDING capability on 2026-09-08, when
@@ -40,27 +87,29 @@ alter what the rider typed.
 - **THEN** the list SHALL say so and SHALL offer no retry that blocks the form
 - **AND** closing the list SHALL leave the typed meeting point intact
 
-### Requirement: The right to keep a coordinate SHALL be stated, and the search sheet SHALL link to the attribution page
+#### Scenario: A picked label longer than the column is shortened, not refused
+- **WHEN** a rider picks a place whose label exceeds `rides.meeting_point`'s 120-character bound
+- **THEN** the value written into the text SHALL be truncated with an ellipsis, client-side
+- **AND** the write SHALL NOT be refused by `rides_meeting_point_length`
+- **AND** the rider SHALL be able to edit the shortened text afterwards, accepting that editing it
+  drops the pick per the requirement below
+### Requirement: The right to keep a coordinate SHALL be stated, and the attribution SHALL name the provider actually used
 
-**This requirement is retained under its original name only so that its falsified text cannot survive
-a fold.** Two of its three premises are gone: there is no sheet, and the licence argument it makes is
-about a data set that no longer exists.
+The standing text states the right to keep a coordinate under Overture's licence and requires the
+search sheet to link to the attribution page. The right survives; the licence behind it does not.
 
-- **The Overture / CDLA Permissive 2.0 reasoning is retired with the data.** `070` dropped
-  `public.places`. Nothing a rider picks today comes from Overture, so a right derived from Overture's
-  licence governs nothing being written. The live statement of the licence basis is the
-  provider-named version of this requirement introduced by the geocoder change, and its open question
-  about what the provider requires of stored and listed results SHALL be answered before production
-  traffic rather than assumed here.
-- **Where the credit is discharged is now owned by `place-search`**, whose attribution requirement
-  states it: on the surface that renders results — the inline list — whenever that list is open with
-  rows in it. This requirement SHALL NOT carry a second, divergent answer.
-- **What survives unchanged is the shape of the obligation**: one credit, on the shared control, never
-  a per-result credit line, and a link that does not navigate a rider away from a half-filled form.
+Coordinates returned by the vendor SHALL be storable indefinitely, and the basis for that SHALL be
+recorded rather than assumed — this change's `design.md` §Open Questions carries it as Q1, and it
+SHALL be answered before the proxy serves PROD traffic. The Overture credit SHALL be removed from
+`/legal/attributions` in the same PR that drops the table, and the OpenStreetMap credit SHALL
+remain and SHALL be broadened to cover search results rather than map tiles alone.
 
-**A fold that leaves two attribution requirements standing SHALL merge them** under the
-provider-named header, keeping this one's "one link, on the shared control, never per-result" rule and
-discarding everything that names Overture or a sheet.
+**Where the credit is discharged is owned by `place-search`**, whose attribution requirement states
+it: on the surface that renders results — the inline list — whenever that list is open with rows in
+it. This requirement SHALL NOT carry a second, divergent answer.
+
+**What survives unchanged is the shape of the obligation**: one credit, on the shared control, never
+a per-result credit line, and a link that does not navigate a rider away from a half-filled form.
 
 #### Scenario: The credit is reachable from the surface that renders results
 - **WHEN** the suggestion list is open with rows in it
@@ -79,6 +128,11 @@ discarding everything that names Overture or a sheet.
   requirement
 - **AND** the basis for that SHALL be the provider's own terms as recorded by the geocoder change,
   marked inferred until read, rather than the retired data set's licence
+
+#### Scenario: The attribution page names no contributor that supplied nothing
+- **WHEN** the places table is dropped
+- **THEN** `/legal/attributions` SHALL no longer credit Overture
+- **AND** it SHALL credit the vendor and OpenStreetMap for both tiles and search results
 
 ### Requirement: The search surface SHALL define every state it can be in
 

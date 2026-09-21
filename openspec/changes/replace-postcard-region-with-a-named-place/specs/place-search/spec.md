@@ -1,11 +1,12 @@
 ## Purpose
 
-**Delta note.** `place-search` is not yet a standing capability: it exists as deltas in
+**Delta note.** `place-search` is a standing capability — `openspec/specs/place-search/spec.md`,
+folded from
 `openspec/changes/archive/2026-09-21-replace-places-index-with-geocoder/specs/place-search/spec.md` and
-`openspec/changes/inline-place-search-with-recent-starts/specs/place-search/spec.md`, both shipped
-and unarchived. This delta adds a third proxy mode and does not modify any existing requirement in
-either file — in particular the seven lookup states, the term-handling rules and the attribution
-requirement all stand unchanged.
+`openspec/changes/archive/2026-09-21-inline-place-search-with-recent-starts/specs/place-search/spec.md`.
+This delta adds a third proxy mode and does not modify any existing requirement in it — in
+particular the seven lookup states, the term-handling rules and the attribution requirement all
+stand unchanged.
 
 ## ADDED Requirements
 
