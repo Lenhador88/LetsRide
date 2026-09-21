@@ -15,7 +15,7 @@ its organizer alone is refused, an edit to a ride already in that shape saves.
 
 **Two things about the fix that a later reader will otherwise re-litigate.** The `Narrow` reading
 was a **stated assumption rather than an owner answer** — it was taken in an unattended run, and
-`openspec/changes/scope-the-strand-guard-to-the-transition/design.md` §Open questions Q1 carries
+`openspec/changes/archive/2026-09-21-scope-the-strand-guard-to-the-transition/design.md` §Open questions Q1 carries
 the `Wide` alternative (drop the guard outright) with the evidence a later decision needs; Wide is
 Narrow minus one predicate, so nothing is foreclosed. And the guard is **advisory by design**:
 the `rides` UPDATE policy carries no `is_public` predicate at all, which is why the change needed

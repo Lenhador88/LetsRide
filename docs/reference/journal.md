@@ -1745,7 +1745,7 @@ public one, are still refused.
 
 - **`Narrow` was a stated ASSUMPTION, not an owner decision.** Nobody was available; the proposal
   says so at the top and
-  `openspec/changes/scope-the-strand-guard-to-the-transition/design.md` §Open questions Q1 carries
+  `openspec/changes/archive/2026-09-21-scope-the-strand-guard-to-the-transition/design.md` §Open questions Q1 carries
   `Wide` (drop the guard) with its evidence. Wide is Narrow *minus one predicate*, so shipping this forecloses nothing — but if the
   owner wanted Wide, PD-338 is not fully answered.
 - **The guard is advisory and always was.** The `rides` UPDATE policy carries **no `is_public`

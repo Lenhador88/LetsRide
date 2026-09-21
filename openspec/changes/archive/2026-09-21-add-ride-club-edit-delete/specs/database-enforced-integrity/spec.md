@@ -1,3 +1,35 @@
+<!--
+NOT APPLIED AT ARCHIVE (2026-09-21). This was a MODIFIED block for a requirement that has never
+existed in `openspec/specs/database-enforced-integrity/spec.md` under this or any name, so there was
+nothing for it to modify. Its substance is also no longer true as written: the column-grant
+narrowing it records as an open follow-up shipped as `045_rides_clubs_server_owned_created_at.sql`
+(PD-163), so `created_at`, `organizer_id` and `owner_id` on `rides` and `clubs` are no longer
+writable by `authenticated` on UPDATE. Kept verbatim below for the record.
+
+Requirement (not applied): An integrity rule SHALL live in the database, and a rule that reaches only TypeScript SHALL be labelled advisory
+
+The standing rule is unchanged: a rule about *what a value may be* must end up as a CHECK, trigger
+or policy, because the client owns the mutation path.
+
+**This change adds the case the rule did not previously cover: a rule about *which columns a write
+may touch*.** `authenticated` holds table-level UPDATE on every column of `rides` and `clubs`,
+including `id`, `created_at`, `organizer_id` and `owner_id`. The `WITH CHECK` clauses stop
+`organizer_id` and `owner_id` from moving, but nothing stops `created_at` being rewritten by any
+organizer or owner.
+
+`updateRide` and `updateClub` SHALL construct their payloads from an explicit field list. That is
+a TypeScript rule with no constraint behind it, so it SHALL be **labelled advisory** wherever it
+is written down, and the column-grant narrowing that would make it real SHALL be recorded as an
+open follow-up rather than left implied. `ride_messages` narrowed its INSERT grant per column at
+birth for exactly this reason; `rides` and `clubs` predate that practice.
+
+Scenario (not applied): An update action spreads a parsed object
+
+- **WHEN** an update action passes a spread of parsed form data to `.update()`
+- **THEN** review SHALL reject it in favour of an explicit field list
+- **AND** the spec SHALL NOT claim the database prevents the extra column
+-->
+
 ## ADDED Requirements
 
 ### Requirement: A `security definer` function reached by a client SHALL re-check authorization internally
@@ -65,28 +97,3 @@ downgrades** existing state.
 - **WHEN** the owner submits `is_public = false`
 - **THEN** the screen SHALL have stated beforehand that the club's public rides become private and
   are not restored by making the club public again
-
-## MODIFIED Requirements
-
-### Requirement: An integrity rule SHALL live in the database, and a rule that reaches only TypeScript SHALL be labelled advisory
-
-The standing rule is unchanged: a rule about *what a value may be* must end up as a CHECK, trigger
-or policy, because the client owns the mutation path.
-
-**This change adds the case the rule did not previously cover: a rule about *which columns a write
-may touch*.** `authenticated` holds table-level UPDATE on every column of `rides` and `clubs`,
-including `id`, `created_at`, `organizer_id` and `owner_id`. The `WITH CHECK` clauses stop
-`organizer_id` and `owner_id` from moving, but nothing stops `created_at` being rewritten by any
-organizer or owner.
-
-`updateRide` and `updateClub` SHALL construct their payloads from an explicit field list. That is
-a TypeScript rule with no constraint behind it, so it SHALL be **labelled advisory** wherever it
-is written down, and the column-grant narrowing that would make it real SHALL be recorded as an
-open follow-up rather than left implied. `ride_messages` narrowed its INSERT grant per column at
-birth for exactly this reason; `rides` and `clubs` predate that practice.
-
-#### Scenario: An update action spreads a parsed object
-
-- **WHEN** an update action passes a spread of parsed form data to `.update()`
-- **THEN** review SHALL reject it in favour of an explicit field list
-- **AND** the spec SHALL NOT claim the database prevents the extra column
