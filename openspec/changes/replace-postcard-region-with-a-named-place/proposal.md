@@ -139,11 +139,11 @@ None. Every requirement here belongs to a capability that already exists.
 > **Two of the three are STANDING as of 2026-09-08 — this banner said otherwise until then.**
 > `openspec/specs/` now holds 24 capabilities, `database-enforced-integrity` and
 > `photo-capture-metadata` among them: `capture-photo-time-and-place` archived that day, so its
-> text is standing rather than a delta. **`place-search` is the one that is still not standing** —
-> it is split across the open `replace-places-index-with-geocoder/` and
-> `inline-place-search-with-recent-starts/`, both shipped and unarchived. So diff the two standing
-> deltas below against `openspec/specs/`, and only the `place-search` one against the open change
-> that holds its base text. Each `MODIFIED` requirement names what it modifies.
+> text is standing rather than a delta. **`place-search` became standing on 2026-09-21**, when
+> `replace-places-index-with-geocoder` and `inline-place-search-with-recent-starts` archived, so
+> diff all three deltas below against `openspec/specs/`. Each `MODIFIED` requirement names what it
+> modifies — and none of the five names a requirement that stands, which is why this change is
+> still open (`docs/reference/journal.md` §The open OpenSpec changes, shape 4).
 
 ## Impact
 
