@@ -29,6 +29,33 @@ describe('APP_VERSION', () => {
     expect(APP_VERSION).toBe(pkg.version)
   })
 
+  it('equals MARKETING_VERSION in the iOS project, the copy nothing else gates', () => {
+    // THREE copies of one number, not two, since `ios/` became a committed part
+    // of this repository: `package.json`, this constant, and Xcode's
+    // `MARKETING_VERSION`. The case above pins the first pair; this pins the
+    // third, which had no gate at all and is the one whose drift is silent and
+    // expensive — the update gate reads `APP_VERSION`, the store shows
+    // `MARKETING_VERSION`, so a bundle can ship claiming a version the gate
+    // never compares. `Info.plist` needs no assertion of its own:
+    // `CFBundleShortVersionString` is `$(MARKETING_VERSION)`, an interpolation
+    // rather than a fourth copy.
+    //
+    // Parsed with a regex rather than a pbxproj parser on purpose — the format
+    // is Xcode's and the only thing worth pinning is the value. Both build
+    // configurations carry it and both must agree.
+    const pbxproj = readFileSync(
+      path.join(ROOT, 'ios/App/App.xcodeproj/project.pbxproj'),
+      'utf8'
+    )
+    const versions = [...pbxproj.matchAll(/MARKETING_VERSION = ([^;]+);/g)].map((m) => m[1].trim())
+
+    // Two configurations, Debug and Release. A count that is not 2 means the
+    // project changed shape, and guessing which one is authoritative is how
+    // this assertion would silently start checking nothing.
+    expect(versions).toHaveLength(2)
+    for (const version of versions) expect(version).toBe(APP_VERSION)
+  })
+
   it('is a version this file can actually parse', () => {
     // A constant the comparator rejects fails open on every launch, which reads
     // exactly like a gate that is working and has nothing to block.

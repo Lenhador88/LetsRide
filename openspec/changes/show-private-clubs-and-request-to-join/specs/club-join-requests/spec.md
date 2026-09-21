@@ -406,6 +406,9 @@ member there (`054`).
 
 ### Requirement: A request SHALL survive a change in the club's visibility and SHALL die with the club or with either rider
 
+A pending or declined request SHALL survive a change in its club's visibility, and SHALL be removed
+with the club or with either rider.
+
 #### Scenario: The club is deleted
 - **WHEN** a club with pending and declined requests is deleted
 - **THEN** every request for it SHALL be removed by `on delete cascade`

@@ -63,3 +63,20 @@ export const reportPostcardSchema = z.object({
   reason: reportReasonSchema,
   note: reportNoteSchema,
 })
+
+/**
+ * What `reportPostcardComment` sends — `123`, PD-454, `reportPostcardSchema`'s
+ * shape with the subject renamed. `reason` and `note` are the same two schemas
+ * above rather than a copy of them, and `REPORT_REASONS` is the one enum both
+ * `postcard_reports` and `postcard_comment_reports` carry (kept in step by
+ * hand — the same standing risk this file already documents).
+ *
+ * Per CLAUDE.md, this owns the **message**; `123`'s CHECK constraint, the
+ * `unique (reporter_id, comment_id)` index and `enforce_participation_gate`
+ * own the guarantee.
+ */
+export const reportPostcardCommentSchema = z.object({
+  commentId: z.uuid('That comment could not be found.'),
+  reason: reportReasonSchema,
+  note: reportNoteSchema,
+})

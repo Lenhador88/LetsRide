@@ -25,9 +25,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * than an edge case, and it is asserted first.
  */
 
-const calls: Array<{ location: string | null }> = []
+const calls: Array<Record<string, unknown>> = []
 const maybeSingle = vi.fn()
-const update = vi.fn((values: { location: string | null }) => {
+const update = vi.fn((values: Record<string, unknown>) => {
   calls.push(values)
   return { eq: () => ({ select: () => ({ maybeSingle }) }) }
 })
@@ -120,5 +120,67 @@ describe('the memo and the cache are BOTH swept, and neither substitutes', () =>
     expect(result.error).toBeTruthy()
     expect(clearRiderLocation).not.toHaveBeenCalled()
     expect(invalidate).not.toHaveBeenCalled()
+  })
+})
+
+describe('the country that came off the same pick — PD-445', () => {
+  it('writes it beside the town when the pick carried one', async () => {
+    const result = await setRiderTown('Hoorn', 'NL')
+    expect(result.error).toBeNull()
+    expect(calls).toEqual([{ location: 'Hoorn', home_country: 'NL' }])
+  })
+
+  it('uppercases it, because `113`’s CHECK is `^[A-Z]{2}$`', async () => {
+    // The vendor's casing is not this app's to trust: `asCountryCode`
+    // uppercases in `search-places/shape.ts`, and doing it here too means a
+    // seeded or hand-built `PlaceValue` cannot reach the column as `nl` and
+    // come back as a raw 23514 in front of a rider.
+    await setRiderTown('Hoorn', 'nl')
+    expect(calls[0].home_country).toBe('NL')
+  })
+
+  it('OMITS the key entirely when the pick carried no country', async () => {
+    // **The absence of the key, not a null value**, and the difference is the
+    // whole point. `113`'s trigger coerces a NULL back to the stored country —
+    // but only `if old.home_country is not null`, so the arm is dead for every
+    // rider who has none, which is currently all of them (0 of 25 on DEV, 0 of
+    // 5 on PROD). And the trigger's first statement is
+    // `if current_user <> 'authenticated' then return new`, so it is a rule
+    // about what a client may write rather than about the column. Writing NULL
+    // and trusting the coercion would be trusting a branch that does not run.
+    await setRiderTown('Hoorn')
+    expect(calls[0]).not.toHaveProperty('home_country')
+    expect(calls[0]).toEqual({ location: 'Hoorn' })
+  })
+
+  it('OMITS the key for an explicitly null country', async () => {
+    // `PlaceValue.countryCode` is `string | null | undefined` — seeded values
+    // omit the property, a fresh lookup can answer null. Both mean "no
+    // country" and must reach the column the same way.
+    await setRiderTown('Hoorn', null)
+    expect(calls[0]).not.toHaveProperty('home_country')
+  })
+
+  it('OMITS the key for an empty or whitespace country', async () => {
+    await setRiderTown('Hoorn', '   ')
+    expect(calls[0]).not.toHaveProperty('home_country')
+  })
+
+  it('never writes a country on a CLEAR', async () => {
+    // Removing your town is not withdrawing the country it came from, and
+    // `LocationSetting`'s Remove is an obligation PD-419 names in as many
+    // words. A country arriving here alongside a null town is a caller bug;
+    // this pins that it cannot reach the column either way.
+    await setRiderTown(null, 'NL')
+    expect(calls).toEqual([{ location: null }])
+  })
+
+  it('still clears when Remove is tapped, with no country argument at all', async () => {
+    // `LocationSetting.clear()` passes one argument. The second being optional
+    // is what keeps that call site untouched, and this is the assertion that
+    // says the signature change did not break it.
+    const result = await setRiderTown(null)
+    expect(result.error).toBeNull()
+    expect(calls).toEqual([{ location: null }])
   })
 })

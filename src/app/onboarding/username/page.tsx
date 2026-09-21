@@ -47,7 +47,7 @@ const initialState: UsernameFormState = { ...emptyActionState, refused: [] }
  *   one-dot progress bar communicates nothing, and this is the whole wizard"* —
  *   true of a one-step wizard and false of a two-step one. Both screens draw it
  *   or neither does; dots on one and not the other is worse than none.
- * - **`setUsername` no longer commits the completion stamp.** `setHomeCountry`
+ * - **`setUsername` no longer commits the completion stamp.** `setHomeTown`
  *   does, on the next screen. It still invalidates the guard cache, and still
  *   must: it writes `has_username`, which is exactly what the guard's resume
  *   branch reads to choose between these two steps.

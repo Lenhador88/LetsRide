@@ -47,8 +47,8 @@ export default function AccountDeletionPage() {
         What is kept is the emailed route, in the present tense, because it answers a
         different rider: one who cannot sign in at all. Play's User Data policy wants a
         web-accessible way to REQUEST deletion, and "open the app and tap it" is not one for
-        somebody locked out of the account. The address is `SUPPORT_EMAIL` — see that file
-        for why it still needs an owner.
+        somebody locked out of the account. The address is `SUPPORT_EMAIL`, settled by
+        PD-300.
       */}
       <p className="text-muted">
         If you cannot sign in — a lost password, an email address you no longer have — email{' '}
@@ -87,8 +87,7 @@ export default function AccountDeletionPage() {
           Named here rather than left to the privacy page because THIS is the
           page a rider reads when they are deciding to leave. */}
       <p className="text-muted">
-        One thing is not removed automatically: the usage records and screen replays described
-        in our{' '}
+        One thing is not removed automatically: the usage records described in our{' '}
         <Link href="/legal/privacy" className="underline">
           Privacy Statement
         </Link>

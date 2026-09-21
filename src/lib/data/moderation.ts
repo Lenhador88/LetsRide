@@ -26,7 +26,7 @@ import type { BlockedRider, HiddenPostcard } from '@/types'
  * `auth.uid()` and each restating the conjunct it deliberately drops; `106`
  * narrows the hides one to two columns after a pre-merge review found its
  * preview was a block detector. See
- * `openspec/changes/undo-a-block-or-a-hide/design.md` D1–D4.
+ * `openspec/changes/archive/2026-09-08-undo-a-block-or-a-hide/design.md` D1–D4.
  */
 
 /**

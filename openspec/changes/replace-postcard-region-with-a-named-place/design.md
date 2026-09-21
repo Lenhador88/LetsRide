@@ -4,7 +4,7 @@
 
 `064` (`capture-photo-time-and-place`, PD-255) is the file this change amends and its reasoning is
 adopted whole. Read it first — `supabase/migrations/064_postcards_capture_time_and_place.sql` and
-`openspec/changes/capture-photo-time-and-place/design.md` — because everything below either
+`openspec/changes/archive/2026-09-08-capture-photo-time-and-place/design.md` — because everything below either
 extends one of its decisions or names the single one it overturns.
 
 What `064` established, unchanged here:

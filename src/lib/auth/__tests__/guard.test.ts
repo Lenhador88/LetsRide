@@ -214,18 +214,18 @@ describe('an un-onboarded rider resumes where they left off', () => {
     expect(resolveDestination('/postcards', noUsername)).toBe('/onboarding/username')
   })
 
-  it('resumes at /onboarding/country once the username is set', () => {
-    expect(resolveDestination('/postcards', hasUsername)).toBe('/onboarding/country')
+  it('resumes at /onboarding/town once the username is set', () => {
+    expect(resolveDestination('/postcards', hasUsername)).toBe('/onboarding/town')
   })
 
   it('stays on the resume step itself, for either state', () => {
     expect(resolveDestination('/onboarding/username', noUsername)).toBeNull()
-    expect(resolveDestination('/onboarding/country', hasUsername)).toBeNull()
+    expect(resolveDestination('/onboarding/town', hasUsername)).toBeNull()
   })
 
   it('is moved on from the consent prompt, which is behind them', () => {
     expect(resolveDestination('/onboarding/terms', noUsername)).toBe('/onboarding/username')
-    expect(resolveDestination('/onboarding/terms', hasUsername)).toBe('/onboarding/country')
+    expect(resolveDestination('/onboarding/terms', hasUsername)).toBe('/onboarding/town')
   })
 
   it('does not let a rider skip forward to the country step without a username', () => {
@@ -233,7 +233,7 @@ describe('an un-onboarded rider resumes where they left off', () => {
     // completion without a username, so a rider who reached the country screen
     // early would fill it in and be refused by the database with nothing on
     // screen explaining why.
-    expect(resolveDestination('/onboarding/country', noUsername)).toBe('/onboarding/username')
+    expect(resolveDestination('/onboarding/town', noUsername)).toBe('/onboarding/username')
   })
 
   it('lets a rider stand on the earlier step they have already done — the Back link', () => {
@@ -251,7 +251,21 @@ describe('an un-onboarded rider resumes where they left off', () => {
     // without the catch-all below `resolveDestination` used to answer `null`
     // — "stay here" — for exactly this path when `has_username` was true.
     expect(resolveDestination('/onboarding/location', noUsername)).toBe('/onboarding/username')
-    expect(resolveDestination('/onboarding/location', hasUsername)).toBe('/onboarding/country')
+    expect(resolveDestination('/onboarding/location', hasUsername)).toBe('/onboarding/town')
+  })
+
+  it('sends the renamed country step to the town step rather than leaving a rider on it', () => {
+    // PD-445 renamed `/onboarding/country` to `/onboarding/town` when the step
+    // stopped asking for a country. It is the second dead onboarding path this
+    // catch-all covers, and it is the more likely of the two to be requested:
+    // it was live hours ago, and `setUsername` redirected to it, so a tab open
+    // across the deploy asks for it on its next navigation.
+    //
+    // **The catch-all is what makes the rename safe, and this is the assertion
+    // that says so.** Without it a rider with a username lands on a 404 that
+    // the guard reports as the correct destination.
+    expect(resolveDestination('/onboarding/country', hasUsername)).toBe('/onboarding/town')
+    expect(resolveDestination('/onboarding/country', noUsername)).toBe('/onboarding/username')
   })
 
   it('resolves any other unknown path under /onboarding to the resume step — the catch-all', () => {
@@ -259,7 +273,7 @@ describe('an un-onboarded rider resumes where they left off', () => {
       '/onboarding/username'
     )
     expect(resolveDestination('/onboarding/whatever-comes-next', hasUsername)).toBe(
-      '/onboarding/country'
+      '/onboarding/town'
     )
   })
 })
@@ -354,7 +368,7 @@ describe('the invite link landing route', () => {
     // join path is gated at all — the particular step is the resume table's
     // business, asserted above.
     expect(resolveDestination(RIDE_JOIN_PATH, rider({ onboarding_completed_at: null }))).toBe(
-      '/onboarding/country'
+      '/onboarding/town'
     )
     // Consent first, per 023: a rider with neither stamp goes to the prompt,
     // not to the wizard's last step.
@@ -389,7 +403,7 @@ describe('the club invite link landing route', () => {
     // Same as the ride case above: `rider()` carries a username, so the resume
     // step is the country one since PD-428.
     expect(resolveDestination(CLUB_JOIN_PATH, rider({ onboarding_completed_at: null }))).toBe(
-      '/onboarding/country'
+      '/onboarding/town'
     )
     expect(
       resolveDestination(

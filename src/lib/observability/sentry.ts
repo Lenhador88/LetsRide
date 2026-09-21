@@ -53,8 +53,9 @@ import { scrubEvent, scrubValue, type JsonObject } from '@/lib/observability/scr
  *
  * ## No Sentry session replay, deliberately
  *
- * Replay is PostHog's job (PD-353), and it is ON and unmasked for the pilot
- * there. A second recorder would be a second copy of the same footage, a second
+ * Replay was PostHog's job (PD-353) and is now nobody's — PD-456 turned it off
+ * there on 2026-09-18, so this decision has outlived what it deferred to.
+ * A second recorder would have been a second copy of the same footage, a second
  * privacy disclosure, and a second store-privacy-label answer, for no question
  * the first one cannot answer. `replayIntegration` is not imported here and
  * must not be.

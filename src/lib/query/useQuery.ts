@@ -38,7 +38,7 @@ function getServerSnapshot<T>(): QuerySnapshot<T> {
 
 /**
  * The one hook every screen reads through once its render moves client-side —
- * `openspec/changes/migrate-to-client-rendered-shell` tasks 5.2–5.11. It is a
+ * `openspec/changes/archive/2026-08-06-migrate-to-client-rendered-shell` tasks 5.2–5.11. It is a
  * thin wrapper: everything that decides *what* to do lives in
  * `queryClient.ts`, a plain module with no React import, which is what makes
  * that logic testable under Vitest's `node` environment (see

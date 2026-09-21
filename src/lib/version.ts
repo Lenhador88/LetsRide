@@ -15,16 +15,18 @@
  * at runtime instead would bundle the whole dependency list into the client, so
  * the constant is the cheap half and the test is what makes it true.
  *
- * **The store build's marketing version has to match this**, and setting it is
- * an owner/native step at submission rather than anything this repo can do:
- * `CFBundleShortVersionString` in `ios/App/App/Info.plist` (Xcode's *Version*
- * field), and `versionName` in `android/app/build.gradle`. If a bundle ships
+ * **The store build's marketing version has to match this, and on iOS it is now
+ * in this repository rather than an owner step at submission** — `ios/` is
+ * committed, so `MARKETING_VERSION` in `ios/App/App.xcodeproj/project.pbxproj`
+ * is the value to keep in step, and `Info.plist`'s
+ * `CFBundleShortVersionString` only interpolates it. Android's `versionName`
+ * remains hypothetical: there is no `android/`. If a bundle ships
  * claiming `1.2.0` while this says `0.1.0`, the gate compares the wrong number
  * — it reads *this* constant, not the platform's — and a raise of the published
  * minimum locks out a build that was actually new enough, with no way back for
  * the rider except an update that is already installed.
  */
-export const APP_VERSION = '0.1.0'
+export const APP_VERSION = '1.0.0'
 
 /**
  * `1.10.0` into `[1, 10, 0]`, or `null` for anything this scheme does not

@@ -50,9 +50,10 @@ issue, the PR, and the push notification at STEP 5.
 Read `CLAUDE.md` fully before acting — it is the contract, and §The roadmap lives in Linear
 defines this board.
 
-Workspace `lets-ride`, team **Pedro & Dave** (`PD`), project **Let's ride (AI)**
-(`88f3f224-ecf0-46f0-a032-c86b7a12f81c`). Note the curly apostrophe in that name; pass the
-id, never the name.
+Workspace `lets-ride`, team `PD` (`7388c68e-ef17-4998-a9b7-d8ad8ce66038`), project
+**Let's ride (AI)** (`88f3f224-ecf0-46f0-a032-c86b7a12f81c`). **Pass both ids, never the display
+names** — the project name holds a curly apostrophe, and the team's name has already been changed
+once under a procedure that filtered by it.
 
 ---
 
@@ -80,7 +81,7 @@ the board 2026-08-08, not inferred from Linear's published `WorkflowState.type` 
 not list it. Do not "correct" it to `canceled`.
 
 ```
-mcp__Linear__list_issue_statuses  team=Pedro & Dave
+mcp__Linear__list_issue_statuses  team=7388c68e-ef17-4998-a9b7-d8ad8ce66038
 ```
 
 **Run that before the first status write of a firing.** A `save_issue` naming a status that no

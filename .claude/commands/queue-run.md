@@ -62,7 +62,7 @@ on the `PD` team (created 2026-08-18) — check rather than trust that, because 
 rests on it:
 
 ```
-mcp__Linear__list_issue_labels  team=Pedro & Dave     # slot-1 and slot-2 must both be there
+mcp__Linear__list_issue_labels  team=7388c68e-ef17-4998-a9b7-d8ad8ce66038   # slot-1 and slot-2 must both be there
 ```
 
 **A `list_issues label=slot-1` returning nothing does NOT establish they exist** — the empty
@@ -82,9 +82,10 @@ write and the label write leaves the same state; the accepted cost is one extra 
 against a freeze on every hand move.
 
 Read `CLAUDE.md` fully before acting — it is auto-loaded, and it is the contract. Workspace
-`lets-ride`, team **Pedro & Dave** (`PD`), project **Let's ride (AI)**
-(`88f3f224-ecf0-46f0-a032-c86b7a12f81c`). Note the curly apostrophe in that name; pass the id,
-never the name.
+`lets-ride`, team `PD` (`7388c68e-ef17-4998-a9b7-d8ad8ce66038`), project **Let's ride (AI)**
+(`88f3f224-ecf0-46f0-a032-c86b7a12f81c`). **Pass both ids, never the display names** — the project
+name holds a curly apostrophe, and the team's name has already been changed once under a procedure
+that filtered by it.
 
 ---
 
@@ -188,7 +189,7 @@ untouched until STEP 5, so a stalled firing holds nothing.
 
 ## STEP 1 — Read the board, once
 
-**Never type a status name from memory** — `list_issue_statuses team=Pedro & Dave` first, and use
+**Never type a status name from memory** — `list_issue_statuses team=7388c68e-ef17-4998-a9b7-d8ad8ce66038` first, and use
 the names it returns. Names have moved twice with nothing in the repo noticing, and a `save_issue`
 naming a status that no longer exists comes back looking successful with the field silently
 dropped. `queue-pickup.md` §The status names carries the live table and the two traps in its
@@ -487,20 +488,73 @@ Ask how long the oldest of these has been true:
   segment is written anyway so one marker form serves both subjects and the legacy rule below has
   nothing to except.
 
-  **No hit — then age the branch tip if there is one**, because a live build keeps resetting it
-  and a dead one does not:
+  **No hit — then find the build branch and age ITS tip**, because a live build keeps resetting
+  it and a dead one does not. Two places to look, and the second is the one that usually answers:
 
   ```bash
-  git ls-remote --heads origin | grep -i "pd-<n>"          # gitBranchName is a guess; this is not
-  git fetch origin "<ref>" --quiet && git log -1 --format=%ct "origin/<ref>"
+  git fetch origin --quiet --prune
+  git ls-remote --heads origin | grep -i "pd-<n>"      # the issue's gitBranchName, if it used one
+
+  # Otherwise: a branch one of whose SUBJECTS ends in (PD-<n>), newest tip last
+  for b in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin/claude); do
+    git log --format='%s' "origin/development..$b" | grep -q "(PD-<n>)" \
+      && git log -1 --format="%cI  $b  %h  %s" "$b"
+  done | sort
   ```
 
-  **This repo's branches are `claude/<slug>` and usually carry no issue id**, so that grep
-  legitimately finds nothing on a healthy build. Fall back to the issue's
-  `stateHistory[].startedAt` — and read a no-branch result as *unknown*, not as *dead*.
-  **Write `unknown` and stop there.** Every hardening of that word into *never pushed a branch*
-  on 2026-09-06 was false, and one of them became a High-priority issue offering to revert a
-  migration whose file was sitting in the PR nobody had searched for.
+  **Several branches can match, so take the newest tip and then test it against the claim.**
+  Ignore any tip OLDER than the `startedAt` of the issue's current `Development (AI)` row — that
+  is a previous attempt's branch, not this session's, and reporting it would send the next firing
+  to resume from abandoned work. If nothing survives that test, the answer is `unknown`.
+
+  **Every clause in that loop is load-bearing** — the obvious one-liner,
+  `git log --all --grep="PD-<n>"`, is wrong in four ways measured on 2026-09-19:
+
+  - **`refs/remotes/origin/claude`, not `--all`.** `--all` reaches `development`, where the
+    SQUASH-MERGE subject also ends `(PD-<n>)`. It is the newest hit, so the "branch tip" aged is
+    a long-lived branch that moves all day — the check would then never alarm again for that
+    issue. That is worse than the miss this block replaces: a suppressed alarm, not an `unknown`.
+  - **`origin/development..$b` narrows, and does NOT mean "unmerged".** Feature PRs here are
+    SQUASH-merged (`CLAUDE.md` §Branching & CI), so a landed branch's own commits never become
+    ancestors of `development` and it keeps matching for ever — measured: PD-457 still answers
+    with two branches hours after its PRs merged. The range drops a merge-committed branch and
+    nothing else; the claim-time test above is what actually discriminates.
+  - **`%s`, and the id in `(PD-<n>)` form.** `--grep` matches the whole message, so a commit that
+    merely *mentions* another story answers for it. **A bare mention does not count** — the same
+    guard, for the same reason, as the `Closes PD-<n>` rule on the PR read above.
+
+  - **`git log -1 "$b"` reads the BRANCH's tip**, where `%D` on the match reads the tip only by
+    luck: it is empty unless the matching commit happens to BE the tip, and the date printed is
+    then the wrong number. Four current `claude/*` tips carry no id in their subject.
+
+  **A miss falls back to the issue's `stateHistory[].startedAt`. Write `unknown` and stop
+  there.** Every hardening of that word into *never pushed a branch* on 2026-09-06 was false, and
+  one of them became a High-priority issue offering to revert a migration whose file was sitting
+  in the PR nobody had searched for. **A hit is not the opposite licence**: a tip that has not
+  moved in hours is a stronger signal than `unknown`, and still not proof the session died, so
+  it changes what the final message can SAY and never who clears the slot.
+
+  **Say what the hit found** — the branch, its tip time and what is on it — because that is what
+  turns the owner's decision into one step: a pushed branch means a later firing can continue
+  from it rather than starting the story over, which `unknown` gives them no way to know. **Name
+  the branch only when the loop above named it**, since that sentence is an instruction to resume
+  from it and the cost of naming the wrong one is a session building on unrelated work.
+
+  **Then say which of DEAD and SLOW it looks like, from the one number the loop just printed** —
+  the tip's age. `unknown` at 3h and `unknown` at 20h are the same sentence twice, and the owner
+  has to open the board to learn anything from either; *looks dead — 22h since its last commit* is
+  the same honesty with the reading attached. **It changes the sentence and never the action:
+  still never clear the slot yourself.**
+
+  **The signal is silence at the TIP; a slow START is not one.** Measured on PD-450, 2026-09-19:
+  claimed 07:43:46Z, three commits between 07:56 and 08:01:40Z, then nothing for 22 hours while
+  four unrelated stories merged past it. The tempting second reading — how long the session took
+  to reach its FIRST commit — is the trap. PD-450's was **12m31s** and discriminated nothing; the
+  11:44Z alarm above calls four hours before a first commit *ordinary* for a `size: L` story whose
+  body sequences `openspec` first; and the command a careful person writes for it,
+  `git log --reverse --format=%cI <branch> | head -1`, answers with the repo's ROOT commit —
+  measured 2026-08-05, a 45-day gap that labels every slot dead for ever.
+
 - **A `Needs help` issue** — `get_issue` → `stateHistory[].startedAt`. **This clock is now the
   whole backstop, and before this change it was a second one.** The freeze used to make a parked
   story impossible to miss; nothing does that any more, so a parked story that nobody comes back to

@@ -2,7 +2,9 @@
 
 import { useState, useTransition } from 'react'
 import { Avatar } from '@/components/ui/Avatar'
+import { useBanner } from '@/components/ui/Banner'
 import { deleteComment } from '@/lib/actions/comments'
+import { reportPostcardComment } from '@/lib/actions/moderation'
 import { formatRelativeTime } from '@/lib/utils'
 import type { PostcardComment } from '@/types'
 
@@ -16,6 +18,14 @@ type CommentItemProps = {
    * database rather than by this prop.
    */
   canDelete: boolean
+  /**
+   * Whether to offer the report control — `123`, PD-454. Computed the same
+   * defensive way as `canDelete`: `viewerId !== undefined && comment.author_id
+   * !== viewerId`. `123`'s INSERT policy would accept a self-report too
+   * (`design.md` D9), but a menu row is a display hint, never an
+   * authorization, so it is simply not drawn for the comment's own author.
+   */
+  canReport: boolean
 }
 
 /**
@@ -30,11 +40,22 @@ type CommentItemProps = {
  * and a trailing heart — so this remains a registered guess, now against a read
  * frame rather than an unread one.
  * See docs/FIGMA-FIDELITY-TODO.md §Comments.
+ *
+ * **`Report` is inline text beside `Delete`, on the same 44px floor and
+ * negative-margin pattern — `123`, PD-454, `design.md` D10.** No frame draws
+ * either control (`docs/FIGMA-FIDELITY-TODO.md` §Postcard overflow menu,
+ * registered beside the two entries already recording the same reporting
+ * gap), so this reuses what the row already has rather than inventing a sheet
+ * or an icon for a list that can run to fifty rows. One tap, a banner, no
+ * confirm and no navigation — `PostcardMenu.onReport`'s shape — because
+ * reporting changes nothing the reporter, the commenter or the postcard's
+ * author can see.
  */
-export function CommentItem({ comment, canDelete }: CommentItemProps) {
+export function CommentItem({ comment, canDelete, canReport }: CommentItemProps) {
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+  const showBanner = useBanner()
 
   const username = comment.author?.username ?? 'Rider'
 
@@ -53,6 +74,19 @@ export function CommentItem({ comment, canDelete }: CommentItemProps) {
     })
   }
 
+  function report() {
+    startTransition(async () => {
+      const result = await reportPostcardComment(comment.id)
+      if (result.error) {
+        showBanner(result.error, 'error')
+        return
+      }
+      showBanner('Comment reported')
+      // No navigation and no local change: reporting leaves the comment
+      // exactly where it was, matching `PostcardMenu.onReport`.
+    })
+  }
+
   return (
     <article className={pending ? 'flex gap-3 opacity-60' : 'flex gap-3'}>
       <Avatar src={comment.author?.avatar_url} name={username} size="sm" />
@@ -68,39 +102,62 @@ export function CommentItem({ comment, canDelete }: CommentItemProps) {
 
         <p className="text-sm whitespace-pre-line break-words text-foreground">{comment.body}</p>
 
-        {canDelete && (
+        {(canReport || canDelete) && (
           <div className="flex items-center gap-3">
-            {confirming ? (
-              <>
-                <button
-                  type="button"
-                  onClick={remove}
-                  disabled={pending}
-                  className="-ml-1 inline-flex min-h-11 items-center rounded-lg px-1 text-xs font-semibold text-danger transition-colors hover:text-danger-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-70"
-                >
-                  {pending ? 'Deleting…' : 'Confirm delete'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirming(false)}
-                  disabled={pending}
-                  className="inline-flex min-h-11 items-center rounded-lg px-1 text-xs font-medium text-muted transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
-                >
-                  Cancel
-                </button>
-              </>
-            ) : (
+            {canReport && (
               <button
                 type="button"
-                onClick={() => setConfirming(true)}
+                onClick={report}
+                disabled={pending}
                 // 44px minimum touch target — the glove-friendly floor. The
                 // negative margin keeps the visual row tight while the hit area
-                // stays full size, the same trick LikeButton uses.
-                className="-ml-1 inline-flex min-h-11 items-center rounded-lg px-1 text-xs font-medium text-muted transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+                // stays full size, `Delete`'s own trick below.
+                className="-ml-1 inline-flex min-h-11 items-center rounded-lg px-1 text-xs font-medium text-muted transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-70"
               >
-                Delete
+                Report
               </button>
             )}
+
+            {canDelete &&
+              (confirming ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={remove}
+                    disabled={pending}
+                    className={
+                      (canReport ? '' : '-ml-1 ') +
+                      'inline-flex min-h-11 items-center rounded-lg px-1 text-xs font-semibold text-danger transition-colors hover:text-danger-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-70'
+                    }
+                  >
+                    {pending ? 'Deleting…' : 'Confirm delete'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirming(false)}
+                    disabled={pending}
+                    className="inline-flex min-h-11 items-center rounded-lg px-1 text-xs font-medium text-muted transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirming(true)}
+                  disabled={pending}
+                  // 44px minimum touch target — the glove-friendly floor. The
+                  // negative margin keeps the visual row tight while the hit area
+                  // stays full size, the same trick LikeButton uses. Only applied
+                  // when this is the row's first control — see `Report` above.
+                  className={
+                    (canReport ? '' : '-ml-1 ') +
+                    'inline-flex min-h-11 items-center rounded-lg px-1 text-xs font-medium text-muted transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-70'
+                  }
+                >
+                  Delete
+                </button>
+              ))}
           </div>
         )}
 

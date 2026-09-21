@@ -414,10 +414,23 @@ describe('the rating block renders as five skimmable scores', () => {
     // `known-issues.md` rather than `docs/HANDOFF.md` since 2026-09-01: the handoff's
     // three blocks moved out with its Known issues section, so a floor on the handoff
     // would now be the vacuous pass this test exists to refuse.
-    for (const file of ['CLAUDE.md', 'docs/reference/known-issues.md']) {
+    // ** A floor PER FILE, not one shared number. ** A single floor has to be
+    // the lower of the two, which under-constrains the other: at a shared 10,
+    // `CLAUDE.md` could lose a whole rating block and stay green. It also puts
+    // `known-issues.md` exactly ON its own floor, so the next known issue that
+    // gets FIXED — which removes an entry and its ratings, as 119 just did for
+    // PD-175 — turns this red for doing the right thing, and the same edit
+    // recurs for ever. Each file now carries the guarantee it can actually
+    // keep: `CLAUDE.md`'s THREE blocks are structural — the rating-block spec
+    // plus the two debrief examples — so its floor is its current count, 15;
+    // `known-issues.md` is a list that shrinks as issues close, so its floor is
+    // one complete block.
+    const FLOORS = { 'CLAUDE.md': 15, 'docs/reference/known-issues.md': 5 }
+
+    for (const [file, floor] of Object.entries(FLOORS)) {
       const lines = readFileSync(join(repoRoot, file), 'utf8').split('\n')
       const scored = lines.filter((l) => SCORE.test(l))
-      expect(scored.length, `${file} has no rating blocks — the scan above passed vacuously`).toBeGreaterThanOrEqual(15)
+      expect(scored.length, `${file} has fewer than ${floor} rating-score lines — the scan above passed vacuously`).toBeGreaterThanOrEqual(floor)
 
       for (const label of LABELS) {
         const seen = scored.filter((l) => l.includes(`**${label}**`)).length

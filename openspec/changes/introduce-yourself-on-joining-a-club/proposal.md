@@ -6,7 +6,7 @@
 > zero comments**, so nothing has overtaken it.
 >
 > It extends **PD-356** (`openspec/changes/club-timeline-engagement/`, migration `092`) and
-> **PD-355** (`openspec/changes/add-club-timeline/`), both merged. `092`–`096` reached PROD on
+> **PD-355** (`openspec/changes/archive/2026-09-08-add-club-timeline/`), both merged. `092`–`096` reached PROD on
 > 2026-09-01, so **both projects are level at `096`** and `097` is next on both.
 
 > **Every question this change opened is answered, all on 2026-09-01, and two of the answers

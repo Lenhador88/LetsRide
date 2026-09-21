@@ -19,61 +19,60 @@ git diff --stat origin/development -- docs/HANDOFF.md   # is this file itself un
 
 ## Position
 
-**Updated 2026-09-08.** Prune the lines that are no longer true when you land work; do not add
+**Updated 2026-09-20.** Prune the lines that are no longer true when you land work; do not add
 history.
 
 - **`development` is the default branch and deploys to DEV** (`app-dev.letsride.social`);
   `main` is production (`app.letsride.social`). `development` is normally ahead of `main`, and
   that is the steady state.
-- **Migrations: 116 files on `development`. DEV is at `116`, PROD at `112`.** `list_migrations`
-  against both refs is the check. **The promotion is `113`, `114`, `115`, `116`, and `113` then
-  `114` must not be collapsed** — `114` refuses a NULL country, so applied ahead of the bundle that
-  writes one it strands every new signup in a wizard with no skip. Promote `113`, deploy, confirm
-  `READY` with `aliasError` null on `app.letsride.social`, then `114`; `115` and `116` are
-  independent of both and of each other. **`115` grants `anon` EXECUTE on one function — the first
-  exception to decision #1**, and it puts a new advisor class
-  (`anon_security_definer_function_executable`) on DEV alone until it promotes. **`116` is
-  migration-first and the bundle READS its column** — a build serving ahead of it answers `42703` on
-  every club and ride detail. `docs/reference/migrations.md` §Applied state has the per-file log and
-  both gates.
-- **Edge Functions: the two projects DISAGREE, and that is the resting state after a merge.**
-  #434 touched `supabase/functions/resolve-ride-location/` (comments only), so
-  `deploy-functions.yml` redeployed all three to **DEV at 2026-09-07T20:42Z**; **PROD is still on
-  the 2026-09-06T22:20Z dispatch**. `resolve-ride-location` is DEV `v8` / PROD `v6`, and the
-  `ezbr_sha256` differs. The next promotion to `main` levels them. Read the `deploy` job's
-  conclusion, never the run's — without the token the job skips and the run is still green.
-- **The walk is green on DEV** as both fixture accounts (2026-09-06 baselines in
-  `docs/reference/running-locally.md` §The walk). In CI it is still **skipped** — the Actions
-  secrets name PROD and `WALK_CI` is unset (see §Blocked on the owner).
-- **OpenSpec has 45 open changes and 7 archived**
-  (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`) — a backlog no
-  hook clears; see §Next action. **Archiving one is not two commands**: every change old enough to
-  matter carries a stale `## MODIFIED Requirements` block that would drop scenarios. PD-359's two
-  needed seven requirements refreshed, and PD-430's — written the same day it archived — carried a
-  block that would have dropped **eight** scenarios and imported a ninth from an unrelated
-  requirement. **Diff scenario names per requirement before merging any block.**
-  `docs/reference/journal.md` §The open OpenSpec changes has the check that proves nothing was
-  lost.
+- **Migrations: 126 files; DEV at `126`, PROD at `116`** — DEV answers 129 rows, the three extra
+  hand-applied with no file; PROD none. **Take the next number from `list_migrations`, never the
+  file count and never a DECLARED one** — a territory comment naming `125` is not a spent
+  number, and the ref is what settles it. `docs/reference/migrations.md` §Applied state has the per-file log
+  and §Security advisors the counts.
+- **Edge Functions: the older three AGREE across both projects** — identical `ezbr_sha256`
+  (2026-09-19); equality is not currency. **`push-notify` and `send-moderation-digest` are
+  DEV-only**, each deployed by `deploy-functions.yml` off its own merge. Read the `deploy` *job's*
+  conclusion, never the run's: without the token it skips and the run is green anyway.
+- **The walk is green on DEV** — named account **25/25 screens, 89/89 checks** (2026-09-20);
+  `docs/reference/running-locally.md` §The walk has the quota trap. In CI it is
+  **skipped**, per §Blocked on the owner.
+- **Pass the Linear team id `7388c68e-ef17-4998-a9b7-d8ad8ce66038`, never a name** — a stale one
+  errors on `list_issue_statuses` and answers `[]` elsewhere, so empty is not proof.
+- **OpenSpec has 35 open changes and 22 archived**
+  (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`).
+  **Archiving one is not two commands** — `docs/reference/journal.md` §The open OpenSpec changes
+  has the mechanism and the check that proves nothing was lost.
 
 ## In flight
 
-- **`Queued (AI)` and `Needs help` are both empty**, so the next firing has nothing to take and
-  ends `idle`.
-- **`Development (AI)`:** PD-302 in `slot-2`, and PD-421 (the log digest's HTTP call has never
-  succeeded) carrying no slot label — so it occupies no slot, which is deliberate rather than a
-  gap. `slot-1` is free.
-- **PD-431 is `Duplicate`; its three-option table was answered by queueing PD-302.** Child B of
-  `openspec/changes/deliver-push-notifications` is now complete **in the repository** — #438 built
-  the TypeScript half, #446 the iOS project half — and **unverified on a device**: tasks 2.15–2.19a
-  wait on a provisioning profile carrying the Push capability, which is an owner action. **Child C
-  (PD-303) is the sender**, blocked on the APNs `.p8` and the FCM service account (task 0.4).
-  PD-291 stays open until C lands.
-- **Two stories are open on purpose.** **PD-385**: 9 DEV rides carry a coordinate and no tile,
-  repairable only by each ride's own organizer. **PD-428**: `114` is written and applied to DEV, so
-  what it still owes is a way to change the country after onboarding — a decision rather than a
-  branch.
+- **Nothing in this app opens a sheet by itself** (PD-447, reversing PD-419). The Explore question
+  is `LocationQuestionRow`, on the two Explore screens only. **`profiles.location` has TWO
+  writers** — `setRiderTown` and `setHomeTown` — so anything keyed to a stored town goes in both.
+- **Onboarding's terminal step is `/onboarding/town`** (PD-445), behind `setHomeTown`; the
+  guard's `isOnboarding` catch-all is what makes `/onboarding/country` safe. **A town is answered
+  by a THIRD PARTY at the app's most critical gate** — `search-places` has an application-wide
+  ceiling (2000/24h across all riders) — so a lookup failure reveals a country select on its own
+  and the rider finishes with no town — the 2026-09-08 walk hit that on `Amsterdam`.
+  Every walk run spends two credits.
+- **Universal links are built and UNVERIFIED** (PD-205) — Apple fetches the association file onto
+  a device, so a simulator settles nothing; `docs/reference/native-shell.md` §Universal links has
+  the checks and the owner action. **It stays open**: the Android half needs a signing fingerprint
+  that cannot exist until `android/` does.
+- **Push (`openspec/changes/deliver-push-notifications`): child C (PD-303) is built and delivers
+  nothing yet** — the job is Vault-gated per project and no-ops on both until the owner runs
+  `121` §0c's order, whose step 3 wants the gateway `curl` in `docs/ENVIRONMENTS.md`
+  §Scheduled jobs first. Child B
+  (#438, #446) is unverified on a device — 2.15–2.19a want a Push-capable provisioning profile.
+  PD-291 stays open until a phone has received one.
+- **The mail rail sends nothing** (PD-457): the owner owes the secrets, one hand invocation, then
+  the schedule, in that order. Unset, a tick 500s before it claims — nothing delivered, none lost.
+  **`DIGEST_RECIPIENT` is the owner's private mailbox, never `SUPPORT_EMAIL`** —
+  `docs/ENVIRONMENTS.md` §`send-moderation-digest`'s secrets is the control no test can reach.
+- **PD-385 is open on purpose**: 9 DEV rides have a coordinate and no tile, repairable only by
+  their organizers.
 
-Re-derive rather than trust the list: `list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`
+Re-derive rather than trust it: `list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`
 filtered by status, and `list_pull_requests state=open`.
 
 ## Blocked on the owner
@@ -87,22 +86,33 @@ it done except someone re-measuring. The ones that unblock a **gate**, in order:
 2. **Branch protection on `main` and `development`** (PD-185) — until then a red PR can merge.
 3. **Make the walk a required check** once it has been green for a few PRs (PD-370).
 4. **Supabase Pro** (PD-87) — the free tier auto-pauses after ~7 idle days with no alert.
-5. **Point the Confirm-signup template at `/auth/confirm`, both projects** (PD-233) — every real
-   signup on PROD is affected today.
 
 Everything else in those columns is store readiness, email, or a product decision, and each issue
 body carries its own steps.
 
 ## Next action
 
-**Archive the OpenSpec changes whose code is in production.** 45 are open against 7 archived, so
-`openspec/specs/` no longer describes the app and the next proposal is written against specs that
-are missing what shipped. One docs-only PR, in `npm run openspec -- list` order, archiving only
-changes whose migrations and screens are on `main`, budgeting for §Position's refresh; a change with an open decision inside it
-(`add-account-deletion`, and the `enforce-creator-membership` / `add-account-deletion` collision —
-`docs/reference/journal.md` §The open OpenSpec changes) stays open with a one-line note. **PD-436
-blocks archiving `enforce-ride-capacity`** specifically, so that one stays open too. The Stop hook
-keeps the backlog from growing; nothing else shrinks it.
+**Archive `require-a-home-country-at-onboarding` FIRST.** Not a preference: two requirements
+`onboarding-takes-a-town-and-its-country` MODIFIES live only in that change's delta, so the wrong
+order leaves them with no base. `a-club-says-where-it-is-based` shares its `ride-start-location`
+requirement with the unarchived `inline-place-search-with-recent-starts`, and **only one order is
+safe**: the sibling FIRST — the other way drops two scenarios, because a MODIFIED block replaces
+them wholesale and the sibling predates those two.
+
+**Then the rest.** Each one left is refused for a reason its message names; the shapes, their cost
+and the current ordering chain are in `docs/reference/journal.md` §The open OpenSpec changes.
+**Re-probe the order rather than reading a list — archiving one change moves the others.**
+
+**Two things no gate enforces.** *Verify shipped first, and never from `tasks.md`* — tick counts
+are wrong both ways (`add-club-timeline` 0/38 is live; `capture-photo-time-and-place` 3/81 is
+live), so read `src/` and `supabase/migrations/`, matching a migration by SUBJECT rather than the
+filename its proposal guessed. **The tool accepting a change is not evidence it shipped**: three
+it accepts are verified NOT BUILT and must not be archived —
+`place-backdated-postcards-on-the-timeline`, `postcard-audience-follows-its-entry-point` and
+`page-the-club-timeline-on-scroll`. `enforce-ride-capacity` (PD-436) stays open, and so does
+`add-account-deletion`: Q4 answered, tasks remain, it collides with `enforce-creator-membership`,
+and **its spec still records the pre-PD-98 succession answer, which must be fixed before it
+archives.**
 
 ## Test accounts
 
@@ -119,6 +129,7 @@ A PROD credential, a service-role key or any account a person uses stays out.
 | `walk-fixture-2@letsride.dev` | `walkfixture2` | same | Onboarded. A **member** of that club, so the introduction prompt fires; has posted an introduction |
 | `rider-1786033029156@letsride.dev` | — | owner-held | Consented, **no username, not onboarded** — for walking the wizard |
 | `rider-1786033088990@letsride.dev` | `devrider093453` | owner-held | Fully onboarded |
+| `sofia@letsride.dev` | `sofiarides` | in PD-448's comment | The **screenshot account** and four supporting riders — `running-locally.md` §The screenshot seed |
 
 **The two `walk-fixture*` accounts are a pair** — a club's owner is exempt from the introduction
 prompt, so walk as both when the club detail changes. **Check the credential before believing the
@@ -130,13 +141,10 @@ curl -s --noproxy '*' -X POST 'http://localhost:3001/auth/v1/token?grant_type=pa
   -d '{"email":"walk-fixture-2@letsride.dev","password":"..."}'   # 200, not 400
 ```
 
-**Replacing them:** sign up through `/auth/v1/signup` (DEV autoconfirms), `accept_terms()`, then
-`PATCH /profiles?id=eq.<uid>&select=id` with a username, then `complete_onboarding({p_location: null})`.
-Setting a password for an owner-held one is one `update auth.users set encrypted_password =
-extensions.crypt('<generated>', extensions.gen_salt('bf'))` — derivable in ten seconds, never
-stored. If you walk the wizard with the un-onboarded fixture, put it back afterwards.
+**Replacing one** is `docs/reference/running-locally.md` §Replacing a fixture.
 
-**PROD holds two SQL-inserted `@letsride.test` accounts** (`duskrider`, `qa-verify`) whose
-passwords are not in this repo; **delete both before launch**:
-`delete from auth.users where email like '%@letsride.test';`. The history behind all of these is
+**`screenshot-account.sql`'s guard stands on its DEV arm alone** — PROD carries no
+`@letsride.test` account, so the arm that looked for one can no longer fire. Count rather than
+trust it, against `zwprydcyryvudhurbnye`:
+`select count(*) from auth.users where email like '%@letsride.test';` → 0. The history is
 `docs/reference/journal.md` §Test accounts — the full record.

@@ -215,7 +215,7 @@ describe('the cross-references in the real repo', () => {
     const firstWords = [...new Set(result.ambiguous.map((a) => a.name.split(/\s+/)[0]))].sort()
     expect(firstWords).toEqual(['Before', 'Working'])
     // **8 -> 10 on 2026-08-18 (PD-255).** Both new ones are
-    // `openspec/changes/capture-photo-time-and-place/design.md` citing
+    // `openspec/changes/archive/2026-09-08-capture-photo-time-and-place/design.md` citing
     // `CLAUDE.md §Working Principles`, which is the exact heading they mean —
     // they are ambiguous only under the one-word leading match this test exists
     // to pin, and `§Working With the Product Owner` is the sibling they collide

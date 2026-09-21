@@ -12,7 +12,7 @@
 > **Archive-ordering hazard, recorded because it is silent.** Two unarchived changes carry
 > `MODIFIED` deltas against requirements this one removes —
 > `openspec/changes/add-ride-chat-unread/` (*The surfaces this change does not build SHALL be named
-> rather than half-built*) and `openspec/changes/invite-riders-to-a-ride/` (*Chat visibility SHALL
+> rather than half-built*) and `openspec/changes/archive/2026-09-08-invite-riders-to-a-ride/` (*Chat visibility SHALL
 > be the intersection of ride visibility and crew membership, never crew membership alone*). If
 > either archives **after** this one, it modifies a requirement that is gone. See `design.md` D11
 > for the order to archive in.

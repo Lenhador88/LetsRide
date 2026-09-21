@@ -14,7 +14,6 @@ import { ErrorState } from '@/components/ui/ErrorState'
 import { LoadingRegion, SkeletonFilterBar, SkeletonList } from '@/components/ui/Skeleton'
 import { getExploreRides, getRideFilters, getRides, withRideDistance } from '@/lib/data/rides'
 import { isNearby } from '@/lib/location/distance'
-import { UseMyLocationRow } from '@/components/location/UseMyLocationRow'
 import { useNearLabel, useRiderPosition } from '@/lib/location/use-rider-position'
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
@@ -185,28 +184,22 @@ function RidesScreen() {
   )
 
   // It carries its own padding, so nothing here adds 8px above an error state.
+  //
+  // **One row in this slot, not two — PD-447.** The location row used to sit
+  // directly under this one, with the same icon, the same chevron and the same
+  // town name; product owner, 2026-09-08: *"2 labels on the top don't look
+  // great."* The question moved to the two Explore screens, which are the
+  // screens its answer actually changes. A tab root keeps its door and nothing
+  // else.
   const strip = (
-    <>
-      <ExploreRidesStrip
-        near={label}
-        nearCount={
-          label && explore.data
-            ? explore.data.filter((ride) => isNearby(ride.distance_km)).length
-            : undefined
-        }
-      />
-      {/* Below the explore strip and in the same slot, because it is the same
-          question from the other side: the strip says there are rides near you,
-          this says how to get an answer at all. The row only draws when the
-          rider has no position, which is exactly when the strip's `near …`
-          clause has dropped out — and, since PD-419, a quieter `refine` line
-          when the position came from their town. No `auto`: this is a tab root,
-          and the reason for asking is not on screen here. */}
-      <UseMyLocationRow
-        position={positionSettled ? positionValue : undefined}
-        town={label?.name}
-      />
-    </>
+    <ExploreRidesStrip
+      near={label}
+      nearCount={
+        label && explore.data
+          ? explore.data.filter((ride) => isNearby(ride.distance_km)).length
+          : undefined
+      }
+    />
   )
 
   const gate = combineQueries(rides, filters)

@@ -94,7 +94,7 @@ if (!existsSync(manifestPath)) {
 if (problems.length > 0) {
   console.error('The web build is not what it should be:\n')
   for (const problem of problems) console.error(`  - ${problem}`)
-  console.error('\nSee openspec/changes/add-static-export-bundle/ and docs/ENVIRONMENTS.md.')
+  console.error('\nSee openspec/changes/archive/2026-09-08-add-static-export-bundle/ and docs/ENVIRONMENTS.md.')
   process.exit(1)
 }
 

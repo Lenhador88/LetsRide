@@ -1429,7 +1429,7 @@ Deviations that are ours, not the design's:
 ### View someone else's profile — built 2026-08-14
 
 `/profile/detail?id=<uuid>`, from `Profile / View someone else's profile / Profile - Prescoll
-header` (`2084:9006`) — `openspec/changes/view-rider-profile/`. Reached from a postcard byline
+header` (`2084:9006`) — `openspec/changes/archive/2026-09-08-view-rider-profile/`. Reached from a postcard byline
 today (`PostcardCard`); the other four reach paths (comments, ride crew, club rosters, chat) are
 a deliberate follow-up, not this change.
 
@@ -1657,6 +1657,22 @@ Poppins/16/Semibold.
       left looking meaningful. Note `postcard_reports` is already write-only in practice —
       no admin role exists to triage it — so this compounds an existing gap rather than
       creating one.
+- [ ] **Two more surfaces gained a Report control with no frame of their own — `123`/`122`,
+      PD-454, `design.md` D10/Q2, registered beside the two entries immediately above as the
+      same gap on new subjects.** `npm run figma -- ls "*eport*"` returns **0 of 451** frames,
+      and so do `"*omment*"` and `"*hread*"` (measured 2026-09-18 — offline, re-run rather than
+      trust). Both chose the smallest thing that reuses an existing affordance rather than
+      inventing one:
+      - **The ride thread's ⋯ menu** (`RideThreadOptions.tsx`) gained a `Report thread` row,
+        `ReportIcon`, identical in shape to `ThreadOptions.tsx`'s club version this file has no
+        entry for either — one tap, a banner, no confirm.
+      - **Every postcard comment the viewer did not write** (`CommentItem.tsx`) gained an
+        inline `Report` text control beside `Delete`, on the same 44px floor and `-ml-1`
+        negative-margin trick §Comments already logs for `Delete` itself. A per-comment ⋯
+        sheet was the alternative and was rejected as heavier — it needs an icon in every row
+        of a list that can run to fifty.
+      Both send `REPORT_REASON_WHEN_UNDRAWN` (`other`) unconditionally, for the same reason the
+      postcard's own Report row does — see the entry above.
 - [ ] **The Delete row is not in the design.** The sheet is drawn for *someone else's*
       postcard, where Hide/Block/Report all make sense; on your own they do not, and the
       design has no own-postcard sheet at all. Added on the product owner's explicit call
@@ -1904,7 +1920,7 @@ item.
       the copy and the vertical rhythm are **written, not measured**. Everything they are built
       *from* is measured: `ContextMenu` is `v2 / Component / Context Menu` (390 wide, flush to
       the bottom edge, 16px radius on the top corners, padding 16/24/32/24), the buttons are
-      `Button / Regular / *` at `lg`, and `UseMyLocationRow` is `ExploreClubsStrip`'s row
+      `Button / Regular / *` at `lg`, and `LocationQuestionRow` is `ExploreClubsStrip`'s row
       verbatim — 56px on `White/100` at radius 8, 16px padding, 12px gap, a 24px `Location
       Filled` in `Accent Brand/100`, label at Poppins/14/Semibold, chevron trailing.
 - [ ] **Two claims in that copy are a store-review surface, not decoration.** Apple reads the
@@ -1932,9 +1948,13 @@ item.
         instead of linking to `/profile`. **It carries a THIRD store-review claim** beside the
         two above — *"Tell us the town you ride from and we will measure from there instead"* is
         a promise about what the app does with a refusal.
-      - **`UseMyLocationRow`'s two new labels** — `Set where you ride from`, and
-        `Near {town} · Use my location`, the only line in the app that says where a distance was
-        measured from.
+      - **`LocationQuestionRow`'s two labels** — `Still in {town}?` and `Where do you ride
+        from?` (PD-447, replacing `Set where you ride from` and `Near {town} · Use my
+        location`). Written, not measured: `npm run figma -- ls` has no priming, permission or
+        explainer frame of any kind, so there is nothing to be unfaithful to. The first is the
+        only line in the app that says where a distance was measured from, and it is now a
+        question rather than an offer — the row was two near-identical 56px rows with the Explore
+        strip when it read as one.
       - **`LocationSetting` on `/profile`**, which the design has no equivalent of at all.
 
 ### Private clubs in Explore, and the ride marker on a stamp — built 2026-08-28 (PD-325, PD-328)

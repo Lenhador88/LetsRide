@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { SUPPORT_EMAIL } from '@/lib/support'
 
 /**
- * Static copy, and one of the three pages a rider can reach without a session
+ * Static copy, and one of the four pages a rider can reach without a session
  * (decision #1's deliberate exception, and `/legal/*` in the guard's public
  * denylist). It reads nothing, so there is no query here and no loading state —
  * the directive is here only because the client-rendered shell has no server to
@@ -23,19 +23,31 @@ export default function PrivacyPage() {
     <>
       <h1 className="text-xl font-semibold">Privacy Statement</h1>
       <p className="text-muted">
-        Placeholder. The signup flow links here because a rider must be able to read this
-        before accepting it; the binding copy is a legal deliverable and has not been written
-        yet.
-      </p>
-      <p className="text-muted">
-        Do not treat this page as a privacy notice. It exists so the signup checkbox has a
-        real destination, and must be replaced before the app accepts real users.
+        This describes what LetsRide collects about you, who else it reaches, and what you can
+        do about it. It is written from what the app actually does rather than from a template,
+        and we keep it that way — if something here stops being true, the page changes.
       </p>
 
       <h2 className="text-base font-semibold pt-4">Who processes your data today</h2>
+      {/* This paragraph replaced a dangling one. The page used to open on "Do not
+          treat this page as a privacy notice", and PD-459 deleted that line —
+          correctly, because 212 lines of accurate, measured notice sat under it
+          and the App Store listing points here. But the sentence below it read
+          "Not a substitute for THE NOTICE ABOVE", whose referent went with it,
+          and it then contradicted the new opening two paragraphs later.
+
+          Deleting a disclaimer is bigger than it looks: it turns an honest
+          incomplete page into a complete-sounding incomplete page. What the
+          disclaimer was carrying, and what is said here instead, is the art. 13
+          GDPR core this page still does not have — legal bases, retention,
+          rights, the supervisory authority. Name what is missing; do not go
+          back to denying that the page is what it plainly is. */}
       <p className="text-muted">
-        Not a substitute for the notice above — the binding copy still has to be written. This is
-        a plain list of who currently handles your data, so the gap is at least an honest one.
+        A plain list of who currently handles your data. What this page does not set out yet is
+        the legal basis for each use, how long we keep most things, and how to exercise your
+        rights under the GDPR — including your right to complain to the Autoriteit
+        Persoonsgegevens. Until those are here, ask us at the address at the end of this page and
+        we will answer. Where a bullet below does give a period, that one is exact.
       </p>
       <ul className="text-muted list-disc pl-5 space-y-2">
         <li>
@@ -70,6 +82,47 @@ export default function PrivacyPage() {
           map you see is served from our own storage and a search never discloses your identity,
           session or IP address to Geoapify.
         </li>
+        {/* PD-303, and it is the first bullet on this page describing content
+            that RLS governs leaving Supabase for a third party at all. Every
+            outbound call before this one sends a query string or a coordinate;
+            this one sends another rider's username and, on a private club or a
+            non-public ride, the name a rider chose expecting it to stay inside
+            that club.
+
+            Written to the same rule as Geoapify and Sentry above — what the app
+            does when something happens, never what is or is not switched on
+            yet. "No push is delivered today" would be true until the owner
+            installs a provider key nobody in a session can reach, and false one
+            second after, on a public page describing where a rider's data goes.
+            The deploy moves without this file moving; do not reintroduce a
+            claim that depends on it.
+
+            The disclosure obligation begins with the first delivered push, and
+            the push is what discloses — NOT the lock screen. Design Q4 is
+            explicit that asking only about the lock screen is materially the
+            wrong question: that surface is the rider's own device, the
+            sub-processor is not. So the bullet names transmission first and the
+            lock screen second, and a rewrite that leads on "anyone can read it
+            on your phone" has lost the point of it. */}
+        <li>
+          <span className="font-medium">Apple and Google</span> — deliver notifications to your
+          phone. When something happens that you asked to be told about — someone likes your
+          postcard, joins your ride, replies in your club — the text of that notification is sent
+          to Apple (on an iPhone) or Google (on an Android phone), who pass it to your device.{' '}
+          <span className="font-medium">
+            That text includes the other rider&rsquo;s username, and the name of the club or the
+            title of the ride it happened in, including when that club or ride is private.
+          </span>{' '}
+          It is sent to them unencrypted by us, along with an identifier for your installation of
+          the app, because that is the only way either company will deliver a notification at all.
+          It also means the text appears on your lock screen.{' '}
+          <span className="font-medium">
+            To stop this, turn notifications off for LetsRide in your phone&rsquo;s own Settings —
+            there is no switch for it inside the app yet.
+          </span>{' '}
+          We keep the connection to your phone for as long as it stays reachable and drop it after
+          60 days of silence; the record that a notification was sent is deleted after 7 days.
+        </li>
         {/* PD-315. Written to the same rule as the Geoapify bullet above: it
             describes what the app does when something happens, never what has
             or has not been switched on yet. A sentence like "we do not use
@@ -97,50 +150,57 @@ export default function PrivacyPage() {
           device. Sentry sees your IP address the way any website you connect to does, but we
           do not attach it to the report.
         </li>
-        {/* PD-353, and the hardest bullet on this page to write honestly.
+        {/* PD-353, and PD-456 which switched screen recording OFF on
+            2026-09-18. This bullet no longer describes a replay, because there
+            is no longer one to describe — `disable_session_recording` is
+            `true`.
 
-            Three claims it must NOT make, each of which the obvious wording
-            makes by accident:
+            Two claims it must still NOT make, each of which the obvious
+            wording makes by accident:
 
             1. That the opt-out deletes anything. It stops future collection.
                `delete-account` does not reach PostHog at all, so a rider who
-               erases their account still leaves their events and recordings
-               behind — an open item on PD-353, and until it is wired the only
-               honest thing to name is the email route, exactly as the
-               account-deletion page already does for riders who cannot sign in.
-            2. That a rider can opt out of appearing in someone ELSE'S
-               recording. They cannot, and no schema change could: an unmasked
-               recording captures whatever was on the recorded rider's screen,
-               including other people's postcards, captions, bylines and photos.
-               That limit is the entire reason PD-353's pilot posture carries a
-               retirement condition, so the page states it rather than letting
-               the toggle imply otherwise.
-            3. That the recording is somehow anonymised. It is not — that is
-               what "unmasked" means, and saying so plainly is the point of
-               naming the two things that ARE withheld.
+               erases their account still leaves their events behind — an open
+               item on PD-353, and until it is wired the only honest thing to
+               name is the email route, exactly as the account-deletion page
+               already does for riders who cannot sign in.
+            2. That recording having stopped un-collects what was already
+               recorded. It does not. The pilot ran, and the page says so in
+               the past tense rather than quietly dropping the paragraph —
+               a rider who read the old wording and opted out because of it is
+               owed the rest of that sentence.
+
+            The claim about appearing in another rider's recording is gone
+            because the thing it warned about is gone. Put it back verbatim if
+            replay ever returns, masked or not: it was true of any recording,
+            not only an unmasked one.
 
             Written in the present tense about what the app does when a rider
             acts, like every other bullet here. */}
         <li>
           <span className="font-medium">PostHog</span> — records how the app is used, so we can
           see what is broken or confusing while LetsRide is small. It receives the screens you
-          open, moments like creating a ride or joining a club, and{' '}
-          <span className="font-medium">a video replay of your own screen as you use the app</span>
-          , which shows what you type. Your password is never recorded, and neither is the
-          meeting point or place you search for — that field and the suggestions under it are
-          left out of the recording entirely. Everything else on your screen is.
+          open and moments like creating a ride or joining a club.{' '}
+          <span className="font-medium">It does not record your screen.</span> What it gets is
+          the name of the screen and the action, not a picture of it and not what you type.
         </li>
         <li className="list-none pl-0 pt-2">
-          <span className="font-medium">Turning that off, and what it does not do.</span> Open{' '}
-          <span className="font-medium">Profile</span>, then the menu, then{' '}
-          <span className="font-medium">Privacy</span>. It stops any further recording of you
-          from that moment. It does not delete what has already been collected, and deleting
-          your account does not delete it either — for that, email{' '}
+          <span className="font-medium">We used to be set up to record screens, and
+          stopped.</span> Until September 2026 this app was configured to send PostHog a video
+          replay of your own screen. That is switched off and no longer happens to anybody.
+          Whether any recording of you was ever actually made depends on whether you had turned
+          usage data on at the time — if you want any that exist deleted, email{' '}
           <a href={`mailto:${SUPPORT_EMAIL}`} className="underline">
             {SUPPORT_EMAIL}
           </a>{' '}
-          and ask. It also cannot remove you from another rider&rsquo;s replay: if their screen
-          showed your postcard or your name, that is in their recording rather than yours.
+          and ask.
+        </li>
+        <li className="list-none pl-0 pt-2">
+          <span className="font-medium">Turning the rest off, and what it does not do.</span>{' '}
+          Open <span className="font-medium">Profile</span>, then the menu, then{' '}
+          <span className="font-medium">Privacy</span>. It stops any further collection from
+          that moment. It does not delete what has already been collected, and deleting your
+          account does not delete it either — for that, use the same address above.
         </li>
       </ul>
       {/*
@@ -151,8 +211,8 @@ export default function PrivacyPage() {
         nothing to check. PD-297 built the read path behind it; this section is where a rider
         finds out it exists.
 
-        The address is `SUPPORT_EMAIL`, never a literal — see that file, which still carries
-        an owner question about the mailbox itself.
+        The address is `SUPPORT_EMAIL`, never a literal. PD-300 settled which mailbox it is;
+        that file records the measurement and the one thing DNS cannot answer.
 
         THE PHOTO CLAUSE IS THE ONE TO GET RIGHT, and its first version was wrong in a way that
         reads as measured. It said the photo "stops being viewable immediately — no account can

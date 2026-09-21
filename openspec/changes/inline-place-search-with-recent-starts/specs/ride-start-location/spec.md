@@ -1,9 +1,11 @@
 ## MODIFIED Requirements
 
-<!-- This requirement currently lives in
-     openspec/changes/add-ride-start-location-search/specs/ride-start-location/spec.md,
-     which cannot be archived yet (34 open tasks), so `ride-start-location` is not
-     in openspec/specs/. It is restated here IN FULL. -->
+<!-- `ride-start-location` became a STANDING capability on 2026-09-08, when
+     add-ride-start-location-search archived (now at
+     openspec/changes/archive/2026-09-08-add-ride-start-location-search/). So the base
+     text this modifies is openspec/specs/ride-start-location/spec.md — diff this block
+     against THAT before archiving, not against the archived change. It is restated
+     here IN FULL. -->
 
 ### Requirement: The meeting point SHALL remain free text, and search SHALL be an accelerator rather than a gate
 

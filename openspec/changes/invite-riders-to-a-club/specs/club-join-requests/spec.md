@@ -11,6 +11,9 @@
 
 ### Requirement: Only the rider themselves SHALL create a request, and only for a club the accessor would return
 
+A join request SHALL be created only by the rider it names, and only for a club
+`private.club_takes_join_requests_for` would return to them.
+
 `private.club_takes_join_requests_for` is **not modified by this change**, and that is a decision
 rather than an omission.
 
@@ -33,6 +36,9 @@ the membership write clears the request.
 - **THEN** the invite SHALL be refused, and the admin's remedy SHALL be to approve the request
 
 ### Requirement: A declined request SHALL be immovable by the requester and clearable only by the club
+
+A declined request SHALL NOT be moved or removed by the requester, and SHALL be clearable only by
+the club.
 
 Unchanged in substance. **One new writer of the row exists** and it is not a client:
 `private.join_club_from_invite` deletes a **pending** request for the pair it has just admitted,

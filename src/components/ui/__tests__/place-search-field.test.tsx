@@ -8,6 +8,7 @@ import {
   resolveComboboxKey,
   wrapIndex,
 } from '@/components/ui/PlaceSearchField'
+import { isForwardableLookupFailure } from '@/components/ui/PlaceSearchField'
 import type { PlaceSearchResult } from '@/types'
 
 /**
@@ -289,5 +290,46 @@ describe('wrapIndex', () => {
 
   it('has nothing to point at in an empty list', () => {
     expect(wrapIndex(0, 1, 0)).toBe(-1)
+  })
+})
+
+describe('isForwardableLookupFailure — the escape\'s allowlist', () => {
+  /**
+   * PD-445. `onLookupFailure` exists so the onboarding town step can reveal a
+   * country select when the geocoder cannot answer — otherwise an outage means
+   * no new rider anywhere can finish onboarding, because `search-places`'s
+   * ceiling is application-wide and decision #5 forbids a skip.
+   *
+   * **Which failures qualify is a correctness gate rather than a filter**, so
+   * the predicate is pinned here and the EFFECT that consults it is pinned in
+   * `place-search-field-notify.test.ts` — a green predicate with an effect that
+   * ignores it is the shape this pair exists to refuse.
+   */
+  it('forwards the two failures a rider cannot cause', () => {
+    for (const name of ['PlaceSearchUnavailableError', 'PlaceSearchCeilingError']) {
+      const error = new Error('x')
+      error.name = name
+      expect(isForwardableLookupFailure(error)).toBe(true)
+    }
+  })
+
+  it('does NOT forward going offline — the one a rider controls', () => {
+    // THE assertion of this block. `searchPlaces` raises this from
+    // `navigator.onLine === false` alone, so forwarding it hands the escape to
+    // anyone who turns airplane mode on, types three characters and turns it
+    // off again — and the step's flag is sticky, so the blip outlives the
+    // outage. That is the `Skip` decision #5 forbids, wearing another name.
+    const offline = new Error('You appear to be offline.')
+    offline.name = 'PlaceSearchOfflineError'
+    expect(isForwardableLookupFailure(offline)).toBe(false)
+  })
+
+  it('does not forward an unrecognised or wrapped failure', () => {
+    // An allowlist rather than a denylist, so a future error class is refused
+    // by default rather than silently opening the escape. `usePlaceLookup`
+    // wraps a non-`Error` rejection, which is why this matches on `name`
+    // rather than `instanceof` — a wrapped value is an instance of nothing.
+    expect(isForwardableLookupFailure(new Error('boom'))).toBe(false)
+    expect(isForwardableLookupFailure(new TypeError('fetch failed'))).toBe(false)
   })
 })

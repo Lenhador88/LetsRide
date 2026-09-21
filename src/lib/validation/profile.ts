@@ -138,7 +138,9 @@ export const bikeModelSchema = optionalText(
 )
 
 /**
- * `profiles.location`, and **`setRiderTown` is now its only writer** (PD-425).
+ * `profiles.location`. **`setRiderTown` is its only writer THROUGH THIS SCHEMA**
+ * (PD-425) — the column itself gained a second one when PD-445 gave the wizard
+ * a town step, and `setHomeTown` writes it directly without passing here.
  *
  * It used to be a member of `profileEditSchema`, reached as
  * `profileEditSchema.shape.location`. It is a standalone export because the
@@ -178,7 +180,11 @@ export const locationSchema = optionalText(
  * profile screen carried two controls that both wrote this column: this form's
  * free-text box and PD-419's `LocationSetting`, which requires a pick. Only the
  * second survives, so `updateProfile` no longer reads or writes `location` at
- * all and `setRiderTown` is the column's single writer.
+ * all. **That leaves `setRiderTown` as this SCREEN's only writer of the column,
+ * not the app's** — PD-445's `setHomeTown` writes it from the wizard too, so
+ * anything keyed to "the rider stored a town" goes in both (PD-447's dismissal
+ * ladder is the worked example). `git grep -n "location:" -- 'src/lib/actions/*.ts'`
+ * is the check.
  *
  * **Do not add it back to keep the form "complete".** A `location` member here
  * means `updateProfile` writes the column again, and a form that does not render

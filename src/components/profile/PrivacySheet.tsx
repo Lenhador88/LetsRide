@@ -175,9 +175,9 @@ function PrivacyControls({ onClose }: { onClose: () => void }) {
               review: the first cut of this trim dropped the middle one along
               with the sub-label it came from. */}
           <p className="text-sm text-muted">
-            We record how the app is used — the screens you open, moments like creating a ride
-            or joining a club, and a replay of your own screen — so we can find what is broken
-            or confusing.
+            We record how the app is used — the screens you open and moments like creating a
+            ride or joining a club — so we can find what is broken or confusing. We
+            do not record your screen.
           </p>
         </div>
 
@@ -187,9 +187,10 @@ function PrivacyControls({ onClose }: { onClose: () => void }) {
           disabled={pending || !online}
           onChange={(event) => void toggle(event.target.checked)}
           // Three words, and no sub-label at all (PD-405). What was under it —
-          // "a replay of your own screen. Never your password." — is the app
+          // "a replay of your own screen. Never your password." — was the app
           // explaining its own mechanism at a rider who opened a sheet to flip
-          // one switch. The half that is a DISCLOSURE moved up into the intro;
+          // one switch, and the screen recording it named is gone entirely as
+          // of PD-456. The half that was a DISCLOSURE moved up into the intro;
           // the half that was reassurance ("never your password") is gone,
           // because withholding a promise nobody asked for costs a rider
           // nothing and `/legal/privacy` states it in full.
@@ -214,9 +215,8 @@ function PrivacyControls({ onClose }: { onClose: () => void }) {
               went is the worked example after the dash — `/legal/privacy` gives
               it in full, one tap below. */}
           <p className="text-xs text-muted">
-            Turning this off stops any further recording. It does not delete what has already
-            been collected, and it cannot remove you from another rider’s replay. To have your
-            records deleted, email us.
+            Turning this off stops any further collection. It does not delete what has already
+            been collected. To have your records deleted, email us.
           </p>
           <p className="text-xs text-muted">
             <Link href="/legal/privacy" className="underline">

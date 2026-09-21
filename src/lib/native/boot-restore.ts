@@ -1,5 +1,23 @@
 /**
- * A cold start at a non-root URL, inside the native shell.
+ * A webview **process restore** at a non-root URL, inside the native shell.
+ *
+ * ## NOT a cold-start deep link — the neighbouring case, and they are different
+ *
+ * The two are easy to confuse and only one of them reaches this file:
+ *
+ * - **A cold start never arrives here.** The webview boots at the *configured
+ *   start URL*, so `window.location.pathname` is `/` and `bootRestoreTarget`
+ *   answers `null` — it cannot see a deep link because the URL does not carry
+ *   one yet.
+ * - **A cold-start deep link is `src/lib/native/deep-links.ts`'s**, and it does
+ *   reach JavaScript: Capacitor defers the launch activity until plugins have
+ *   loaded and posts `appUrlOpen` with `retainUntilConsumed: true`, so the
+ *   first listener receives it. That file's header carries the source lines.
+ *
+ * What genuinely arrives here is a **process restore** — iOS reclaiming the
+ * webview and rebuilding it at the URL the rider was on — and a notification
+ * tap into an already-installed URL. In both the browser is already sitting at
+ * the deep URL when the document loads, which is the condition below.
  *
  * ## The mechanism, read out of the vendors' own source
  *
@@ -14,9 +32,9 @@
  *   `basePath + "/index.html"`
  *
  * So the per-route documents the export produces are never served by Capacitor
- * at all. A launch at `/rides/detail?id=…` — a deep link, a webview process
- * restore, a notification tap — loads the document for `/`, and Next boots
- * **`/`'s route tree** while the browser sits at the deep link's URL.
+ * at all. A load at `/rides/detail?id=…` — a webview process restore, a
+ * notification tap — serves the document for `/`, and Next boots **`/`'s route
+ * tree** while the browser sits at the restored URL.
  *
  * `usePathname()` still reports the real URL, so the route guard decides
  * correctly and RLS is untouched; what renders is `src/app/page.tsx`, which
@@ -49,10 +67,11 @@
  *   document loads.
  * - **`RouteGuard` still decides first.** It renders the splash *instead of*
  *   children until it has an answer, so this cannot run before the guard has
- *   already allowed the current path. A deep link into a protected route
+ *   already allowed the current path. A restore into a protected route
  *   therefore lands on the guard and goes to `/auth/login` — correct behaviour,
  *   and the reason a post-auth destination is a separate piece of work rather
- *   than a new public path.
+ *   than a new public path. `deep-links.ts` answers the same way for the same
+ *   reason.
  * - **No existence oracle.** It consults nothing — not a list of ids, not a list
  *   of routes, not the database. It is a string comparison on the URL's own
  *   shape, which is what makes "a private club you may not see" and "a club that
@@ -92,15 +111,17 @@ const RESTORE_KEY = 'letsride:boot-restore'
  * was written for. `sessionStorage` is per webview session and is cleared with
  * it, which is exactly the lifetime of "this boot".
  *
- * Reachable input, so this is not theoretical: a legacy `/rides/<uuid>` link —
- * the shape `LEGACY_DETAIL_REDIRECTS` exists because those are already in the
- * wild — arriving as a deep link into the shell, where no server redirect can
- * run and no payload was ever emitted. Latent until a platform exists (PD-95),
- * wrong the day one does.
+ * Reachable input, so this is not theoretical: a legacy `/rides/<uuid>` URL —
+ * the shape `src/lib/legacy-routes.ts` exists because those are already in the
+ * wild — restored into the shell, where no server redirect can run and no
+ * payload was ever emitted. **PD-205 removed the other route to this**: a
+ * legacy link *arriving* is now mapped by `deepLinkTarget` before the router
+ * ever sees it, so what is left here is the restore of a URL that was already
+ * wrong when the process died.
  *
  * **Fails open.** A webview with storage denied loses the guard, not the
  * restore: degrading to the pre-guard behaviour is better than a shell that
- * cannot open a deep link at all.
+ * cannot restore its own URL at all.
  *
  * **It records an *attempt*, and `clearRestoreAttempt` is what makes it not a
  * ban.** Without the clear, the guard cannot tell a restore that failed from one

@@ -37,22 +37,22 @@ import { scrubUrl } from '@/lib/observability/scrub'
  *   a named step in the issue rather than an assumption, and it happens before
  *   the issue reaches `Done (in production)`.
  *
- * ## The pilot posture, and what retires it
+ * ## The pilot posture is RETIRED — replay is off
  *
- * Product owner, 2026-08-31: **session replay ON and UNMASKED for the pilot**,
- * autocapture OFF, heatmaps OFF, web vitals ON. `CLAUDE.md` §Technology
- * Decisions requires anything provisional to carry the condition that ends it,
- * so: **the pilot ends when signup reaches riders nobody personally invited**,
- * with a numeric backstop of 50 completed profiles —
- * `select count(*) from profiles where onboarding_completed_at is not null`.
- * While the pilot group is people who can be *told*, unmasked recording is a
- * conversation; once it is strangers, it is not.
+ * Product owner, 2026-08-31: session replay ON and UNMASKED for the pilot,
+ * autocapture OFF, heatmaps OFF, web vitals ON. **The replay half ended on
+ * 2026-09-18 (PD-456)** and the other three stand. It did not end by reaching
+ * the retirement condition this comment used to carry — "the pilot ends when
+ * signup reaches riders nobody personally invited" — but ahead of it, at store
+ * submission: unmasked replay captures other riders' names and photos off the
+ * viewer's screen, and declaring that is a large answer on the App Store and
+ * Play privacy forms for a user-generated-content app.
  *
- * **Passwords are masked whatever `maskAllInputs` says**, and that is worth
- * knowing rather than assuming: rrweb normalises `maskAllInputs: false` to
- * `{ password: true }`, so `input[type=password]` is never recorded. Measured
- * against the installed recorder rather than recalled, and asserted in
- * `__tests__/client.test.ts` so an SDK bump that changed it is red.
+ * **Passwords were masked whatever `maskAllInputs` said**, and it stays written
+ * down because it is what the whole unmasked posture rested on: rrweb
+ * normalises `maskAllInputs: false` to `{ password: true }`, so
+ * `input[type=password]` was never recorded. Moot while recording is off, and
+ * the first thing to re-measure if it ever returns.
  *
  * ## The project setting and this config must agree, and nothing checks that
  *
@@ -117,9 +117,10 @@ let pendingRider: string | null | undefined
  * masking the field alone would still put "Hoofdstraat 12, 1234 AB" on screen
  * and in the recording. Hence the class goes on the wrapper that contains
  * both, and hence a block rather than a mask — blocking replaces the subtree
- * with a placeholder of the same size, so the replay still shows a rider
+ * with a placeholder of the same size, so a replay would still show a rider
  * reaching the field, tapping it and moving on, which is what the composer
- * funnel needs.
+ * funnel needed. Dormant since PD-456 turned recording off, and kept because
+ * the mechanism is the part a masked re-enablement would have to rediscover.
  *
  * `ph-no-capture` is rrweb's default `blockClass` and posthog-js's default for
  * it; it is passed explicitly below so the wiring is assertable rather than
@@ -215,8 +216,9 @@ export function buildPostHogOptions() {
     capture_pageview: false as const,
 
     // An aggregate view whose value scales WITH traffic, which is the inverse
-    // of replay's — and unmasked replay already shows where a rider taps.
-    // Revisit at volume.
+    // of replay's. The second half of this argument — that unmasked replay
+    // already showed where a rider taps — died with replay (PD-456), so the
+    // remaining reason is volume alone. Revisit at volume.
     enable_heatmaps: false,
 
     // Four numbers per pageview with no rider content in them, so no masking or
@@ -226,15 +228,27 @@ export function buildPostHogOptions() {
     // which is the `?id=` problem again by another route.
     capture_performance: { web_vitals: true, network_timing: false },
 
-    // The pilot posture. `maskAllInputs: false` is what "unmasked" means;
-    // password inputs are masked regardless by rrweb, and `MASK_CLASS` is the
-    // one narrowing — see its own comment.
-    disable_session_recording: false,
+    // OFF, product owner 2026-09-18 (PD-456). The pilot posture was unmasked
+    // replay, and what "unmasked" recorded was not only the viewer's own screen
+    // — it was every other rider's name, face and postcard on it, linked to the
+    // viewer's identity. Declaring that honestly on Apple's Data Collection
+    // questionnaire and Play's Data safety form is a large answer on a
+    // user-generated-content app; with recording off the declaration is crash
+    // diagnostics plus product analytics, which is what `/legal/privacy` now
+    // says. Events are untouched — PD-353's four moments still fire.
+    disable_session_recording: true,
+
+    // **Kept deliberately although nothing records today.** `blockClass` is not
+    // the obvious setting and this repo got it wrong once: rrweb takes an
+    // input's value from `maskInputOptions` alone and never consults a
+    // text-mask class, so the first version of this shipped a block that
+    // recorded the meeting point verbatim. That mechanism, and the structural
+    // tests that pin `NO_CAPTURE_CLASS` to the wrapper rather than the input,
+    // are what a masked re-enablement would otherwise have to rediscover.
+    // Delete this only together with `NO_CAPTURE_CLASS` and its two tests, and
+    // only once replay is decided against for good rather than switched off.
     session_recording: {
       maskAllInputs: false,
-      // Explicit even though it is rrweb's default, so the one narrowing above
-      // is a line a test can read rather than an inherited default that a
-      // future config edit could silently drop.
       blockClass: NO_CAPTURE_CLASS,
     },
 

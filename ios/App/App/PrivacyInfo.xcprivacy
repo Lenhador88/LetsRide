@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+	The app target's privacy manifest — PD-455.
+
+	Apple aggregates this file with the manifests its SDKs ship and rejects an
+	upload that needs one and has none (ITMS-91053). Capacitor ships manifests
+	for its own two frameworks; this is the app's own, and it covers the things
+	no SDK manifest can declare — because this app's two data processors,
+	Sentry and PostHog, are JavaScript in the web layer rather than native
+	frameworks, so neither of them contributes a manifest at all.
+
+	## NSPrivacyAccessedAPITypes is EMPTY, and that is measured rather than lazy
+
+	The required-reason API list covers file timestamps, `UserDefaults`, disk
+	space, active keyboards and system boot time. The app target's own source is
+	`AppDelegate.swift` and `SceneDelegate.swift` and neither touches any of
+	them:
+
+	    grep -n "UserDefaults\|FileManager\|creationDate\|modificationDate\|\
+	systemUptime\|activeProcessorCount\|statfs\|freeSize" ios/App/App/*.swift   # 0
+
+	An empty array is a declaration, not an omission. Re-run that grep before
+	adding Swift to this target: `UserDefaults` in particular is one line away
+	at all times, and it needs `CA92.1`.
+
+	## NSPrivacyTracking is false
+
+	"Tracking" in Apple's sense is linking this app's data to third-party data
+	for advertising or sharing with a data broker. Nothing here does that, the
+	app shows no ads, and there is no ATT prompt — which is why
+	`NSUserTrackingUsageDescription` is deliberately absent from `Info.plist`.
+	`NSPrivacyTrackingDomains` is empty for the same reason; it is only read
+	when tracking is true.
+
+	## The collected-data list is what actually leaves the device
+
+	Each entry below was read out of the code rather than assumed:
+
+	- **UserID** — `src/lib/observability/sentry.ts` sends `setUser({ id })` and
+	  `src/lib/analytics/client.ts` calls `identify(userId)`. Both send the
+	  opaque `auth.uid()` and **never** the email or the username;
+	  `src/lib/observability/scrub.ts` has the argument for why the reporter's
+	  own id survives when content ids are stripped.
+	- **EmailAddress** — Supabase Auth, for signing in. It does not reach
+	  either processor.
+	- **CoarseLocation AND PreciseLocation, and the second one is easy to miss.**
+	  PD-151 rounds the device GPS fix to ~1km before it is used or stored, so
+	  the coordinate behind *sorting by distance* is always coarse. But the
+	  postcard composer offers a **Precise** mode, and `resolvePhotoLocation`'s
+	  precise arm returns the photo's raw EXIF fix into
+	  `postcards.taken_latitude/longitude`. `064`'s
+	  `postcards_region_location_is_rounded` enforces rounding for `'region'`
+	  rows ONLY, by design — so a `'precise'` row really is exact. Declaring
+	  coarse alone would under-report the label.
+	- **DeviceID** — `register_push_device` (`078`) stores the APNs/FCM device
+	  token and a minted installation id against the rider, and posthog-js keeps
+	  its own `$device_id`. Dormant on the web, live the moment this manifest
+	  ships inside the shell.
+	- **PhotosOrVideos / OtherUserContent** — postcards, club and profile
+	  images, captions, comments and threads, stored in Supabase.
+	- **ProductInteraction / PerformanceData** — PostHog's explicit events and
+	  the four web-vitals numbers (`capture_performance`).
+	- **CrashData / OtherDiagnosticData** — Sentry.
+
+	**There is no screen-recording entry and that is current, not an oversight**
+	— PD-456 set `disable_session_recording: true` on 2026-09-18. If replay ever
+	returns, masked or not, it is a new collected-data answer here AND on both
+	store questionnaires before it ships.
+
+	Every type is Linked (the rider's id travels with it) and none is used for
+	tracking. This file has to agree with the App Store Connect App Privacy
+	questionnaire, with Play's Data safety form and with `/legal/privacy`; it is
+	the list to fill those from rather than a second source of truth.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeUserID</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeEmailAddress</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeCoarseLocation</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePreciseLocation</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeDeviceID</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePhotosorVideos</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeOtherUserContent</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeProductInteraction</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePerformanceData</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeCrashData</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeOtherDiagnosticData</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

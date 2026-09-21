@@ -92,15 +92,18 @@ jobs:
       # nobody reads by the second week, which would leave this no better than
       # the nothing it replaces.
       #
-      # EVERY RED SO FAR IS EXIT 2, AND NOT FOR THE REASON THIS BLOCK USED TO
+      # RUNS 1–14 WERE ALL EXIT 2, AND NOT FOR THE REASON THIS BLOCK USED TO
       # PREDICT. It said the first red would be a missing `SUPABASE_ACCESS_TOKEN`
       # (PD-352's owner action). It was not: run 1 (2026-08-31) already had the
       # secret — masked in its own env block — and failed where all 14 runs since
       # have, on BOTH projects, with the API answering 200 and a body of
-      # `{"error": "Backend error! Retry your query. ..."}`. So auth and
-      # reachability are proven and the SQL is proven (the same constant returns
-      # rows through the Supabase MCP `query_logs` tool); what is refused is the
-      # query as this workflow poses it. PD-421 and
-      # docs/reference/observability.md §The 24-hour expiry carry the bisect.
+      # `{"error": "Backend error! Retry your query. ..."}`. PD-421 found it:
+      # the script posed ClickHouse SQL at `analytics/endpoints/logs.all`, the
+      # Logflare/BigQuery endpoint. `buildLogsUrl` in the script carries the
+      # endpoint that matches the dialect and the reasoning. Run 38
+      # (2026-09-18T16:11Z, dispatched against `development`) is the end-to-end
+      # proof: exit 0 on both projects, the first non-red run in 38. No build
+      # container can reach `api.supabase.com`, so this workflow remains the
+      # only place that can produce one.
       # The split still earns its keep: it is what makes "could not look"
       # legible instead of indistinguishable from a production 5xx.

@@ -8,7 +8,7 @@ import { SkeletonList } from '@/components/ui/Skeleton'
 import { getExploreRides } from '@/lib/data/rides'
 import { getMyLocationText } from '@/lib/data/profile'
 import { nearLabel } from '@/lib/location/near-label'
-import { UseMyLocationRow } from '@/components/location/UseMyLocationRow'
+import { LocationQuestionRow } from '@/components/location/LocationQuestionRow'
 import { resolveRiderLocation } from '@/lib/location/rider-location'
 import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
@@ -88,6 +88,22 @@ export default function ExploreRidesPage() {
           both are built at the list's own padding, so nesting would draw them
           16px narrower than the cards they stand in for. */}
       <div className="pb-navbar-action-extra">
+        {/* **Outside the list gate, exactly as `/clubs/explore` draws it —
+            PD-447.** It used to be inside the success branch, so a rider whose
+            ride list was failing or still loading was never asked the question
+            that fixes that list's distances. The row's states are a function of
+            its own three inputs — permission, position, town — none of which has
+            anything to do with this read, so gating it on the read was drawing
+            one decision against another's answer.
+
+            `town` is the RAW column, never `nearLabel(...)?.name`: that helper
+            answers the literal `you` in two branches, which reads as `Still in
+            you?`. `locationQuestionLabel` does the reduction. */}
+        <LocationQuestionRow
+          position={positionDecided ? position : undefined}
+          town={city.data}
+        />
+
         {rides.error ? (
           <ErrorState onRetry={rides.refetch} />
         ) : !rides.data ? (
@@ -97,23 +113,6 @@ export default function ExploreRidesPage() {
           <SkeletonList />
         ) : (
           <div className="px-4 pt-4 motion-safe:animate-fade-in">
-            {/* Above the list rather than below it, and only when the rider has
-                no position at all — which is exactly when the sections below
-                collapse to one unordered list and the strip that led here had
-                to drop its `near …` clause. `px-0` because this slot is already
-                inside a padded block. */}
-            {/* `auto` — PD-419. Set on the two Explore screens and nowhere
-                else: this is where the reason for asking is on screen, and a
-                tab root that opened a sheet by itself would ask before the
-                rider had seen why. `town` feeds the `refine` row, which says
-                where the distances above are being measured from. */}
-            <UseMyLocationRow
-              position={positionDecided ? position : undefined}
-              town={nearLabel(position, city.data)?.name}
-              auto
-              className="px-0"
-            />
-
             {rides.data.length === 0 ? (
               // The honest sentence for both of this screen's zeroes, which are
               // not the same thing: there may be no public rides at all, or the

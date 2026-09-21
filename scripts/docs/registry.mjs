@@ -413,8 +413,38 @@ export const claims = [
     // deliberately-unapplied file is explained in the prose beside them where a
     // reader will actually meet it. Two edits, one commit. Still never a
     // relaxed regex.
-    pattern:
-      /\*\*Applied state: (\d+) files\. DEV is at `\d+` and PROD at `\d+` — measured/,
+    // 2026-09-08: the `113`/`114`/`115`/`116` promotion put all four on PROD and
+    // this went red for the TWELFTH time — but note HOW, because it is a new
+    // shape rather than another flip. The prose was not merely out of date about
+    // the direction: it still said `PROD at 112` while PROD had been at `116` for
+    // hours, so the pattern MATCHED and the count compared equal, and the claim
+    // passed green over a false sentence. That is this entry's blind spot, and
+    // it is the reason the pin is on the relationship at all — the numeric half
+    // cannot see a wrong ref. Pinned back to LEVEL; at LEVEL the prose names no
+    // refs because there is no direction to infer, and the day they diverge
+    // again the sentence has to name them and this pattern has to move with it.
+    // Two edits, one commit. Still never a relaxed regex.
+    // 2026-09-18: `117` (PD-398) applied to DEV alone and this went red on cue.
+    // Pinned to DEV AHEAD, naming both refs. New trap, and the reason this entry
+    // is not merely another flip: `118` reached DEV from a CONCURRENT session's
+    // unmerged branch 21 minutes later, so the file count and the DEV ref moved
+    // independently. The captures still agree because only the file half is
+    // compared — read the ref off `list_migrations`, never off `wc -l`.
+    //
+    // ** The DEV-AHEAD shape is blind in the direction the LEVEL shape was not,
+    // and this is the first time that is written down. ** Both level numbers are
+    // non-capturing `\d+`, so `DEV is at \`999\` and PROD at \`999\`` matches and
+    // passes. The LEVEL shape went red the moment the two diverged, which is how
+    // this entry caught twelve of its thirteen flips; the DEV-AHEAD shape does
+    // NOT go red when they converge, because the sentence still matches with
+    // stale numbers in it. So the promotion that levels the projects leaves
+    // `PROD at \`116\`` false here and in `docs/reference/migrations.md` with
+    // nothing to catch it. Capturing and comparing them is not the fix — this
+    // entry's `cmd` counts files and cannot see either level, which is the same
+    // blind spot the 2026-09-08 note recorded from the other side. The fix is to
+    // re-read this sentence on every promotion, which is what the promotion
+    // checklist in `docs/ENVIRONMENTS.md` §Migrations is for.
+    pattern: /\*\*Applied state: (\d+) files; DEV is at `\d+` and PROD at `\d+` — measured/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
@@ -596,6 +626,56 @@ export const claims = [
     kind: 'shell',
     cmd: `grep -c "href:" src/components/layout/Navbar.tsx`,
     about: 'docs/reference/product-scope.md: the trap — unscoped grep -c "href:" on Navbar.tsx',
+  },
+
+  // ---- Collected data types (the privacy manifest vs the two docs) --------
+  //
+  // The App Store Connect questionnaire and Play's Data safety form are both
+  // filled from `PrivacyInfo.xcprivacy`, so a doc that miscounts it is a
+  // rejection at submission and a correction afterwards. The number was hand-
+  // copied into two files and went stale in one of them the moment the
+  // location pair was split into Coarse AND Precise — nine became eleven with
+  // nothing going red. Both anchors are gated here rather than trusted.
+  {
+    id: 'collected-data-types-native-shell',
+    file: 'docs/reference/native-shell.md',
+    pattern: /and \*\*(\w+)\*\* collected-data types, every one Linked and none Tracking/,
+    extractStated: extractWord(),
+    kind: 'shell',
+    cmd: `grep -c "<key>NSPrivacyCollectedDataType</key>" ios/App/App/PrivacyInfo.xcprivacy`,
+    about: 'Store readiness table, row 8: collected data types in PrivacyInfo.xcprivacy',
+  },
+  {
+    id: 'collected-data-types-listing',
+    file: 'docs/reference/app-store-listing.md',
+    pattern: /\*\*(\w+) — confirmed \d{4}-\d{2}-\d{2}\.\*\* Every one is \*\*Linked to the user\*\*/,
+    extractStated: extractWord(),
+    kind: 'shell',
+    cmd: `grep -c "<key>NSPrivacyCollectedDataType</key>" ios/App/App/PrivacyInfo.xcprivacy`,
+    about: 'app-store-listing.md §App Privacy: the transcribed row count',
+  },
+  {
+    // The Description's own character count, which was WRONG in four places
+    // until 2026-09-19 and which nothing measured. The cause is worth naming
+    // because it is not the usual one: the block never changed, so this was not
+    // drift — the number was miscounted by hand on the day it was written and
+    // then copied to three more places. A cap claim nobody enforces is exactly
+    // as good as no cap claim, and this is the field with 2174 characters of
+    // headroom, so the number's only job is to prove the block was measured.
+    //
+    // `kind: 'shell'` and a python extractor rather than a regex over the whole
+    // file: the count has to come from the FENCED BLOCK in §Description, and a
+    // grep for digits would match the four restatements instead of the text.
+    id: 'description-chars-listing',
+    file: 'docs/reference/app-store-listing.md',
+    pattern: /## Description — (\d+) characters of 4000/,
+    extractStated: (m) => Number(m[1]),
+    kind: 'shell',
+    // No regex and no backslashes in the command on purpose: it goes through a
+    // JS template literal and then a shell, and an escape that survives one
+    // rarely survives both. `chr(96)*3` is the fence.
+    cmd: `python3 -c "import io;f=chr(96)*3;s=io.open('docs/reference/app-store-listing.md',encoding='utf-8').read();b=s[s.index('## Description'):].split(f)[1].strip(chr(10));print(len(b))"`,
+    about: 'app-store-listing.md §Description: the character count vs the fenced block',
   },
 
   // ---- Icon count (prose vs the generator's committed source) --------------
@@ -925,7 +1005,8 @@ export const claims = [
     kind: 'shell',
     cmd:
       `grep -rn "letsride\\.social" src/ --include=*.ts --include=*.tsx ` +
-      `| grep -v "__tests__" | grep -vE ':[0-9]+:\\s*(\\*|//|/\\*)' | wc -l`,
+      `| grep -v "__tests__" | grep -v "@letsride\\.social" ` +
+      `| grep -vE ':[0-9]+:\\s*(\\*|//|/\\*)' | wc -l`,
     about: '§Branching & CI: the build-time production origin is written down exactly once in src/',
   },
 

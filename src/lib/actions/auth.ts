@@ -2,6 +2,7 @@ import { resolveSupabase } from '@/lib/supabase/resolve'
 import { canonicalOrigin } from '@/lib/origin'
 import { clearQueryCache } from '@/lib/query'
 import { clearGuardCache, invalidateOnboardingState } from '@/lib/auth/guard-cache'
+import { clearDismissal } from '@/lib/location/dismissal'
 import { clearRiderLocation } from '@/lib/location/rider-location'
 import { clearAllStashedInviteTokens, takeAnyStashedInviteToken } from '@/lib/invites/pending-token'
 import { clearIntroductionDismissals } from '@/lib/clubs/introduction-dismissal'
@@ -305,7 +306,7 @@ export async function signOut(): Promise<ActionState> {
 
   // **First, and before the revocation** — `release_push_device` is a server
   // write and needs a live session, so it cannot be moved down beside the other
-  // five clears. It is also the only one of the six whose failure harms the
+  // six clears. It is also the only one of the seven whose failure harms the
   // NEXT rider rather than the last one: an unreleased row keeps naming the
   // departing rider, and on a shared phone their notifications render on
   // somebody else's lock screen.
@@ -327,6 +328,11 @@ export async function signOut(): Promise<ActionState> {
   clearRiderLocation()
   clearAllStashedInviteTokens()
   clearIntroductionDismissals()
+  // **The sixth device-local clear (PD-447).** The Explore question's dismissal
+  // record can silence the row for up to six months, and it is about a town —
+  // so leaving it behind hands the next rider on a shared phone an inherited
+  // silence about somewhere they have never been.
+  clearDismissal()
   await clearSessionStore()
   return { error: null, redirectTo: '/auth/login' }
 }

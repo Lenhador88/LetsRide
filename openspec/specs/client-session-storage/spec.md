@@ -17,7 +17,6 @@ How a rider's session is held, proved and discarded once there is no server to s
 cookie. Covers the move to device secure storage, the replacement for the password-recovery
 marker, and what sign-out must destroy on a device two people share.
 ## Requirements
-
 ### Requirement: Session tokens SHALL be held in device secure storage
 
 The session lives in a storage adapter passed to `@supabase/supabase-js`
@@ -193,6 +192,7 @@ its own terms and SHALL NOT be justified by citing this exception.
 - **WHEN** a signed-out visitor previews a ride and then signs in as a different rider
 - **THEN** the anonymous preview SHALL be held under its own cache key and SHALL NOT be served to the
   signed-in session, and sign-out SHALL clear it exactly as it clears every other cached read
+
 ### Requirement: A capability token held on the device SHALL be tab-scoped and spendable only by an explicit action
 
 A credential whose whole security is possession SHALL be held in `sessionStorage` and SHALL NOT be
@@ -236,3 +236,96 @@ mechanism SHALL be built.
 - **THEN** the token SHALL still be readable afterwards, since the participation gate makes
   claiming impossible until the wizard finishes
 
+### Requirement: An analytics identity SHALL NOT outlive the session that created it
+
+Sign-out already destroys every local trace of the rider — the query cache, the guard cache, the
+session store and the cached rider location all clear. An analytics SDK holds a **fifth** trace and
+it is the one nobody thinks of: a distinct id, an opted-in posture, and in PostHog's case an active
+session recording.
+
+On sign-out the analytics client SHALL reset its identity and return to the capture-off posture, in
+the same path as the other four. On sign-in it SHALL start capture-off again and re-read the
+preference for the rider who just arrived, rather than inheriting whatever the previous rider left.
+
+**The failure this prevents is a shared device**, which is not hypothetical for a pilot: rider A
+opts out and signs out, rider B signs in on the same phone. Without a reset, B's screen is recorded
+against A's distinct id if A was capturing, or B is silently under-captured if A was not. The
+second is merely wrong; the first records a rider who never had a chance to say no, under somebody
+else's name.
+
+**The two directions fail differently and both are covered on purpose.** Reset-on-sign-out alone
+leaves the sign-in path trusting whatever the SDK persisted client-side, which a fresh install does
+not have and a shared device has wrongly.
+
+#### Scenario: Sign-out clears the analytics identity
+- **WHEN** a rider signs out
+- **THEN** the analytics client SHALL reset — dropping the distinct id and any in-flight recording —
+  and SHALL stop capturing
+- **AND** this SHALL happen in the same place as `clearQueryCache`, `clearGuardCache`,
+  `clearSessionStore` and `clearRiderLocation`, so a future sign-out path cannot forget one of five
+  while remembering four
+
+#### Scenario: A second rider on one device inherits nothing
+- **GIVEN** rider A signed out on a device where analytics was capturing
+- **WHEN** rider B signs in on the same device
+- **THEN** the client SHALL be capture-off until B's own `my_analytics_opt_out()` returns NULL
+- **AND** no event attributed to B SHALL carry A's distinct id
+
+#### Scenario: The reset is asserted where it can actually be seen
+- **WHEN** this requirement is tested
+- **THEN** it SHALL be asserted in Vitest against the analytics seam — sign-out calls reset, and a
+  `capture` after it is a no-op — because `npm run walk` runs against DEV, DEV has no PostHog key,
+  and a walk assertion that "nothing was left behind" would pass on a device where nothing could
+  ever have been written
+- **AND** the walk's existing sign-out phase SHALL NOT be extended with an assertion that is
+  vacuous by construction, which is the trap a flag defaulting off already set once
+
+
+### Requirement: A device-local deferral record SHALL hold no rider data, SHALL fail open, and SHALL NOT survive sign-out
+
+A record kept on the device to postpone a question SHALL contain only what postponing needs — a
+timestamp and a count. It SHALL NOT hold a town, a coordinate, a rider id, an email or any other
+value belonging to the rider. It SHALL be removed at sign-out. Every read and every write SHALL fail
+in the direction that **asks again**.
+
+The three properties are one requirement because each defeats a different failure:
+
+- **No rider data**, because a device-local copy of a profile field outlives the session that wrote
+  it and is readable by the next rider on the phone, in plain text, with no policy over it.
+- **Cleared at sign-out**, because a boolean that outlived a rider was nearly harmless while it meant
+  "the one automatic ask was spent" and is not harmless once it means *"this device answered, do not
+  ask for up to six months"*. Rider B on a shared phone inherits rider A's silence and is never asked
+  about their own town.
+- **Fails open**, because the alternative reading of an unreadable store — *treat it as answered* —
+  removes the question for that rider for ever, with no signal anywhere that it happened. A private
+  window, a browser blocking site data and some WebView previews all **throw** rather than returning
+  null.
+
+A failed *write* is the residual and it is priced rather than recovered: the question returns on the
+next visit. A failed *clear* after the rider answered is the one direction that fails closed, and it
+is accepted because the question has just been answered — only the ladder position is wrong.
+
+#### Scenario: The record carries nothing about the rider
+- **WHEN** a deferral is stored
+- **THEN** the persisted value SHALL contain only a timestamp and a non-negative count
+- **AND** the town the question was about SHALL NOT be among the persisted fields
+
+#### Scenario: The next rider on the device is asked
+- **WHEN** rider A defers the question and signs out, and rider B signs in on the same device
+- **THEN** B SHALL be asked according to B's own state, with no interval inherited from A
+
+#### Scenario: An unreadable store asks rather than assumes
+- **WHEN** reading the record throws, returns nothing, or returns a value that is not a record with
+  a finite timestamp and a non-negative integer count
+- **THEN** it SHALL be treated as absent and the question SHALL be asked
+- **AND** the shape SHALL be validated rather than only the parse, because a stored `1` parses
+  successfully and is not a record
+
+#### Scenario: A retired key is removed rather than left unread
+- **WHEN** a storage key's meaning is retired by a change
+- **THEN** the key SHALL be removed from the device rather than merely stopped being read
+- **AND** no behaviour SHALL be derived from its presence afterwards
+
+#### Scenario: A clock that moves backwards does not silence the question for ever
+- **WHEN** the stored timestamp is in the future relative to the device clock
+- **THEN** the record SHALL be treated as absent and the question SHALL be asked

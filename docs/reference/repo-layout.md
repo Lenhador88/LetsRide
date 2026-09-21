@@ -16,7 +16,7 @@ src/
 │   │   └── profile/        # /profile (your own), /profile/detail (another rider's — view-rider-profile)
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
 │   ├── onboarding/         # /onboarding/terms, /onboarding/username — see decision #5. `location/` went with 075 (PD-286)
-│   ├── legal/              # /legal/terms, /legal/privacy, /legal/account-deletion — public, decision #1
+│   ├── legal/              # /legal/terms, /legal/privacy, /legal/account-deletion, /legal/attributions, /legal/support (PD-467) — the five public pages, decision #1
 │   ├── layout.tsx          # Root layout (Poppins, v2 light theme) — mounts <RouteGuard>
 │   ├── page.tsx            # / — splash resolver: redirects by session (see decision #7)
 │   └── globals.css         # Tailwind import + CSS vars + the safe-area / fixed-bar spacing utilities
@@ -30,6 +30,7 @@ src/
 │   ├── clubs/              # ClubCard, ClubCreateAction, ClubDeclinedRequestsSection, ClubDetailHeader, ClubInviteJoin, ClubInviteLinkSection, ClubInviteList, ClubInvitePicker, ClubJoinRequestsSection, ClubMemberRail, ClubMembershipButton, ClubOptionsMenu, ClubPreviewScreen, ClubShareOrInviteItem, ClubTimeline, ClubTimelineEventRow, ClubTimelineRideCard, ClubTimelineThreadRow, ClubWaveButton, CreateClubForm, CreateThreadForm, DeleteClubControl, EditClubForm, ExploreClubsList, ExploreClubsStrip, IntroductionPrompt, JoinClubButton, ManageRidersRoster, MarkClubSeen, RequestToJoinButton, ThreadOptions
 │   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, PostcardViewer, ShareButton, SwipeCoach, coachMark, deck, locationCopy, viewerContext
 │   ├── notifications/      # MarkNotificationsRead, NotificationsHeaderControl, NotificationsListItem, NotificationsPanel
+│   ├── native/             # UpdateGate — replaces the app when the published minimum blocks this build; DeepLinkListener — draws nothing, turns a universal link into a route (PD-205)
 │   ├── observability/      # Observability — mounts error reporting (module scope) and analytics (an effect). Draws nothing (PD-315, PD-353)
 │   ├── push/               # PushBoot (draws nothing — cold-start re-registration, in (app)/layout.tsx), PushPrimingRow (the ONLY control that can reach the notification permission, /notifications only), PushPrimingSheet (PD-431)
 │   └── profile/            # CountryFlags, DeleteAccountSheet, EditProfileForm, FeedbackSheet, PrivacySheet, ProfileCountries, ProfileDetailMenu, ProfileImageUpload, ProfileMenu
@@ -44,17 +45,20 @@ src/
 │   ├── validation/         # Zod schemas, shared by client and server
 │   ├── media/              # Image compression + EXIF stripping, browser-only
 │   ├── auth/               # guard.ts (route rules, pure + tested), guard-cache.ts (what it reads, held per page load), recovery.ts (grant + safeNext)
-│   ├── native/             # secure-store.ts — the keychain behind window.__letsrideSecureStore; boot-restore.ts — the shell's cold start (PD-142)
+│   ├── native/             # secure-store.ts — the keychain behind window.__letsrideSecureStore; boot-restore.ts — a webview PROCESS RESTORE, not a cold start (PD-142); version-gate.ts; deep-links.ts is THE doorway to @capacitor/app and the one file that decides where an out-of-app link may send a rider (PD-205)
 │   ├── query/              # useQuery, invalidate, keys.ts — the cache contract
 │   ├── observability/      # THE doorway to Sentry. scrub.ts is what may leave the app (PD-315)
 │   ├── analytics/          # THE doorway to PostHog. events.ts is the closed union of all five (PD-353)
 │   ├── push/               # registration.ts is THE doorway to @capacitor/push-notifications, and the only file that may raise the OS dialog — iOS grants one per install. installation.ts (the id 078 keys on), priming.ts (hidden/ask/blocked/stalled), boot.ts (PD-431)
 │   ├── routes.ts           # every href that names a resource id — /rides/detail?id= and its nine siblings (PD-142)
+│   ├── legacy-routes.ts    # the pre-PD-142 URL shapes, shared by next.config.ts's redirects() and the in-shell resolver — imports NOTHING, because next.config.ts loads it under Node's type stripping (PD-205)
 │   ├── back-navigation.ts  # where a back control goes on a screen with several entry points — /notifications carries its origin in ?from= (PD-209)
 │   ├── realtime/           # useRideMessageStream, useClubThreadStream — the app's two Supabase Realtime subscriptions (081)
 │   ├── location/           # rider-location.ts (where the rider is — device, then profile city; never prompts), distance.ts (haversine + NEARBY_RADIUS_KM, PD-259), near-label.ts (what to CALL that place — never the profile city beside a device fix)
 │   ├── rides/              # seed-ride-id.ts, audience.ts (narrowsToNobody — the edit guard is about the TRANSITION, PD-338), create-ride-header-title.ts, bottom-slot.ts (which control owns the ride detail's sticky slot, and therefore which entrance to the composer the rider gets — PD-401). `nearby.ts` went with the near-you filter on 2026-08-27 — `/rides/explore` sections on `isNearby(distance_km)` from `lib/location/distance`, which is where that predicate now lives for both tabs
 │   ├── clubs/              # seed-club-id.ts — the default club every rider joins on completing onboarding (058)
+│   ├── legal/              # terms.ts — the operator disclosure and TERMS_VERSION. OPERATOR is NULLABLE on purpose: a placeholder string renders, and the first cut published `[full legal name — PD-459]` to riders inside the art. 3:15d BW identity clause. TERMS_VERSION is pinned to `private.current_terms_version()` (`030`) by its test, because the page's version and the one stamped onto profiles.terms_version are the same claim (PD-459)
+│   ├── support.ts          # SUPPORT_EMAIL — the one published address, rendered by three legal pages rather than copied into them (PD-300)
 │   ├── countries.ts        # ISO 3166-1 list; names via Intl.DisplayNames, flags via regional indicators
 │   └── utils.ts            # cn(), APP_TIME_ZONE, wallClockToUtc(), googleMapsDirectionsUrl(), formatPostcardDate(), formatRideDate/DateLong/Time(), formatChatMessageDay(), rideZoneDayKey(), formatRelativeTime(), formatNotificationStamp(), notificationSection(), getInitials()
 └── types/
@@ -109,6 +113,7 @@ scripts/native/             # the two build-shape guards — the bundle carries 
 scripts/probes/             # hand-run probes — the confirmation-on signup arm, which no automated gate may reach (PD-252)
 scripts/brand/              # favicon + OG card generation
 scripts/storage/            # sweep-orphans — Storage objects with no row pointing at them
+scripts/dev/                # seed-screenshot-media — bytes and map tiles behind the screenshot seed (PD-448)
 openspec/                   # config.yaml, plus:
 ├── specs/                  # Standing capability specs — the current contract
 └── changes/                # Active proposals; archive/ holds shipped ones

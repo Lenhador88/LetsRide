@@ -3,11 +3,33 @@
 
 ## The roadmap lives in Linear
 
-Workspace **`lets-ride`**, team **Pedro & Dave (`PD`)**, project **Let's ride (AI)**. **Pass the
-project id — `88f3f224-ecf0-46f0-a032-c86b7a12f81c`** — never the name: it contains a curly
-apostrophe, and the straight-quote version silently fuzzy-matches the *deprecated* `Let's Ride`
-project or drops the field entirely. `save_issue` returns a successful-looking payload either
-way, so **read the field you set back off the response**.
+Workspace **`lets-ride`**, team **`PD`**, project **Let's ride (AI)**. **Pass the ids, never the
+display names** — team `7388c68e-ef17-4998-a9b7-d8ad8ce66038`, project
+`88f3f224-ecf0-46f0-a032-c86b7a12f81c`. The project name contains a curly apostrophe, and the
+straight-quote version silently fuzzy-matches the *deprecated* `Let's Ride` project or drops the
+field entirely. `save_issue` returns a successful-looking payload either way, so **read the field
+you set back off the response**.
+
+**A team filter is the same trap one level up, and it has already fired.** The team was displayed
+as `Pedro & Dave` until 2026-09-18 and is `Let's ride` now — one rename, nothing in the repo able
+to see it.
+
+**The same stale name does not fail the same way twice, which is what makes it hard to diagnose.**
+Measured within two minutes on 2026-09-18, all on `team=Pedro & Dave`: `list_issue_labels` answered
+`Could not find team`, the 14:40Z queue firing got that same error from `list_issue_statuses`
+(PD-460 records it), and the 14:41Z firing got `[]` from `list_issue_statuses` — twice, on two
+calls ten minutes apart. **So an empty answer is not proof the name is right**, and it is the
+dangerous shape: a procedure that reads *no status came back* as *stop and say so* — which
+`queue-run.md` STEP 1 does — takes the queue down silently rather than loudly. Re-derive with the
+call that recovers a renamed team, whichever shape you met:
+
+```
+# via the Linear MCP: list_teams   -> the live name and the id; the ids above do not move
+```
+
+**Three near-identical names now sit one entity-type apart** — the team `Let's ride`, the live
+project `Let's ride (AI)` and the deprecated project `Let's Ride`. A name lookup is *more*
+ambiguous after the rename, not less, which is the second reason both ids are written above.
 
 **There is a second project called `Let's Ride` and it is deprecated** — 27 issues from 2024–2025
 describing a Thunkable/Firebase build that no longer exists. Not a source of truth; no work is
@@ -35,7 +57,7 @@ silently dropped**. `.claude/commands/queue-pickup.md` §The status names carrie
 and the two traps in its `Type` column; run this before the first status write of a session:
 
 ```
-# via the Linear MCP: list_issue_statuses team=Pedro & Dave
+# via the Linear MCP: list_issue_statuses team=7388c68e-ef17-4998-a9b7-d8ad8ce66038
 ```
 
 Three rules that outlive any rename:
@@ -410,6 +432,16 @@ to the block, and do not drop it from the table.
 
 - **Moving an issue is part of doing the work, not paperwork after it.** `Development (AI)` when
   you start, `Deployed to DEV` when the PR merges, in the same session.
+
+  **It moves FORWARD. `Development (AI)` is a claim, not a hand-off** — a session starts work from
+  `Queued (AI)` and nothing takes work out of `Development (AI)`, so a finished story moved back
+  into it holds a build slot and hands it to nobody. Measured 2026-09-19: PD-465 (`Deployed to
+  DEV` since 01:42Z, its PR on `development` since 01:35Z) and PD-223 (parked in `Needs decision`
+  since 01:11Z) were both moved into `Development (AI)` at 21:23Z, and the stall alarm fired
+  against that board eighteen minutes later — an owner interruption spent on work already done.
+  **To hand a story to a session, queue it**; to record that one is finished, leave it where the
+  session that finished it left it.
+
 - **Verify before you write.** An issue asserting a stale fact is worse than no issue, because a
   tracker reads as current by construction.
 - **A new owner action goes in Linear the moment it is found**, labelled `Owner only` — unless

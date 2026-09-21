@@ -329,18 +329,217 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**116 files. DEV is at `116` and PROD at `112` — measured 2026-09-08, after `116` applied.** `113`
+**126 files. DEV is at `126`, answering 129 rows, and PROD at `116` — measured 2026-09-20.**
+DEV-ahead is the resting state between a merge and its promotion: `117` (PD-398), `118` (PD-459),
+`119` (PD-175), `120` (PD-458), `121` (PD-303), `122`/`123` (PD-454), `124` (PD-457), `125` (PD-440)
+and `126` (PD-413) are applied
+to DEV and await the `development` → `main` promotion, which is the only thing that should carry
+them to PROD. Three of the 129 rows are file-less — the long-standing hand-applied ones — and
+nothing else is.
+
+**Three of those numbers were SPENT ON DEV BEFORE THEIR FILE EXISTED HERE, and that is the state
+to plan for rather than the exception.** `118_the_terms_name_a_person` was applied to DEV from
+PR #462 while it was open, so `ls supabase/migrations/` skipped 118 on `development` for a day
+while `list_migrations` showed it applied; `122` and `123` were the same from PD-454's branch. A
+session picking a number off the file tree alone hands the same one out twice, and the second
+apply cannot be fixed by applying anything. **On a day with three sessions building at once that
+is the normal state, not a fault** — which is the whole reason the next number comes off
+`list_migrations` and never off `wc -l`. `121`'s header records the trap from one side and `122`'s
+from the other. **Check both directions before picking a number.** **`119` and `120` are RECORDED ON DEV IN THE OPPOSITE ORDER to their
+filenames** — `120` went up first — and it is harmless here rather than forgiven: **neither reads
+or writes anything the other defines**, so the two DDLs commute and either order produces the same
+database. **They do both touch `public.profiles`** — `119` adds a column, `120` adds a BEFORE
+DELETE trigger — so "they share no object" would be the wrong reason and is not the one being
+given. The rule they are not an exception to is that filename order equals apply order for a file
+that DEPENDS on an earlier one. Before
+that: `116` was the state on 2026-09-08, with BOTH projects level after the promotion. `113`
 was applied to DEV migration-first, ahead of #428; the merge is what landed its file, so the
 row that read as file-less until then is an ordinary applied migration. DEV's row count reads
 **three** high — the three long-standing hand-applied rows — and **PROD's is exact**, which is the
 direction that matters: nothing is applied there without a file behind it. Neither is a gap.
 
-**The open promotion gap is `113`, `114`, `115` and `116` — in that order, and `113`/`114` NOT
-collapsed.**
-`114` is the narrowing half and must not reach PROD until the same bundle is serving there — see its
-entry below before promoting either. **`115` carries no such gate against the other two**: it
-creates one object nothing existing calls, so it neither depends on `113`/`114` nor is depended on
-by them. It is migration-first on its own account, for the reason its entry gives.
+**`122_report_a_ride_thread` (PD-454), applied to DEV 2026-09-19 as
+`122_report_a_ride_thread`.** Adds `public.ride_thread_reports` with RLS on and two policies (SELECT
+`reporter_id = auth.uid()`, INSERT a bare `EXISTS` against `public.ride_threads` so the audience is
+INHERITED from `108` and restated nowhere), `revoke all … from public, anon, authenticated,
+service_role` at creation, `grant select` plus a column-scoped
+`grant insert (reporter_id, thread_id, reason, note)`, `023`'s gate trigger, and the reader in the
+same file — `private.ride_thread_report_queue` (`security_invoker = false` written out) and
+`private.remove_reported_ride_thread(uuid)`, both revoked from every client role and neither
+`security definer`. Restamps `public.enforce_participation_gate()`'s comment and
+`public.ride_threads`'. **Additive in every statement and MIGRATION-FIRST**: the client half writes
+a table that does not exist yet, so the reverse order answers `PGRST205` for the length of a deploy.
+**The hand-exercise gate does not fire** — the gate trigger is on the new table, no function anyone
+calls today is replaced, and all three objects are new. **Adds no PostgREST relationship**: single-column
+`id` primary key with `unique (reporter_id, thread_id)` as a separate constraint, so it is not a
+junction — the junction query in `src/lib/data/columns.ts` §Embed hints still answers **eight** on
+DEV after both files, and `embed-hints.test.ts` is green.
+
+**`123_report_a_postcard_comment` (PD-454), applied to DEV 2026-09-19 as
+`123_report_a_postcard_comment`.** The same for `public.postcard_comment_reports`, with
+`private.postcard_comment_report_queue` and `private.remove_reported_comment(uuid)`. Restamps the
+gate comment and `public.postcard_comments`'. **`122` BEFORE `123` IS REQUIRED, and not for an
+object** — the two share no table, view, function or policy. They both restamp
+`public.enforce_participation_gate()`'s comment, where the last writer wins: `122` makes it
+twenty-three and `123` twenty-four, each composed from the LIVE comment read off `pg_proc`.
+**Applied in the other order the enumeration is wrong and NOTHING FAILS.** Replay the pair in
+filename order on the PROD promotion.
+
+**Measured on DEV before and after the pair, 2026-09-19.** Gate triggers **22 → 23 → 24**; published
+`security definer` functions executable by `authenticated` **38 → 38** (neither file creates a
+`public` function at all); views in `private` **2 → 4**; `service_role` census **30 kept / 4 revoked
+→ 30 kept / 6 revoked** (`ride_thread_reports`, `postcard_comment_reports` added to
+`club_thread_reports`, `postcard_reports`, `push_deliveries`, `push_devices`); security advisors
+**46 → 46, zero new**, `rls_enabled_no_policy` staying at 6 because both new tables carry two
+policies. RLS suite **3990 → 4158** assertions, **+168** labelled `122.x`/`123.x` — 163 written with
+the two files and five more closing `reviewer`'s findings on them (the emitted `on conflict`
+form on each table, and the tab half of the note-floor gap). The baseline is 3990 rather than
+3986 because `118` merged in between and brought four of its own.
+
+**The gate comment was ONE HIGH when `122` found it, and that is the correction worth keeping.** The
+live stamp said twenty-three while `select count(*) from pg_trigger where tgname =
+'enforce_participation_gate' and not tgisinternal` answered **twenty-two**: `109` dropped
+`ride_messages`, the ninth, and recorded it as a trailing sentence instead of folding it into the
+enumeration the way `101`'s drop of `club_thread_waves` was folded in. So a careful session
+increments the string and writes twenty-four one file early. `122` restamped from the trigger count
+and folded both drops into a single line; `123` composed its stamp from what `122` left.
+
+**`124_reports_reach_a_human` (PD-457), applied to DEV 2026-09-19T07:39Z as
+`reports_reach_a_human`.** The app's first mail rail. Adds
+`public.moderation_digest_entries` (RLS on, **zero policies**, revoked from `anon`,
+`authenticated` **and** `service_role`; five nullable FKs `on delete cascade`, one per source, with
+`num_nonnulls(...) = 1` plus a CASE agreeing the non-null FK with `source`), the
+`private.moderation_digest_projection` view, `public.claim_moderation_digest(int)`,
+`public.complete_moderation_digest(uuid[], text)`, `private.moderation_digest_tick()` and
+`revoke all on public.feedback from service_role`. **Additive and inert**: it creates a table
+nothing writes and two functions only `service_role` can call, so it is safe in either direction
+relative to any deploy. `supabase/functions/send-moderation-digest/` was deployed to **neither**
+project as `124` landed, and **PD-457's merge deployed it to DEV twelve minutes later** —
+`deploy-functions.yml` runs on a push to `development` touching `supabase/functions/**`, which is
+`CLAUDE.md` §Supabase Rules working as written rather than a surprise. PROD stays on the three
+older functions until the promotion. Read `list_edge_functions` for both, never this sentence.
+
+**`124` §Apply order step 3's stated reason is superseded**: it says a deployed function with no
+key *"burns the attempt cap on every claimed entry"*. PD-457's follow-up moved the secrets check
+ahead of `claim_moderation_digest`, so an unconfigured tick 500s and claims nothing. The rule step
+3 states — **secrets before the schedule** — still holds, now because an unconfigured schedule
+delivers no report rather than because it costs a re-arm. A migration is immutable, so the
+correction lives here.
+
+**Two things in it are corrections to the merged proposal rather than implementations of it**, and
+both are the kind a later session restores by reading the prose instead of the file. `attempts`
+increments **when a row is handed out**, not on the completion path — `121:840`'s position, and the
+reason is that a sender dying after the provider accepted never reaches the completion call, so a
+completion-path counter never advances, the reclaim window frees the batch, and the same mail
+repeats hourly for ever. And the `service_role` revoke on the marker table is **not** a defence
+against a suppressed report: `complete_moderation_digest` is granted to `service_role` and confers
+exactly that, so the containment is the key's single storage location and the revoke buys the read
+half plus an API surface of two function names. The file says both in `§0b` and `§0d`.
+
+**Applied REDUCED and proved by object diff** (68 KB, 1128 lines — `§Applying a large file`). The
+reducer strips only `--` lines outside dollar-quoted bodies, so function bodies are byte-identical;
+**the recorded statement does not equal `md5sum` of the file and that is the norm, not drift**.
+Both hops verified: a local database that applied the file against one that applied the reduced
+form, 8/8 object hashes identical; and that local database against DEV, 7/7 identical
+(`functiondef 408ca5567db0f82d00536ae9b187a7fe`, `viewdef ef30198a…`, `columns 9be156d9…`,
+`constraints 572b6d5b…`, `indexes 34631a6b…`, `funcacls 850d3418…`, `comments f3d5390d…`).
+`relacl` is excluded from the hash because Supabase's defaults differ from plain Postgres; the
+grants are covered grantee-scoped in the file's `§Verification` instead.
+
+**Measured on DEV before and after, 2026-09-19.** `service_role` census **30 kept / 6 revoked →
+29 kept / 8 revoked** (`moderation_digest_entries` and `feedback` added). Published
+`security definer` functions executable by `authenticated` **38 → 38, unmoved** — both new `public`
+functions are revoked from it. `anon_security_definer_function_executable` **1 → 1**, still only
+`ride_invite_link_public_preview`. `security_definer_view` **absent → absent**: the projection lives
+in `private`, like the four report queues. `rls_enabled_no_policy` **6 → 7**, and the new member is
+correct by design rather than an oversight — a table with RLS on, no policy and no grant to any
+client role is the shape `121`'s `push_deliveries` already has. RLS suite **4158 → 4225**, **+67**
+labels, all `124.x`, none removed. **A grep answers 66 and 66 is wrong** — a label pattern ending
+`[:.]` drops `124.1d`, which carries neither; count with `grep -oE "'124\.[0-9]+[a-z0-9]*"`.
+
+**`125_the_volatile_label_is_not_a_method_gate` (PD-440), applied to DEV 2026-09-19T23:52Z as
+`125_the_volatile_label_is_not_a_method_gate`.** Comments only — it reissues `comment on function`
+on `public.ride_invite_link_preview(text)` (`091`) and `public.club_invite_link_preview(text)`
+(`093`), whose shared final sentence gave a **measured-false** reason for the `volatile` label:
+*"a stable function is served over GET by PostgREST, which would put a live capability token in the
+request log's query string."* A volatile function **is** served over GET on this deployment —
+`GET /rest/v1/rpc/ride_invite_link_public_preview?t=<live token>` answers **200** with the
+publishable key alone, and the control that makes it conclusive is the same GET against
+`ride_invite_link_preview` answering **401 / 42501**, a privilege error raised at execution rather
+than a `405`. What keeps the token out of the URL is that `supabase-js`'s `.rpc()` POSTs and
+`src/lib/data/` is the only caller; **nothing in the database enforces it**. `115` already carried
+the corrected wording on `ride_invite_link_public_preview` (115.13) and PD-430 corrected
+[`docs/reference/schema.md`](schema.md)'s two invite-link rows, so `091` and `093` were the last
+two places the false reason lived. **The `volatile` LABEL is correct and does not move** — `for
+share` is refused outright in a non-volatile function, so the two claim RPCs require it — and
+125.1c / 125.2c exist to refuse the "fix" the corrected prose invites. **Each comment is reissued
+WHOLE**, because `comment on function` replaces rather than appends: every sentence but the last
+was reproduced byte-for-byte from `obj_description(p.oid, 'pg_proc')` read off DEV first, verified
+programmatically against `091`/`093`'s own literals before applying (prefixes identical at 716 and
+1019 characters), and 125.1d / 125.2d assert the eight- and six-column projection bounds survived.
+**Applied in full, not reduced** — `md5(obj_description(...))` on DEV equals the digest computed
+from the committed file for both functions (`f609556190fbac65231bc95a3d24393d` and
+`1b736d3b666af16dddd81cef3fd5f29a`), and `provolatile` reads `v` on both. No object, policy, grant,
+trigger, column or function body changes, so it has no unsafe side in either direction and promotes
+to PROD in the ordinary way. Security advisors **47 → 47, zero movement**; RLS suite
+**4225 → 4233**, **+8** labels, all `125.x`. DEV-only until the promotion.
+
+**`126_two_sinks_the_bypass_key_cannot_enumerate` (PD-413), applied to DEV 2026-09-19T23:54Z as
+`126_two_sinks_the_bypass_key_cannot_enumerate`.** `revoke all ... from service_role` on
+`public.password_reset_grants` (`026`'s omission) and `public.club_removals` (`111`'s), plus a
+restamp of `111`'s table comment. Both are `076` §3b's shape exactly: they revoked from
+`anon, authenticated` and never named `service_role`, so Supabase's project default stood and the
+one credential that bypasses RLS could enumerate, in `club_removals`' case, every (club, rider)
+pair an admin removed — over a table whose own comment says *NOBODY READS IT ... it is not an audit
+trail and must not grow into one*, and whose spec requires that nothing anywhere record who removed
+whom. **`026`'s table comment already claimed the posture** (*"no role holds a grant on it"*), so
+that half is a file making a four-month-old claim true and needs no restamp; `111`'s said "every
+client role is revoked", which understated it after this file, and is reissued whole with two
+sentences changed and the rest byte-for-byte. **The criterion is a judgement about the ROWS and
+`rls_enabled_no_policy` is a candidate set, never the test** — it excludes `postcard_reports` and
+`club_thread_reports`, which are revoked and carry two policies each.
+
+**The cascade was exercised before the revoke, not reasoned** — `076`'s gate, because getting it
+wrong takes account deletion down and nothing in CI would notice. Two rolled-back transactions on
+DEV with the revokes staged inside them: (A) `set local role service_role; delete from
+public.profiles where id = <rider>;` → `club_removals` **1 → 0** with
+`bool_or(has_table_privilege('service_role','public.club_removals',p))` **false throughout**; (B)
+`delete from auth.users where id = <rider>;` → `profiles` **1 → 0**, `club_removals` **1 → 0**,
+`password_reset_grants` **1 → 0**, same privilege answer. (B) ran as the OWNER rather than as
+`supabase_auth_admin`, which this connection cannot `set role` to — and `service_role` holds no
+DELETE on `auth.users` at all (measured), which is itself why the deletion path is not the role
+being revoked. Counts re-read after rollback and unchanged. `delete-account` needs no new step.
+
+**The PROD sequencing question in PD-413's body is STALE and the file is written for the other
+branch.** The issue (2026-09-06) says `111` was unpromoted, so `club_removals` would not exist on
+PROD and the file would need a `to_regclass` guard. Measured 2026-09-19 against
+`zwprydcyryvudhurbnye`: `list_migrations` carries `a_removal_bars_a_live_invite_link` (applied
+2026-09-07) and `to_regclass` answers non-null for **both** tables, with
+`has_table_privilege('service_role','public.password_reset_grants','SELECT')` **true** — PROD
+carries the same gap. So a plain `revoke` is correct on both projects and **no guard is present, on
+purpose**: a guard turns a missing table into silent success, which is how a revoke gets believed
+on a project where it never ran.
+
+**Measured on DEV after, 2026-09-19.** `service_role` census **29 kept / 8 revoked → 27 kept / 10
+revoked**, the two new names being `club_removals` and `password_reset_grants`; grantee-scoped
+`role_table_grants` for `service_role` on the pair **0**. Security advisors **47 → 47, zero
+movement, and that is the expected answer** — both tables were ALREADY in `rls_enabled_no_policy`
+(7 findings, unchanged), which is a statement about POLICIES and not about grants, so
+`CLAUDE.md`'s "one INFO per table whose client grants were revoked outright" gains no member here.
+`md5(obj_description('public.club_removals'::regclass,'pg_class'))` on DEV equals the digest
+computed from the committed file (`955db3084f218e5a83a70dbf2441c29e`). RLS suite **4233 → 4245**,
+**+12** labels, all `126.x`, including FOUR savepoint-staged anti-vacuity probes — two per table,
+one for each accepted assertion form — because the
+privilege this file revokes is installed by the hosted project's `pg_default_acl` and the scratch
+database has none — so those four **cannot fail locally** and state intent, exactly as `124.1b` does.
+DEV-only until the promotion.
+
+**The `113`, `114`, `115`, `116` promotion applied to PROD on 2026-09-08, `113` ahead of `114` as
+its gate required.** The open gap today is `117` and `118`, both DEV-only. The ordering rule stands for the next one, and
+`114`'s entry below is why: it is the narrowing half and must not reach a project until the same
+bundle is serving there. **`115` carried no such gate against the other two** — it creates one
+object nothing existing calls, so it neither depended on `113`/`114` nor was depended on by them.
+It is migration-first on its own account, for the reason its entry gives.
 
 **`113_home_country` (PD-428), applied to DEV 2026-09-07T10:10:07Z as `20260907101007`.** Adds
 nullable `profiles.home_country` (ISO 3166-1 alpha-2), two VALIDATED CHECKs, three column grants
@@ -424,6 +623,139 @@ identical before and after, and the 38 is the number that could have moved.
 and position on it — so a bundle serving ahead of the migration answers `42703` on every club and
 ride detail. Applied ahead of the bundle it is a column nothing reads. The PROD promotion carries
 the same order and needs no coordination with `113`/`114`.
+
+**`119_a_deletion_in_progress_is_visible` (PD-175), applied to DEV 2026-09-18T23:58:22Z as
+`20260918235822`.** Closes the race `032` §3 states precisely and deliberately leaves open: rider B's
+transfer RPC commits owning nothing, rider A's transfer then picks B as successor for a club they
+share, and B's `deleteUser` cascades that club away with every postcard every other member posted
+into it. Adds `public.profiles.deletion_started_at`, stamped by `private.transfer_owned_clubs`
+above its club loop — the deletion's first database call — and read by the successor select, which
+refuses a candidate whose own marker is set and younger than **15 minutes**.
+
+**The stamp and the pre-existing `for update of p` are ONE mechanism, and this is the correction to
+`032` §3 worth carrying forward.** That file concluded the lock did not close the race, and it was
+right about the lock *alone*: it locked a row whose content said nothing about a deletion. It does
+now, so A's select blocks on B's uncommitted stamp, re-reads the row under READ COMMITTED, and
+skips it. **Measured in two sessions rather than inferred** — the RLS suite runs both calls in one
+psql transaction and structurally cannot see this: control with no marker returns B; with session 1
+holding an uncommitted stamp on B, session 2's select BLOCKS 2033 ms and then returns C. The
+migration header carries the transcript.
+
+**The advisory lock `032` named as the other candidate cannot work here**, which is why it was not
+built: each PostgREST request is a separate pooled connection, so a session-level lock taken in the
+transfer RPC is released exactly at the boundary the race crosses. **PD-175's own 2026-09-08 comment
+assumed the advisory lock** and said in the same breath that a different reading did not need an
+answer to proceed — so this is a deviation taken deliberately, with the reason in the file.
+
+**The cost, chosen rather than discovered:** two riders who each own a club and are members of the
+other's can deadlock on each other's `profiles` row. Postgres detects it, one deletion fails
+retryably, and `032` §1 already made the transfer idempotent. `for update of p skip locked` removes
+the deadlock and replaces it with a silently wrong successor — a candidate momentarily locked for an
+unrelated reason would be skipped and a transferable club would go ownerless. A loud retryable error
+beats a quiet wrong outcome in the one function that exists to protect other riders' content.
+
+**It does NOT widen the no-successor arm.** A skipped last candidate reaches `107`'s arm one
+deletion earlier, where the club is KEPT ownerless if any postcard in it is third-party — so the
+outcome is strictly better than handing it to someone whose deletion lands moments later. `119.6`
+and `119.7` assert both branches through the new skip.
+
+**Advisors: no change.** `create or replace` does not alter grants (`032` §Verification measured
+that) and a column adds no finding — `authenticated_security_definer_function_executable` still 38,
+`anon_security_definer_function_executable` still 1.
+
+**The object was compared, not the file.** Applied reduced — the ~140-line header does not go up —
+so the recorded statement's md5 does not equal the file's, which is the norm here. The function
+body agrees exactly: `prosrc` md5 `f234b74a48c38a7492820aace1bc5919` on DEV and in the file.
+
+**Either order against a deploy is safe.** Nothing a bundle reads moves: no client grant, no policy,
+no function signature, and the Edge Function is untouched and needs no redeploy.
+
+**`120_consent_outlives_the_rider` (PD-458), applied to DEV 2026-09-18T23:57:31Z as
+`20260918235731` — 51 seconds BEFORE `119`, so the recorded order is the reverse of the filenames.** Answers
+`add-account-deletion`'s Q4, open since 2026-08-06 and the last of that change's four. Deleting an
+account cascaded `profiles` away and with it `terms_accepted_at` and `030`'s `terms_version` — the
+evidence `012` spent a migration arguing for and which `023` actively relies on. Adds
+`private.consent_records` and a **BEFORE DELETE row trigger** on `public.profiles`,
+`private.retain_consent_record`, which copies the version and the acceptance DAY across before the
+cascade takes the row.
+
+**It REFUSES design D10's shape on the product owner's instruction (2026-09-18).** D10 recommended a
+salted one-way hash of the subject's uuid; the id space is enumerable from `auth.users`, so a hash
+is a lookup table away from being the id itself. The row carries **no subject id and no hash of
+one**. The cost is stated rather than buried: it can no longer confirm or refute one named
+claimant's claim, which is what D10 wanted the hash for. What survives is that a consent to a
+version existed on a day.
+
+**`accepted_on` is a DATE and there is deliberately NO `created_at`.** One row per deletion stamped
+to the microsecond is a join away from `auth.users` at these volumes, so the insertion time is the
+one thing this table must not know. `120.4` pins the column set as an exact string rather than a
+count, because a count passes when somebody swaps one column for another.
+
+**A trigger rather than a step in the Edge Function**, for three reasons and only the first is
+convenience: PD-458 requires `delete-account`'s verified re-authentication proof to be left alone;
+`042` revoked the DELETE grant on `profiles`, so the cascade and the table owner are the only things
+that reach the row at all; and it needs no redeploy. **The mechanism was measured before it was
+chosen** — a cascading delete performs a real DELETE on the child and fires its row triggers,
+verified on DEV in a rolled-back transaction against a scratch parent/child pair.
+
+**The failure mode that passes every other assertion, and the one to remember:** a BEFORE DELETE
+trigger returning NULL instead of OLD silently CANCELS the delete — `auth.users` loses its row,
+`profiles` keeps its own, nothing raises, and the rider is told the deletion succeeded. That is
+`012` §KNOWN LIMIT's orphan state reached through this very mechanism. `120.5` therefore asserts the
+**profile row is gone** through the real `auth.users` cascade, not merely that the retention row
+arrived; the second passes while the first is false.
+
+**Advisors: +1 INFO and nothing else.** `rls_enabled_no_policy` 4 → **5**, the new finding being
+`private.consent_records` — chosen, and the same shape as `private.system_alerts` (`117`): RLS on,
+no policy, no grant. The `service_role` census in `public` is untouched at 30 kept / 3 revoked,
+because a table created in `private` never receives those defaults — it is **outside** that census
+rather than an exception to it. What stops `service_role`, which holds USAGE on `private` and
+bypasses RLS, is the absent table grant alone.
+
+**`117_the_welcome_club_hands_back_its_flag` (PD-398), applied to DEV 2026-09-18T20:15Z as
+`20260918201500`.** Closes the follow-up `107` §4b filed against itself. `private.transfer_owned_clubs`
+loses `not club.is_default` from its keep arm, so the welcome club's third-party postcards survive
+its last member's erasure like any other club's — and the keep arm's single UPDATE now also sets
+`is_default = false`, so the club hands the flag back as it goes ownerless. Adds
+`private.system_alerts`, an incident record with a two-value CHECK on `alert_key`, written by both
+no-successor arms when the club they disposed of carried the flag.
+
+**The unflagging is the security half, not a tidy-up.** Deleting the exclusion alone converts a
+data-LOSS bug into a data-EXPOSURE one: `complete_onboarding` is `security definer`, so
+`club_members`' INSERT policy (`107` §2b) does not apply to it, and an ownerless club still
+carrying the flag would be force-joined by every signup — publishing every preserved postcard in
+it. `114` carries `107` §4b's `and c.owner_id is not null` on that insert and remains the second
+lock; **`117` does not touch `complete_onboarding`, and `114` is still its newest definition.**
+Clearing the flag also frees `clubs_one_default_club`, the partial unique index, so a replacement
+welcome club can be flagged at all — measured: with the unflagging reverted, the suite's `117.5`
+fails `23505` on that index.
+
+**Advisors: +1 INFO and nothing else.** `rls_enabled_no_policy` 3 → **4**, the new finding being
+`private.system_alerts` — chosen, and the same shape as `push_devices` and `club_removals`: RLS on,
+no policy, no grant to any client role. `anon_security_definer_function_executable` unchanged at 1,
+`authenticated_security_definer_function_executable` unchanged at **38**, and the `service_role`
+census in `public` is untouched at 30 kept / 3 revoked — the new table is in `private`, where
+Supabase grants no defaults, so there is nothing there to revoke and it is outside that census.
+**`service_role` DOES hold USAGE on `private` and bypasses RLS**, which is the sentence it is easy
+to get wrong: what stops it reading this table is the absent table grant alone.
+
+**Either order is safe, and it is the rare file where that is true rather than assumed.** Nothing
+in `public` moves — no column, no policy, no grant, no function signature — so no bundle can
+observe it. The only caller is account deletion, through `public.transfer_owned_clubs_for_deletion`.
+
+**Hand-exercised on DEV before and after applying**, as the owner, in rolled-back transactions
+against the LIVE welcome club, per `CLAUDE.md`'s rule for a change to an already-shipped write
+path: baseline (club deleted, third party's postcard destroyed), keep arm (club kept, ownerless,
+unflagged, postcard preserved, one `welcome_club_kept_ownerless` row), delete arm
+(`welcome_club_deleted`), successor arm (flag kept, no alert). The migration's §3 carries the
+numbers. **The recorded statement does NOT equal the file's md5, and here the reason is known
+rather than structural.** The first apply (`20260918201115`) was rolled back by hand — table
+dropped, row deleted — because two header claims about `service_role` and about `prosrc` proved
+false when measured; the corrected file was re-applied as `20260918201500`, and a third correction
+afterwards touched only the §3 comment block, outside every object. So the recorded statement is
+`b875e12c7f725473f4f455351fc170e2` and the file's is not. **The objects are what agree**, and all
+four were compared by md5: function body `abf785b20ab0753042cdeb388f7ec611`, plus the table, column
+and function comments.
 
 **A deleted message does not un-bump its thread**, decided rather than overlooked: recomputing on
 DELETE costs a scan per moderation action, and the activity did happen. **The announcement
@@ -1165,7 +1497,7 @@ into SQL: a club count that outgrows `CLUBS_PAGE_SIZE`, at which point the quest
 `postcards` — `taken_at`, `taken_at_offset_minutes`, `taken_latitude`, `taken_longitude`,
 `taken_location_precision` — with four CHECKs and two absolute grant statements, and **no policy,
 no trigger, no index and no backfill**. The specification is
-`openspec/changes/capture-photo-time-and-place/`.
+`openspec/changes/archive/2026-09-08-capture-photo-time-and-place/`.
 
 Three things about it that a reader will otherwise reach the wrong conclusion about:
 
@@ -1553,11 +1885,46 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 116 — DEV at 116, PROD at 112 (113, 114, 115, 116 await promotion; 113 then 114 in that order)
+ls supabase/migrations/*.sql | wc -l     # 126 — DEV at 126, PROD at 116. The DEV ref runs AHEAD
+                                         # of this count whenever a concurrent branch has applied
+                                         # its own file: 118 (PD-459) and 122/123 (PD-454) each
+                                         # did, so never infer the next free number from wc -l.
+                                         # 122 and 123 were numbered off list_migrations for
+                                         # exactly that reason — the tasks file said 118/119.
+                                         # 125/126 (PD-440/PD-413) took the OTHER trap: a slot-2
+                                         # session DECLARED 125 sixteen hours earlier and never
+                                         # wrote or applied it, so list_migrations — not the
+                                         # declaration — is what said 125 was still free.
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```
 
+
+**`118_the_terms_name_a_person` (PD-459), applied to DEV 2026-09-18T20:36:12Z as
+`20260918203612`.** One `create or replace` moving `private.current_terms_version()` from
+`0-placeholder` to `1.0`, one `comment on function`, and `030`'s revoke re-stated. No table, no
+policy, no grant change.
+
+**MIGRATION-FIRST, and the two directions are not symmetric** — the migration's own header reasons
+it out. Neither side reads the other at runtime: the page renders `TERMS_VERSION` from
+`src/lib/legal/terms.ts` and the database stamps this function, so the window between them writes a
+consent row whose version and whose text disagree. Migration-first under-claims (a row says `1.0`
+for a rider who saw the older page); deploy-first writes `0-placeholder` against the real
+agreement, which is a consent that cannot be read as evidence — the failure `030` exists to avoid.
+
+**It must NOT be promoted to PROD ahead of the page.** PROD serves `main`, whose `/legal/terms` is
+still the disclaimer that says it is not an agreement; stamping `1.0` there is the fabricated
+evidence record `030` refused to backfill. It goes with the promotion that carries
+`src/app/legal/terms/page.tsx`, in the same bundle, never before it.
+
+**Applied reduced** — the file is mostly its own reasoning, so the three statements went through
+`apply_migration` and the recorded statement does not `md5sum` to the file. Proved by object diff
+rather than by hash, which is the norm here (§Applying a large file). Verified on DEV immediately
+after: `private.current_terms_version()` → `1.0`; `has_function_privilege` false for both
+`authenticated` and `anon`; zero rows in `public` named `current_terms_version`, so PostgREST still
+does not publish it; the comment is present. **No backfill, checked rather than assumed** — the
+version histogram was `<null>=13, 0-placeholder=17` before and after, and stays that way until a
+rider consents after this applied.
 
 **PROD was TWELVE behind and is level again** — `080`–`091` promoted 2026-08-30 around #348's
 build. The order they went in is the part worth keeping, because the next gap is ordered the same
@@ -1672,8 +2039,24 @@ projects, and it reads exactly like drift. Compare the OBJECT, never the recorde
 
 ## Security advisors
 
-**Security advisors: forty-three on DEV and forty-two on PROD since `115` applied on 2026-09-08, and
-only one is outstanding on each.** The difference is `115`'s pending promotion, in the new
+**Security advisors: FORTY-SEVEN on DEV — measured 2026-09-20 — and forty-three on PROD (measured
+2026-09-19, not re-read since), and only one is outstanding on each.** **DEV moved +1 with `117`,
++1 with `120`, +1 with `121` and +1 with `124`, all four `rls_enabled_no_policy` INFO on a sink
+whose client grants were revoked outright, all four chosen**, so the four-advisor gap is those
+files awaiting promotion. **The headline read forty-six and three until 2026-09-20**, because
+`124`'s `moderation_digest_entries` INFO landed without this sentence moving with it — which is
+what the re-derive line below is for.
+
+**`125` and `126` add NOTHING to this total, and `126` is the one worth understanding**, because
+the intuition it defeats is the reason `CLAUDE.md` states the sink rule as a judgement rather than
+a filter. `126` revokes `service_role` on `password_reset_grants` and `club_removals`, and the
+count does not move **because `rls_enabled_no_policy` counts POLICIES, not grants** — both tables
+were already in that INFO class before the revoke and are still in it after. So a revoke is
+invisible to the advisors in both directions: this class can never confirm one landed, and
+`CLAUDE.md`'s census query is the only thing that can. `125` changes two `comment on function`
+reasons and touches no grant, label or signature at all.
+**PROD's total was recorded as forty-two and that was wrong** — measured 43 on 2026-09-19 — because
+the `anon` class below was counted as DEV-only after `115` had already promoted. The difference is `115`'s pending promotion, in the new
 `anon_security_definer_function_executable` row below. A one- or two-advisor difference between the projects is the ordinary
 shape of a pending promotion, never a finding on its own. Re-derive
 rather than trust the number — `get_advisors(security)`, or, without the payload,
@@ -1689,9 +2072,9 @@ cannot tell a session whether a new WARN is expected:
 
 | Count | Advisor | Why it is there |
 |---|---|---|
-| 38 on both | `authenticated_security_definer_function_executable` (WARN) | Every `security definer` RPC in `public` — the onboarding accessors (`021`), the recovery-grant pair (`026`), the moderation and club-management RPCs, the push-device pair (`078`), the ride and club invite RPCs (`083`, `085`, `091`), `introduce_to_club` (`097`), the moderation-reversal accessors (`105`/`106`) and `108`'s two ride-thread RPCs. Every one is `security definer` **by design**, and each is narrow on purpose: takes a row id and never a rider id, writes or answers exactly one row for its caller, and has ONE raise site so it cannot be used as an oracle. **This advisor fires once per such function, so a migration adding two adds two**, and a migration whose functions live in `private` adds none, because PostgREST does not publish `private`. Count them off `get_advisors` rather than off this cell |
-| 3 | `rls_enabled_no_policy` on `password_reset_grants`, `push_devices` and `club_removals` (INFO) | Correct by design: `026`, `078` and `111` revoke everything on their table from the client roles, so a policy would be the thing that granted reach. **`club_removals` and `password_reset_grants` still hold Supabase's default `service_role` grant, and should not** — PD-413; `docs/reference/schema.md` §`service_role` grants has the reasoning |
-| **1 on DEV, 0 on PROD** | `anon_security_definer_function_executable` (lint `0028`, WARN) | **A class this project had never seen before `115`**, and its arrival is a finding in itself: it means the advisor set *can* see the app's only anonymous surface, which the change wrote down as a fact to read rather than predict. It names `public.ride_invite_link_public_preview(t text)` and nothing else, and it is `CLAUDE.md` decision #1's one named exception. **It is NOT a 39th of the row above** — that count did not move — so a session reading only the total would mis-attribute it. Zero on PROD until `115` promotes; a **second** finding in this class is a new decision and not this one extended |
+| 38 on both | `authenticated_security_definer_function_executable` (WARN) | Every `security definer` RPC in `public` — the onboarding accessors (`021`), the recovery-grant pair (`026`), the moderation and club-management RPCs, the push-device pair (`078`), the ride and club invite RPCs (`083`, `085`, `091`), `introduce_to_club` (`097`), the moderation-reversal accessors (`105`/`106`) and `108`'s two ride-thread RPCs. Every one is `security definer` **by design**, and each is narrow on purpose: takes a row id and never a rider id, writes or answers exactly one row for its caller, and has ONE raise site so it cannot be used as an oracle. **This advisor fires once per such function, so a migration adding two adds two**, and a migration whose functions live in `private` adds none, because PostgREST does not publish `private`. Count them off `get_advisors` rather than off this cell. **`121` is the worked counter-example, and it is why this cell says `security definer` **plus a grant** rather than just "a new function": it adds FIVE such functions in `public` — `public` now holds 49 of them against 38 the advisor names — and the count did NOT move, because `authenticated` holds EXECUTE on none of the five** (they are `service_role`'s). The advisor fires on the grant, not on the property. `078` added two that WERE callable and moved it by two. Measured on DEV 2026-09-19 with the query above plus the same count without the `has_function_privilege` filter |
+| 7 on DEV, 3 on PROD | `rls_enabled_no_policy` on `password_reset_grants`, `push_devices`, `club_removals`, and on DEV also `private.system_alerts` (`117`), `private.consent_records` (`120`), `public.push_deliveries` (`121`) and `public.moderation_digest_entries` (`124`) — the four awaiting promotion (INFO) | Correct by design: `026`, `078` and `111` revoke everything on their table from the client roles, so a policy would be the thing that granted reach. **`club_removals` and `password_reset_grants` held Supabase's default `service_role` grant until `126` (PD-413) revoked it** — and the count did NOT move, because this lint reads POLICIES and not grants, which is why it is a candidate set and never the criterion; `docs/reference/schema.md` §`service_role` grants has the reasoning |
+| **1 on BOTH** | `anon_security_definer_function_executable` (lint `0028`, WARN) | **A class this project had never seen before `115`**, and its arrival is a finding in itself: it means the advisor set *can* see the app's only anonymous surface, which the change wrote down as a fact to read rather than predict. It names `public.ride_invite_link_public_preview(t text)` and nothing else, and it is `CLAUDE.md` decision #1's one named exception. **It is NOT a 39th of the row above** — that count did not move — so a session reading only the total would mis-attribute it. **It is 1 on PROD too, measured 2026-09-19** — `115` promoted on 2026-09-08 and this row went on saying "zero on PROD" for eleven days, which is why the count is re-read rather than inherited. A **second** finding in this class is a new decision and not this one extended |
 | 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
 
 An unexpected advisor is one **not** in that table. A one-advisor difference between the projects

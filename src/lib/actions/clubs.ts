@@ -5,6 +5,7 @@ import { filterSegment, queryKeys } from '@/lib/query/keys'
 import { routes } from '@/lib/routes'
 import { MEDIA_BUCKET } from '@/lib/media/constants'
 import {
+  clubCreateSchema,
   clubSchema,
   readClubLocation,
   type ClubLocationInput,
@@ -138,7 +139,11 @@ export async function createClub(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const parsed = clubSchema.safeParse({
+  // `clubCreateSchema`, not `clubSchema` — PD-446. The location is required on
+  // the way IN and optional for ever after: `updateClub` below keeps
+  // `clubSchema` so a club that predates this gate stays editable by its owner
+  // without being made to supply one first.
+  const parsed = clubCreateSchema.safeParse({
     name: formData.get('name'),
     description: formData.get('description'),
     is_public: formData.get('is_public') === 'on',
@@ -514,6 +519,11 @@ export async function updateClub(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
+  // **`clubSchema`, deliberately — the create gate does NOT apply here (PD-446).**
+  // A club stored before that gate carries no location, and requiring one to
+  // rename it would make an owner answer a question about their club in order
+  // to fix a typo. The column is permanently nullable and this path is what
+  // keeps that true.
   const parsed = clubSchema.safeParse({
     name: formData.get('name'),
     description: formData.get('description'),

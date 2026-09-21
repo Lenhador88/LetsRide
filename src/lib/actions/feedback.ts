@@ -65,8 +65,15 @@ export async function sendFeedback(
     // PD-353. "The postcard thing is broken" is unactionable alone and
     // completely actionable beside ninety seconds of footage, which is the
     // pairing the Notion page was reaching for when it picked PostHog for
-    // replay. PD-322 is still where these rows go so somebody reads them; this
-    // is what a reader will have when it lands.
+    // replay.
+    //
+    // **That footage no longer exists: PD-456 turned recording off on
+    // 2026-09-18, so this id now resolves to nothing.** The column is left
+    // writing rather than removed, because the id is still PostHog's handle on
+    // the session and is what a re-enabled replay would attach to — but do not
+    // read its presence as "a recording is one click away", which is exactly
+    // what this comment used to promise. PD-457 is where these rows now go so
+    // somebody reads them.
     //
     // **Now rather than later, because it cannot be backfilled.** Every
     // feedback row written before this column existed has no replay attached,

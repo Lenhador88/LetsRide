@@ -3,7 +3,7 @@
 import { Header } from '@/components/layout/Header'
 import { ExploreClubsList } from '@/components/clubs/ExploreClubsList'
 import { IntroductionPrompt } from '@/components/clubs/IntroductionPrompt'
-import { UseMyLocationRow } from '@/components/location/UseMyLocationRow'
+import { LocationQuestionRow } from '@/components/location/LocationQuestionRow'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonList } from '@/components/ui/Skeleton'
 import { useIntroductionQueue } from '@/lib/clubs/use-introduction-queue'
@@ -106,22 +106,24 @@ export default function ExploreClubsPage() {
           both are built at the list's own padding, so nesting would draw them
           16px narrower than the cards they stand in for. */}
       <div className="pb-navbar-action-extra">
-        {/* PD-419. This screen splits its list on distance and was the one
-            Explore route with no way to supply one — `/rides`, `/clubs` and
-            `/rides/explore` have carried the row since PD-170. `auto` is set
-            here and on `/rides/explore` and nowhere else: an Explore screen is
-            where the reason for asking is visible, which is where grants
-            actually come from. */}
-        {/* `positionDecided ? position : undefined` — `position` collapses
+        {/* **The question, and the two Explore screens draw it identically —
+            PD-447.** Both mount it here, outside the list gate, so it renders
+            during load and on the error path; `/rides/explore` carries the same
+            block for the same reason and neither screen may drift from the
+            other. The tab roots no longer draw it at all: it was a second 56px
+            row under the Explore strip with the same icon and the same town
+            name.
+
+            `positionDecided ? position : undefined` — `position` collapses
             `undefined` to `null` for the query above, and the row must NOT see
             that: `null` is a decided "nowhere" it draws for, so passing the
             collapsed value flashes the row on every load before the position
-            settles. `/rides/explore` carries the same line. */}
-        <UseMyLocationRow
-          position={positionDecided ? position : undefined}
-          town={nearLabel(position, city.data)?.name}
-          auto
-        />
+            settles.
+
+            `town` is the RAW column, never `nearLabel(...)?.name` — that helper
+            answers the literal `you` in two branches, which reads as `Still in
+            you?`. */}
+        <LocationQuestionRow position={positionDecided ? position : undefined} town={city.data} />
 
         {clubs.error ? (
           <ErrorState onRetry={clubs.refetch} />

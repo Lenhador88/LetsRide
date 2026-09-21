@@ -19,7 +19,6 @@ invalidates had to survive the move without becoming a component-by-component gu
 contract that replaced them is `src/lib/query/keys.ts`, whose header carries the table
 reconciling every one of the 33 against the key that replaced it.
 ## Requirements
-
 ### Requirement: Every mutation SHALL declare what it invalidates
 
 Every function in `src/lib/actions/` SHALL name the cache keys it moves, from
@@ -190,6 +189,12 @@ mutation cannot redirect from the server, and the redirect is load-bearing in at
 places: it is what makes "posted" distinguishable from "not submitted yet" when both states
 are `{ error: null }`.
 
+**The onboarding half of that list is one step shorter since PD-286**, and the scenario below is
+rewritten rather than dropped. `setUsername` no longer hands off to a second wizard screen: it is
+the terminal step, so its redirect is `/postcards` and the property worth asserting moves with it.
+What has to survive is the *reason* the scenario existed — a wizard step whose success is
+indistinguishable from its initial state strands the rider on it — not the number of steps.
+
 #### Scenario: Success is distinguishable from the initial state
 - **WHEN** a create action succeeds
 - **THEN** the rider SHALL be navigated to the created resource or the list that now contains it
@@ -198,8 +203,12 @@ are `{ error: null }`.
 
 #### Scenario: Onboarding still advances one step at a time
 - **WHEN** the username step succeeds
-- **THEN** the rider SHALL land on the location step, and SHALL NOT be able to reach it before
-  the username is set, matching the guard's current rule
+- **THEN** the rider SHALL land on `/postcards`, because it is the last step of the wizard and
+  commits `onboarding_completed_at` itself
+- **AND** the rider SHALL NOT reach any app route before the username is set, which the route
+  guard enforces as a redirect and `023`'s participation gate enforces as a refusal
+- **AND** the redirect SHALL name a destination rather than a wizard step, leaving the guard to
+  resolve where a rider actually belongs — the shape `acceptTerms` already uses
 
 ### Requirement: A count and the list it summarises SHALL be invalidated together and read through the same predicate
 
@@ -363,4 +372,288 @@ renders the invalid-link message, and `undefined` SHALL continue to mean "not ye
 - **WHEN** the preview returns zero rows
 - **THEN** the screen SHALL render the invalid-link message, and SHALL NOT render a skeleton
   indefinitely
+
+### Requirement: A key outside its domain's detail prefix SHALL be named at every call site that must move it, and its reach SHALL be documented in `keys.ts`
+
+Where a screen is reached by an id that is not its domain's own root id — a thread opened by
+its thread id, with no club id available until the read resolves — its cache key SHALL NOT be
+nested under that domain's **detail** prefix, and no mutation SHALL rely on a `detail`-scoped
+invalidation to reach it.
+
+**The domain-wide prefix still reaches it, and a spec claiming otherwise would be wrong.**
+`invalidate` matches structurally on prefix — `keyStartsWith` in `src/lib/query/queryClient.ts`
+compares element by element — so `['clubs']` reaches `['clubs','threads',<id>,'messages']` just
+as it reaches every other key under the domain. The true statement is narrower and is the one that
+matters at the call site: the key is not under `['clubs','detail',<clubId>]`, so the club-scoped
+invalidations that a thread mutation would naturally reach for do **not** move it, while the
+domain-wide `clubs.all()` does.
+
+That asymmetry SHALL be recorded in `keys.ts` as *which prefixes reach it*, stated positively, and
+SHALL NOT be recorded as "no prefix reaches it" — `keys.ts`'s header is treated as authoritative by
+every later reader, so a false claim there is worse than no claim.
+
+#### Scenario: The thread key is named, not inherited
+- **WHEN** a message is sent into a club thread
+- **THEN** the action SHALL invalidate the thread's own key explicitly
+- **AND** it SHALL NOT rely on a club-scoped `['clubs','detail',<clubId>]` invalidation, which does
+  not reach it
+- **AND** it SHALL NOT rely on the domain-wide `clubs.all()` either — which *would* reach it —
+  because that refetches every club screen in the cache on every send
+
+#### Scenario: A mutation that moves two unconnected keys names both
+- **WHEN** a thread is deleted
+- **THEN** the action SHALL invalidate both the club's Threads list key and the thread's own
+  message key
+- **AND** the club id needed for the first SHALL be carried by the action rather than re-read after
+  the row is gone
+
+#### Scenario: The reach is written down where the keys are, positively
+- **WHEN** a key is added that sits outside its domain's detail prefix
+- **THEN** `keys.ts` SHALL record **which prefixes reach it and which do not**, in the same table
+  that reconciles the retired `revalidatePath` claims
+- **AND** the record SHALL be verified against `keyStartsWith` rather than assumed from the key's
+  shape, because prefix matching is structural and an eyeballed answer is how a false claim enters
+  the contract
+- **AND** the key SHALL NOT be renested under `detail` to hide the asymmetry, because the screen
+  does not hold the club id at read time
+
+### Requirement: An unread mark and the list it annotates SHALL be read under one predicate and invalidated together
+
+Where a list is drawn with a per-row unread mark computed by a separate call, both SHALL be
+computed under the caller's own row security through the same visibility predicate, and the mark's
+key SHALL be nested under the list's key so that invalidating the list reaches the mark.
+
+The nesting SHALL be one-directional on purpose: invalidating the list reaches the mark, because
+anything that changes the list can change the mark; invalidating the mark SHALL NOT reach the list,
+because a watermark advancing changes no row.
+
+#### Scenario: A new thread moves both
+- **WHEN** the Threads list key is invalidated
+- **THEN** the per-thread unread key SHALL be invalidated with it
+
+#### Scenario: Marking a thread read does not refetch the list
+- **WHEN** the watermark advances for one thread
+- **THEN** the unread key alone SHALL be invalidated
+- **AND** the list SHALL NOT be refetched, because no thread appeared, vanished or moved
+
+#### Scenario: The mark obeys the same block rule as the list
+- **WHEN** a rider has blocked the author of a thread's most recent message
+- **THEN** the mark SHALL be computed by a `security invoker` reader so the same SELECT policy
+  decides both
+- **AND** no block filter SHALL be applied a second time in the data layer or the component
+
+### Requirement: The guard cache SHALL be invalidated by whichever write is last, and the writer count SHALL be a measurement rather than a sentence
+
+Every action that writes a stamp `resolveDestination` reads SHALL call
+`invalidateOnboardingState()`, and when a step is removed the **surviving** last writer SHALL carry
+the call. The number of such writers SHALL be verified by counting call sites, never by trusting
+prose — including the prose in `CLAUDE.md`.
+
+`guard-cache.ts` holds the session and both onboarding stamps for the page load rather than
+re-reading them per navigation, which is what removed a round trip to `eu-west-1` from behind a
+full-screen splash on every tab tap. The cost of that is a hard rule: *miss one and the rider
+finishes a step and is sent straight back into it.* Today there are four writers — `signUp`,
+`setUsername`, `acceptTerms`, `setLocation` — and this change deletes the one that is **last**,
+which is the only position where a missed call is guaranteed to strand somebody rather than merely
+risk it.
+
+Three writers survive, and `setUsername` inherits the terminal position. It SHALL invalidate
+**once, after both of its writes**, not between them: an invalidation issued after the username
+UPDATE and before `complete_onboarding` re-populates the cache with a stamp that is about to change,
+which is the same staleness the call exists to prevent, arriving one round trip earlier.
+
+**The count is load-bearing outside the code.** `scripts/docs/registry.mjs`'s
+`guard-cache-invalidators` claim greps the call sites and compares them against a number written in
+`CLAUDE.md` §Critical: the route guard. Deleting `setLocation` without editing that sentence turns a
+correct change into a failed `docs:check` — which is the check working, and is a task rather than a
+surprise. Its own registry comment states the asymmetry to respect: it *"counts calls, not
+writers"*, so it catches a deleted call and cannot catch a fifth writer added without one.
+
+#### Scenario: The terminal step invalidates after its last write
+- **WHEN** the username step writes the username and then commits the completion stamp
+- **THEN** `invalidateOnboardingState()` SHALL be called once, after both writes have succeeded
+- **AND** the rider SHALL land on `/postcards` without the guard bouncing them back into the wizard
+
+#### Scenario: A partial failure leaves the cache no worse than the truth
+- **WHEN** the username write succeeds and the completion call then fails
+- **THEN** the cached state MAY still say "no username", and the guard's answer — the username
+  step — SHALL be correct either way
+- **AND** no code path SHALL cache a completion stamp that was never written
+
+#### Scenario: The writer count is re-measured, not edited from memory
+- **WHEN** an onboarding action is added or removed
+- **THEN** the number in `CLAUDE.md` SHALL be re-derived with the registry's own command rather
+  than adjusted by hand
+- **AND** `npm run docs:check` SHALL pass before the change merges, because this claim's `kind` is
+  a shell grep and therefore runs in CI's cheap set
+
+#### Scenario: Sign-out still clears the whole cache
+- **WHEN** a rider signs out
+- **THEN** `clearGuardCache()` SHALL run, unchanged by this change
+- **AND** the session half SHALL continue to have `onAuthStateChange` as its single writer
+
+### Requirement: A new read key SHALL be placed under a prefix its writers already invalidate
+
+A cache key earns its place by the prefix that sweeps it. Where an existing action already
+invalidates a prefix that covers a new key, the key SHALL be placed under that prefix and the
+action SHALL NOT gain a new `invalidate` call — an added call site that a prefix already reaches
+is dead code, which is the reasoning `keys.ts` records for `postcards.journal`.
+
+Where no existing prefix covers it, the writer SHALL be given the invalidation explicitly, and
+the reason SHALL be recorded beside the key.
+
+#### Scenario: The hidden-postcards key needs no new invalidation
+- **WHEN** the hidden-postcards list is added
+- **THEN** its key SHALL sit under the `postcards` prefix
+- **AND** `hidePostcard` and `unhidePostcard` SHALL be unchanged, because both already call
+  `invalidate(queryKeys.postcards.all())` and `invalidate` matches structurally by prefix
+- **AND** hiding a postcard SHALL add it to the list without a manual refresh, which is the case
+  a key placed outside that prefix would silently miss
+
+#### Scenario: The blocked-riders key is already swept
+- **WHEN** a rider blocks or unblocks someone
+- **THEN** `blockRider` and `unblockRider` SHALL remain unchanged, because both invalidate
+  `EVERYTHING` — the empty prefix, which reaches every key by construction
+- **AND** the list SHALL reflect the change without a navigation
+- **AND** the key SHALL additionally be swept by `updateProfile`'s existing `profile.all()`,
+  which costs one re-read of a short list and cannot make it stale
+
+#### Scenario: Neither key survives a sign-out
+- **WHEN** a rider signs out
+- **THEN** `clearQueryCache()` SHALL discard both, as it does every key
+- **AND** neither list SHALL be visible to the next rider who signs in on the same device
+- **AND** both keys hold own-row data only, so no value in either is shared across viewers
+
+### Requirement: Each timeline source SHALL keep its own cache key, and a write from the create bar SHALL invalidate every source it moves
+
+The timeline is a merge of reads that other screens also make, so it SHALL NOT be given a cache
+entry of its own holding the merged result. Two shapes under one key is the collision
+`keys.ts`'s own header warns against, and here it would put a 40-entry merged stream and a
+30-row postcard feed behind whichever screen loaded first.
+
+The postcards source SHALL keep reading `postcards.feed(filterSegment.club(id))` and the rides
+strip `rides.list(filterSegment.club(id))`, unchanged, so the club detail and
+`/postcards?club=<id>` and `/clubs/detail/rides` stay in agreement about their contents. The two
+new reads SHALL take new keys under `clubs.detail(clubId)` — the same nesting `members`,
+`threads` and `joinRequests` use — so any invalidation of `clubs.all()` reaches them for free.
+
+A write made from the create bar SHALL invalidate every key its rows appear under, including
+the ones it did not previously have to name:
+
+- creating a ride in the club → the club's rides list **and** the new recent-rides key
+- posting a postcard to the club → the club's postcard feed key
+- starting a thread → `clubs.detail(clubId).threads` **and** its unread child
+- joining or leaving → the new recent-joins key **and** `clubs.detail(clubId).members`, which
+  the Members rail reads
+
+#### Scenario: A newly created ride appears in both places it is drawn
+- **WHEN** a member creates a ride from the create bar
+- **THEN** the upcoming-rides strip and the timeline SHALL both show it without a reload
+- **AND** the two SHALL NOT disagree, because each reads its own key and both are invalidated
+
+#### Scenario: The merged stream is not cached
+- **WHEN** the timeline renders
+- **THEN** no cache key SHALL hold the merged result
+- **AND** the merge SHALL be recomputed from the source entries on each render, being a pure
+  function of them
+
+#### Scenario: A new key is reachable from the club prefix
+- **WHEN** any club mutation invalidates `clubs.all()` or `clubs.detail(clubId)`
+- **THEN** both new keys SHALL be reached, being children of `clubs.detail(clubId)`
+
+### Requirement: A count that summarises a DIFFERENT predicate from the list it sits beside SHALL say so where it is defined
+
+`client-cache-invalidation` already requires that a count and the list it summarises be
+invalidated together and read through the same predicate. The club badge on `/clubs` and this
+timeline are **not** that pair, and the difference SHALL be recorded rather than left to be read
+as agreement.
+
+Measured: `public.club_unread_counts` counts `postcards` created since the watermark whose
+`author_id` is not the caller, plus `rides` created since the watermark. It counts **no threads
+and no joins**, where the timeline draws all four. So a club whose only recent activity is three
+new threads shows no badge and a timeline with three entries, and that is correct behaviour under
+both definitions.
+
+This change SHALL NOT alter the function — doing so is a migration, and a join is not news
+addressed to a rider, while threads already carry a finer per-thread watermark the badge would
+double-count. The divergence SHALL be stated at both `club_unread_counts` and the timeline's own
+module so neither is read as the other's summary.
+
+#### Scenario: The badge and the timeline are allowed to disagree, in writing
+- **WHEN** three threads are started in a club and nothing else happens
+- **THEN** the club's badge on `/clubs` SHALL remain absent
+- **AND** the timeline SHALL show three entries
+- **AND** both modules SHALL carry a comment naming the other's predicate
+
+#### Scenario: The timeline does not spend the club watermark differently than today
+- **WHEN** a member opens the club detail
+- **THEN** `MarkClubSeen` SHALL advance `feed_reads.last_seen_at` exactly as it does today
+- **AND** the timeline SHALL NOT read that watermark, draw a "new since" boundary, or depend on
+  the order in which the mark and the reads complete
+
+### Requirement: Two reads that share a cache key SHALL be widened together, or the key SHALL be split before either moves
+
+Where two functions are documented as returning the same list and share one key, a change that
+widens one SHALL widen the other in the same commit. Splitting the key instead SHALL be permitted
+only where the two lists are *intended* to differ, and SHALL then be justified as a product decision
+rather than as a caching one.
+
+`getClubFeed(clubId)` and `getFeed({}, { kind: 'club', id })` share
+`postcards.feed(filterSegment.club(id))` and are documented in
+`src/app/(app)/clubs/detail/page.tsx` as *"the same select, order, limit and predicate"*. That
+sentence is a **contract**, not a description, and this change keeps it true by making one function
+the implementation of both.
+
+#### Scenario: One key, one list, whatever the navigation order
+- **WHEN** a rider loads the club detail and then `/postcards?club=<id>`, or the reverse
+- **THEN** the two screens SHALL render the same postcards
+- **AND** the entry served from cache SHALL be correct for the screen that asks second
+
+#### Scenario: The shared-key note is updated, not left standing
+- **WHEN** the widening lands
+- **THEN** the comment asserting the two reads are identical SHALL be edited to say what they now
+  return
+- **AND** it SHALL NOT be annotated with a correction paragraph — `CLAUDE.md` §Working Principles, which
+  says to replace a wrong claim rather than narrate it
+
+#### Scenario: A split key would have been a product decision
+- **WHEN** the alternative is reviewed
+- **THEN** it SHALL be recorded that giving `getClubFeed` its own key makes the strip and its own
+  `See all` show legitimately different lists, which is a worse outcome than the defect it avoids
+
+### Requirement: A widened read SHALL have its existing invalidation claims RE-DERIVED against the wider list, not assumed to still hold
+
+This change adds no mutation and no new key, and the existing claims are believed sufficient. That
+belief SHALL be re-derived against `keys.ts`'s stated prefix reach rather than assumed, because the
+set of writes that can change this list has grown: **tagging a postcard to a ride now changes which
+club strips contain it**, which was previously true of no write at all.
+
+The re-derivation, stated so a reviewer can check it rather than take it: `createPostcard` and
+`invalidatePostcard` both claim `queryKeys.postcards.all()`, and `postcards.feed(club:<id>)` sits
+under that prefix for **every** club, so a postcard created with a `ride_id` naming a club's ride
+already invalidates that club's strip without knowing which club it is. `deletePostcard` and the
+like/unlike pair reach it the same way.
+
+Where a future write reaches the tag without claiming the whole prefix, the claim SHALL be widened
+rather than a club id guessed from a second read.
+
+#### Scenario: The prefix claim is confirmed to reach the widened list
+- **WHEN** a postcard is created tagged to a ride of a club the author is not posting to
+- **THEN** that club's strip SHALL redraw with the postcard on it, without a reload
+- **AND** the claim doing that work SHALL be `postcards.all()`, named explicitly in the review rather
+  than inferred
+
+#### Scenario: The narrower-looking claim is refused
+- **WHEN** somebody proposes resolving the ride's club so the invalidation can name
+  `postcards.feed(club:<that id>)` precisely
+- **THEN** it SHALL be refused: it costs a round trip, it under-invalidates whenever the postcard is
+  tagged to a ride whose club differs from its audience, and `invalidatePostcard`'s own header
+  already records that naming keys precisely *"would under-invalidate by exactly the amount that is
+  hard to see"*
+
+#### Scenario: No key is added without a reader
+- **WHEN** the change is reviewed
+- **THEN** no new entry SHALL appear in `src/lib/query/keys.ts`
+- **AND** a key nothing fills SHALL be treated as worse than none, because it carries an
+  invalidation claim about an entry that never exists
 

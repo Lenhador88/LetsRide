@@ -136,9 +136,21 @@ skip-is-not-a-pass rule `docs:check --cheap` follows. Detectors tested against p
 in `scripts/native/__tests__/release-guards.test.mjs`; run against real builds 2026-08-12, a
 PROD-ref bundle passes and a DEV-ref one is refused by name.
 
+**Since PD-204 it also reads `ios/App/App/public`, and that is the directory that actually
+ships.** `out/` is what you built; `npx cap sync` copies it into the platform project, and the
+platform project is what gets archived, signed and uploaded — so a fresh `out/` beside a
+month-old platform copy passed every check above while the submission carried the old backend and
+the old origin. The copy is scanned by the same rules **and** compared byte for byte against
+`out/`, because a sync made before the origin guard existed contains no `localhost` and no wrong
+ref and would otherwise pass. A platform project with no `public/` is a refusal (`cap sync` has
+never run, so the archive would ship an empty webview); a platform that does not exist at all —
+`android/`, PD-442 — is silent, because a gate that is red for everybody gets switched off. The
+closing line names which platforms were compared, since "no platform problems" and "no platform
+was looked at" otherwise read identically.
+
 **It is deliberately not part of `npm run build:native`.** That runs `check-export.mjs` on every
 native build, including the local, CI and on-device ones which may point wherever they like as long
-as they never reach a store (`openspec/changes/add-static-export-bundle/design.md` §D7) — CI's own
+as they never reach a store (`openspec/changes/archive/2026-09-08-add-static-export-bundle/design.md` §D7) — CI's own
 bundle step builds against DEV. Wiring the release gate in there would either block every test
 build or get switched off.
 
@@ -597,7 +609,10 @@ neither can any preview. Two things cover it and both are required —
 hand-verified once on PROD after a promotion**, before PD-353 reaches `Done (in production)`.
 
 **Four PostHog settings live in a dashboard as well as in the code, and nothing checks that the
-two agree.** Autocapture off, heatmaps off, web vitals on, session replay on. A mismatch fails
+two agree.** Autocapture off, heatmaps off, web vitals on, and **session replay off since
+PD-456 (2026-09-18)** — the code sets `disable_session_recording: true`, so the dashboard's own
+recording toggle can no longer produce a recording whatever it says; leave it off anyway rather
+than relying on that. A mismatch fails
 silently in the expensive direction — autocapture switched on in the dashboard collects element
 text from every screen while `src/lib/analytics/client.ts` says it does not. Same class of
 drift as the auth settings below, and the same remedy: read the dashboard, do not trust a
@@ -772,10 +787,53 @@ line. Three things follow:
   not, and nothing — not CI, not `db:drift`, which only reads migrations — compares them. That is
   the same CLI that brings `config.toml`, which is why the first Edge Function — not branching —
   is what forces the tooling decision.
-- **Nothing type-checks them.** `tsconfig.json` excludes `supabase/functions` because it is
-  Deno. ESLint still parses them, and it is the only tool that does.
+- **`tsc` does not type-check them, and CI's `functions` job does.** `tsconfig.json` excludes
+  `supabase/functions` because it is Deno, so `npx tsc --noEmit`, `next build` and Vitest are all
+  blind to the directory; `deno check` runs against every `index.ts` under it when
+  `supabase/functions/**` changes, and ESLint parses them too. **Neither reaches this container** —
+  there is no `deno` here — so a change under `supabase/functions/` is first type-checked in CI.
+  Three of the five functions answer that by putting every decision in a `shape.ts` with no `Deno.`
+  reference, which a test under `src/__tests__/` imports and drags back into `tsc`'s graph.
 - **Secrets are per project.** A DEV push key that reaches a test device and a PROD one that
   reaches every rider. Getting these backwards sends test notifications to real people.
+
+### `send-moderation-digest`'s secrets, and the one no test can protect
+
+`send-moderation-digest` (PD-457) is the app's first mail sender. It holds four secrets, per
+project, and one of them is an address rather than a credential — which is why it gets its own
+heading rather than a line in the list above. **A fifth variable is not a secret and is the
+table's last row**; it is listed because it has a default and the other four must not.
+
+| Secret | What it is | Absent means |
+|---|---|---|
+| `SERVICE_ROLE_KEY` | shared with `delete-account` and `push-notify` | the function 500s and says which secret is missing |
+| `MAIL_PROVIDER_API_KEY` | the provider's key. `design.md` D7 recommends Resend; the provider is one file (`mail.ts`) | **nothing is claimed** — the function 500s `not_configured` before it touches the queue |
+| `DIGEST_SENDER` | the envelope sender. A provider's own onboarding sender works before any DNS exists; a verified domain replaces it later with no deploy | as above |
+| `DIGEST_RECIPIENT` | **the product owner's private mailbox** | as above |
+| `MAIL_PROVIDER_ENDPOINT` | **not a secret, and the one variable with a default** — `https://api.resend.com/emails`. Set it in the *same step* as `MAIL_PROVIDER_API_KEY` when the provider is not Resend | the default is used, so a non-Resend key is POSTed to Resend and refused |
+
+**`DIGEST_RECIPIENT` is not `SUPPORT_EMAIL`, and this is the sharp edge.** `SUPPORT_EMAIL`
+(`hello@letsride.social`) is *published* — the App Store listing, `/legal/support`, the terms and
+the privacy page all carry it, and a rider or a store reviewer is invited to write to it.
+`DIGEST_RECIPIENT` receives moderation reports and rider feedback: who reported what, and free text
+a rider typed. Setting it to the published address routes rider-authored content into whatever
+forwarding chain that alias sits behind; PD-457 names the reverse mistake too — it would put a
+private inbox in the App Store listing.
+
+**`src/__tests__/moderation-digest-secrets.test.ts` covers the half that lives in the repo** — no
+address literal in the function directory, no reference to `SUPPORT_EMAIL`, and no fallback
+address, so an absent secret is a refusal to send rather than a send to a placeholder. **It cannot
+cover this one.** No test reaches a secret store, so the only thing standing between the digest and
+the published address is whoever types the value. That is why it is written here, beside the
+secret, rather than only in a task list.
+
+**None of the four has a default, deliberately**, and the fifth row's default is why that sentence
+has to name a number. A deployed function with no provider key mails nothing and **claims nothing**:
+`missingMailSecrets()` is read ahead of `claim_moderation_digest`, so the tick 500s
+`not_configured`, no entry is touched and no attempt is spent. **The secrets still land before the
+schedule starts** — an unconfigured schedule is an hourly 500 that delivers no report, which is a
+worse outage for being a quiet one — but getting the order wrong now costs ticks rather than the
+attempt cap on real reports, and needs no re-arm to recover.
 
 ### Scheduled jobs — the footgun to design against before writing one
 
@@ -789,6 +847,37 @@ Neither extension is installed today (`list_extensions` — both present, both
 chain *cannot* replicate: gate the job on a per-project value in Vault, which is already
 installed, or schedule it outside the chain entirely. **Decide which before the first
 scheduled job is written, not after it has fired from the wrong database.**
+
+**It was decided, and the answer is the Vault gate.** `121_push_delivery.sql` §10 is the first
+instance and `124`'s digest tick is the second, so this is now a pattern rather than a choice:
+three per-project Vault secrets, two of which must agree, all of it inside dynamic SQL behind a
+catalogue check so the file applies cleanly on a database with neither extension — which the RLS
+suite requires, since plain Postgres 17 has no `supabase_vault` either. A third scheduled job
+copies `121` §10 rather than re-arguing this.
+
+**Each job still owes a second, independent guard**, because the Vault gate is one mechanism and
+one mechanism is one mistake away. For push it is the DEV function's own `APNS_HOST`; for the
+digest it is that DEV holds its own `MAIL_PROVIDER_API_KEY` and `DIGEST_RECIPIENT`, so two things
+must be wrong before DEV mails anybody.
+
+**Prove the gateway by hand before you start either schedule, and note that the two jobs prove it
+differently.** Both Edge Functions authenticate their caller by comparing the presented bearer
+against `SERVICE_ROLE_KEY` itself, and a current `sb_secret_…` key is **not a JWT** — so the
+question is whether the gateway forwards a non-JWT bearer intact rather than rejecting it at the
+edge. A scheduled job is the worst place to discover it does not: `pg_net` is fire-and-forget, so
+the failure is a row that never moves and no error anywhere a person looks.
+
+```bash
+# Expect 200 and a JSON body. A 401 from the GATEWAY (not the function) is the failure this
+# catches — then `verify_jwt` has to come off that function before the schedule is armed.
+curl -sS -i -X POST "https://<ref>.supabase.co/functions/v1/push-notify" \
+  -H "Authorization: Bearer $SERVICE_ROLE_KEY" -H 'Content-Type: application/json' -d '{}'
+```
+
+`push-notify` is `121` §0c step 3's precondition and is checked with exactly the call above.
+`send-moderation-digest` needs the same proof, and gets it for free from the hand invocation its
+own activation order already requires — one `POST` that both proves the gateway and sends the
+first real digest, which is why that step sits ahead of `pg_cron` rather than after it.
 
 ---
 
@@ -829,24 +918,27 @@ Nobody in a session can do these.
    nothing prints, so there is no symptom to debug and no way for a session to tell it apart
    from working.
 7c. **Confirm the four PostHog dashboard toggles** (PD-353) — autocapture off, heatmaps off, web
-   vitals on, session replay on — and put `NEXT_PUBLIC_POSTHOG_KEY` on **Production only**. The
-   code cannot see the dashboard half, and a mismatch is silent.
-7c-i. **Set replay retention to the shortest the plan allows** (PD-353), and check what the free
-   tier actually permits rather than assuming it is configurable. This is the highest-consequence
-   of the PostHog settings and the easiest to leave at a default: unmasked video of riders'
-   screens, sitting for however long the plan defaults to. Nothing in the repo can see or set it.
-7c-ii. **Tell the pilot riders** (PD-353). They are people who can be told, which the issue calls
-   "a stronger answer than masking", and it costs a sentence. `/legal/privacy` carries the written
-   version; this is saying it to the group directly, which the written page cannot substitute for
-   while the recording is unmasked.
+   vitals on, session replay **off** — and put `NEXT_PUBLIC_POSTHOG_KEY` on **Production only**.
+   The code cannot see the dashboard half, and a mismatch is silent.
+7c-i. **Find out whether the pilot recorded anything, then delete it** (PD-456). Recording is off
+   in the code as of 2026-09-18, which stops new ones and un-collects nothing. **How much exists
+   is unknown from here and should not be guessed**: the key is live in Production only,
+   `opt_out_capturing_by_default` is `true` so only riders who turned usage data on were ever
+   eligible, and 7c's project-side replay toggle was never confirmed. `/legal/privacy` is written
+   to match that uncertainty — it says the app *was configured to* record and that riders may ask
+   for anything that exists. Signing in to PostHog is the only way to answer it.
+7c-ii. ~~**Tell the pilot riders**~~ — **retired by PD-456.** It existed because the recording was
+   unmasked and telling people was "a stronger answer than masking". There is no recording to
+   disclose in advance any more; what is owed instead is 7c-i, which is about what was already
+   captured rather than what will be.
 7c-iii. **Set Sentry's alert rule to real-time** (PD-315). Not the alert→ticket automation, which
    `observability.md` §Not in PD-315 carves out as its own deliverable — this is the project's own
    notification rule. A crash spike on a fresh release has to be known in minutes, and a project
    created with defaults will not do that.
 7d. **Decide what happens to PostHog's records when a rider deletes their account** (PD-353,
    open). `delete-account` does not reach PostHog, so a rider who erases their account leaves
-   their events and their unmasked recordings behind — `029`'s "the row goes" contract is
-   silently false for the one processor holding video of them. `identify()` uses `auth.uid()`
+   their events behind — and, until 7c-i is done, the pilot's recordings of them too, so
+   `029`'s "the row goes" contract is silently false for that processor. `identify()` uses `auth.uid()`
    so the handle exists; wiring the erasure needs a PostHog private API key in the function's
    secret store, which is a new secret and arguably its own story. Until then
    `/legal/privacy` and `/legal/account-deletion` both say plainly that deletion does not reach
@@ -875,7 +967,8 @@ that looks right. The apex still has to go through it when `PD-34` lands, which 
 keeps the list as procedure rather than a record.
 
 Then, in a session: apply the chain to DEV, run `npm run db:drift` to prove the three agree,
-seed it, and move the two `@letsride.test` fixtures off production.
+and seed it. The two `@letsride.test` fixtures were moved off production on 2026-09-18, so that
+step is done rather than pending.
 
 ## Where the split stands
 

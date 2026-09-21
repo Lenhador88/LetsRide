@@ -13,6 +13,14 @@ import type { NextConfig } from "next";
 // because the obvious test — swap in `@/` and watch it work — argues for
 // exactly the change that breaks under that loader.
 import { normaliseConfiguredOrigin } from './src/lib/origin-normalise'
+// The legacy route table, shared with the shell rather than spelled twice —
+// `src/lib/legacy-routes.ts` carries why. Relative for the same reason as the
+// import above.
+import {
+  LEGACY_DETAIL_ROUTES,
+  LEGACY_UUID_PATTERN,
+  RETIRED_CHAT_ROUTES,
+} from './src/lib/legacy-routes'
 
 /**
  * Fail the build when a `NEXT_PUBLIC_SUPABASE_*` variable is missing.
@@ -174,20 +182,8 @@ if (!isCapacitorBuild && normaliseConfiguredOrigin(process.env.NEXT_PUBLIC_CANON
  * `permanent: false` (307) rather than 308: a 301/308 is cached by the browser
  * effectively for ever, and this shape has now moved once.
  */
-const UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
-
-const LEGACY_DETAIL_REDIRECTS = [
-  ['/postcards', ''],
-  ['/rides', ''],
-  ['/rides', '/crew'],
-  ['/rides', '/edit'],
-  ['/clubs', ''],
-  ['/clubs', '/rides'],
-  ['/clubs', '/members'],
-  ['/clubs', '/about'],
-  ['/clubs', '/edit'],
-].map(([base, tail]) => ({
-  source: `${base}/:id(${UUID})${tail}`,
+const LEGACY_DETAIL_REDIRECTS = LEGACY_DETAIL_ROUTES.map(([base, tail]) => ({
+  source: `${base}/:id(${LEGACY_UUID_PATTERN})${tail}`,
   destination: `${base}/detail${tail}?id=:id`,
   permanent: false,
 }))
@@ -222,12 +218,12 @@ const LEGACY_DETAIL_REDIRECTS = [
  */
 const RETIRED_CHAT_REDIRECTS = [
   {
-    source: `/rides/:id(${UUID})/chat`,
+    source: `${RETIRED_CHAT_ROUTES.withId}/:id(${LEGACY_UUID_PATTERN})/chat`,
     destination: '/rides/detail?id=:id',
     permanent: false,
   },
   {
-    source: '/rides/detail/chat',
+    source: RETIRED_CHAT_ROUTES.detail,
     destination: '/rides/detail',
     permanent: false,
   },
@@ -278,6 +274,38 @@ const webConfig: NextConfig = {
         source: '/app-version.json',
         headers: [{ key: 'Access-Control-Allow-Origin', value: '*' }],
       },
+      /**
+       * The Apple App Site Association file, which decides whether a
+       * `https://app.letsride.social/…` link opens the installed app or the
+       * browser — PD-205.
+       *
+       * **It has no file extension, on Apple's instruction**, and that is
+       * precisely why it needs a header: a static host types a response from
+       * the extension, and there is none to read. Apple's documented
+       * requirement is `application/json`, so an `application/octet-stream`
+       * (or an absent type) is a file that parses fine by hand and is refused
+       * by the CDN that actually fetches it.
+       *
+       * **The failure is silent and looks like a bad implementation.** Apple
+       * fetches this from its own CDN at install time; a rejected file leaves
+       * every universal link falling back to Safari, with nothing on the
+       * device, in the build, or in CI to say why. There is no error path to
+       * handle — only this header, set correctly before the first device test.
+       *
+       * `webConfig` only, like the entry above and for the same reason:
+       * `headers()` is inert under `output: 'export'`, and it is the
+       * *deployed* copy Apple reads. The bundle's own copy is never fetched by
+       * anyone.
+       *
+       * Not measured against the live host — `app.letsride.social` is outside
+       * this container's network policy (`connect_rejected`, 403 at CONNECT).
+       * What is measured is that nothing served this path before:
+       * `ls public/.well-known` did not exist.
+       */
+      {
+        source: '/.well-known/apple-app-site-association',
+        headers: [{ key: 'Content-Type', value: 'application/json' }],
+      },
     ]
   },
 }
@@ -306,7 +334,7 @@ const capacitorConfig: NextConfig = {
    *   `capacitor.config.ts`'s `webDir` pointing at nothing, which `cap sync`
    *   copies without complaint and which fails on a device as a white screen.
    *
-   * `openspec/changes/add-static-export-bundle/design.md` §D2 and §D4 carry the
+   * `openspec/changes/archive/2026-09-08-add-static-export-bundle/design.md` §D2 and §D4 carry the
    * measurements.
    */
 }

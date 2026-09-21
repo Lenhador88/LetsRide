@@ -13,7 +13,6 @@ import { getMyLocationText } from '@/lib/data/profile'
 import { useIntroductionQueue } from '@/lib/clubs/use-introduction-queue'
 import { isNearby } from '@/lib/location/distance'
 import { nearLabel, type NearLabel } from '@/lib/location/near-label'
-import { UseMyLocationRow } from '@/components/location/UseMyLocationRow'
 import { resolveRiderLocation } from '@/lib/location/rider-location'
 import { useQuery, type UseQueryResult } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
@@ -150,6 +149,10 @@ export default function ClubsPage() {
                 first element — it came off with `.pt-header-sub-extra`, which
                 used to supply 24px for the sub-row, and the strip sat against
                 the hairline until the product owner spotted it. */}
+            {/* **One row in this slot, not two — PD-447.** The location row
+                used to sit directly under this one with the same icon, the same
+                chevron and the same town name. The question moved to
+                `/clubs/explore`, which is the screen its answer changes. */}
             <div className="px-4 pt-4 pb-4">
               <ExploreClubsStrip
                 nearCount={
@@ -159,16 +162,6 @@ export default function ClubsPage() {
                 }
                 near={label}
               />
-              {/* Under the explore strip rather than beside it: the strip is
-                  this screen's one destination and must keep its place. The
-                  row draws when the rider has no position at all — exactly
-                  when the strip's `near …` clause has dropped out and the sort
-                  below is arbitrary — and, since PD-419, a quieter `refine`
-                  line when the position came from their town. No `auto` here:
-                  a tab root must not open a sheet by itself, because the reason
-                  for asking is not on screen. `px-0` because this slot is
-                  already inside a padded block — see the prop's own comment. */}
-              <UseMyLocationRow position={near.data} town={label?.name} className="px-0" />
             </div>
 
             {yours.error ? (

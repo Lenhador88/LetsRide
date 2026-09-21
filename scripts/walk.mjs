@@ -4,7 +4,7 @@
  *
  * ## Why this exists
  *
- * `openspec/changes/migrate-to-client-rendered-shell/tasks.md` 7.2 says it
+ * `openspec/changes/archive/2026-08-06-migrate-to-client-rendered-shell/tasks.md` 7.2 says it
  * plainly: "Load the app against the real database and walk every screen in
  * each of its states — the class of defect that produced the /rides/new/crew
  * 500 was found this way and by nothing else." Every other gate in this repo —
@@ -160,10 +160,16 @@ let EMAIL = process.env.WALK_EMAIL ?? `walk-${MINT_SUFFIX}@letsride.dev`
 // minting rather than asking for a password to remember.
 let PASSWORD = process.env.WALK_PASSWORD ?? `Walk-mint-${MINT_SUFFIX}-Aa1`
 const MINT_USERNAME = `walk_${MINT_SUFFIX}`.slice(0, 25)
-// The country the minted rider picks at onboarding (PD-428). Its EXACT name,
-// because the picker is filtered by substring and matched exactly — see
-// `finishOnboarding`, where clicking the first filtered row silently chose
-// `Caribbean Netherlands` instead.
+// The town the minted rider picks at onboarding (PD-445). A search TERM handed
+// to a live geocoder rather than a name this repo can assert against — the walk
+// takes whatever the vendor's first row is, because pinning the option text
+// would pin the walk to one vendor's phrasing.
+const MINT_TOWN = 'Amsterdam'
+// The country, used only on the step's fallback control — a pick that carried
+// no country, or a lookup that could not answer (PD-445; the whole of the step
+// under PD-428). Its EXACT name, because the picker is filtered by substring
+// and matched exactly — see `pickCountry`, where clicking the first filtered
+// row silently chose `Caribbean Netherlands` instead.
 const MINT_COUNTRY = 'Netherlands'
 
 /**
@@ -591,22 +597,20 @@ async function runRefusedSignup() {
  */
 
 /**
- * Walk the minted rider through the whole wizard: username, then home country.
+ * Walk the minted rider through the whole wizard: username, then their town.
  *
- * **Two screens since PD-428**, and both callers need both of them. The
- * country step is the one that stamps `onboarding_completed_at` now, so a run
- * that stops after the username has a rider the route guard refuses every app
- * route to — which would fail every later phase AND strand the account, since
+ * **Two screens since PD-428**, and both callers need both of them. The second
+ * step is the one that stamps `onboarding_completed_at`, so a run that stops
+ * after the username has a rider the route guard refuses every app route to —
+ * which would fail every later phase AND strand the account, since
  * `attemptDeleteAccount` has to reach `/profile`.
  *
- * The country control is a combobox over a listbox rather than a native
- * `<select>` (`src/components/ui/CountrySelect.tsx`), so it cannot be driven
- * with `selectOption`: type to filter, then click the row whose name matches
- * EXACTLY. `Netherlands` is picked because DEV's fixtures are Dutch.
- *
- * **The full name is not unambiguous under the filter** — see the block at the
- * pick site for why, and for why this cannot go back to clicking the first
- * `[role="option"]`.
+ * **Since PD-445 that step asks for a TOWN, through a live geocoder**, which
+ * makes this the highest-risk function in this file: it is the only place where
+ * minting a rider depends on a third party answering. It fails loudly rather
+ * than subtly — no rider is minted and every later phase says so — and it has
+ * the step's own country-only escape behind it, so a geocoder outage does not
+ * turn the whole walk red.
  */
 async function finishOnboarding(page) {
   await page.fill('input[name="username"]', MINT_USERNAME)
@@ -618,32 +622,81 @@ async function finishOnboarding(page) {
   ])
   await page.waitForTimeout(1000)
 
-  if (new URL(page.url()).pathname !== '/onboarding/country') {
+  if (new URL(page.url()).pathname !== '/onboarding/town') {
     // Not fatal here — the caller checks where it ended up and owns the
     // cleanup. Saying it is what turns "every later phase failed" into one
     // legible line naming the step that did not open.
-    console.error(
-      `  ! expected /onboarding/country after the username step, got ${page.url()}`
-    )
+    console.error(`  ! expected /onboarding/town after the username step, got ${page.url()}`)
     return
   }
 
-  await page.fill('input[role="combobox"]', MINT_COUNTRY)
+  // **The step is a live geocoder lookup now, not a local list — PD-445.** So
+  // this is the one place in the walk where minting a rider depends on a third
+  // party answering, and it spends a credit against `search-places`'s
+  // APPLICATION-WIDE ceiling (`APP_DAILY_SEARCH`, 2000 per 24h across every
+  // rider) rather than a per-rider one. One lookup per mint: `page.fill` is a
+  // single input event and so a single debounce cycle, where typing the term
+  // would be one search per keystroke.
+  const townPicked = await pickPlace('input[role="combobox"]', MINT_TOWN)
+
+  if (!townPicked) {
+    // **The escape the step itself opens, walked deliberately rather than as a
+    // fallback of convenience.** When the lookup is unavailable the step
+    // reveals `CountrySelect` on its own, so a rider can still finish — and
+    // exercising that here is what stops a geocoder outage from turning every
+    // walk run red for a reason that has nothing to do with the change under
+    // test. It also means the walk covers the escape at least as often as it
+    // is actually used.
+    console.error('  ! town lookup did not answer — taking the step’s own country-only escape')
+    const escaped = await pickCountry()
+    if (!escaped) return
+  }
+
+  await Promise.all([
+    page.waitForURL((u) => u.pathname !== '/onboarding/town', { timeout: 20_000 }).catch(() => {}),
+    page.click('button[type="submit"]'),
+  ])
+  await page.waitForTimeout(1000)
+}
+
+/**
+ * The country select — the town step's fallback control, and the whole of the
+ * wizard before PD-445.
+ *
+ * **The EXACT row, never the first one.** `filterCountryOptions` matches on
+ * name substring and the list is sorted by `localeCompare`, so filtering for
+ * `Netherlands` returns TWO rows and `Caribbean Netherlands` (`BQ`) sorts ahead
+ * of `Netherlands` (`NL`). Clicking `[role="option"]` took `BQ`, and **the walk
+ * went green doing it** — `BQ` is an assigned code, so the CHECK passes and
+ * `complete_onboarding` stamps. Nothing here would ever have said so; it breaks
+ * later, wherever something expects the minted rider to be Dutch. Found in
+ * review rather than by running this.
+ *
+ * The flag span is `aria-hidden`, so the name is the second span's text. `$$`
+ * takes a snapshot and does NOT wait, where a bare `click` auto-waits for 10s.
+ * Without the explicit wait the failure prints "no country option named exactly
+ * …", which misdiagnoses a timing problem as a naming one.
+ */
+async function pickCountry() {
+  // The select is not on screen until the step decides it is needed, so this
+  // waits for it rather than assuming the previous step revealed it.
+  try {
+    await page.waitForSelector('[role="combobox"][aria-controls]', { timeout: 10_000 })
+  } catch {
+    console.error('  ! the country select never appeared — onboarding cannot finish')
+    return false
+  }
+  const boxes = await page.$$('input[role="combobox"]')
+  // The country select is the LAST combobox on the step: the town field is
+  // rendered above it and stays mounted.
+  const box = boxes[boxes.length - 1]
+  if (!box) {
+    console.error('  ! no country combobox on the town step — onboarding cannot finish')
+    return false
+  }
+  await box.fill(MINT_COUNTRY)
   await page.waitForTimeout(300)
 
-  // **The EXACT row, never the first one.** `filterCountryOptions` matches on
-  // name substring and the list is sorted by `localeCompare`, so filtering for
-  // `Netherlands` returns TWO rows and `Caribbean Netherlands` (`BQ`) sorts
-  // ahead of `Netherlands` (`NL`). Clicking `[role="option"]` took `BQ`, and
-  // **the walk went green doing it** — `BQ` is an assigned code, so the CHECK
-  // passes and `complete_onboarding` stamps. Nothing here would ever have said
-  // so; it breaks later, wherever something expects the minted rider to be
-  // Dutch. Found in review rather than by running this.
-  //
-  // The flag span is `aria-hidden`, so the name is the second span's text.
-  // `$$` takes a snapshot and does NOT wait, where the `click` this replaced
-  // auto-waited for 10s. Without this the failure prints "no country option
-  // named exactly …", which misdiagnoses a timing problem as a naming one.
   await page.waitForSelector('[role="option"]', { timeout: 10_000 })
   const rows = await page.$$('[role="option"]')
   let picked = null
@@ -658,16 +711,10 @@ async function finishOnboarding(page) {
   }
   if (!picked) {
     console.error(`  ! no country option named exactly "${MINT_COUNTRY}" — onboarding cannot finish`)
-    return
+    return false
   }
   await picked.click()
-  await Promise.all([
-    page
-      .waitForURL((u) => u.pathname !== '/onboarding/country', { timeout: 20_000 })
-      .catch(() => {}),
-    page.click('button[type="submit"]'),
-  ])
-  await page.waitForTimeout(1000)
+  return true
 }
 async function attemptDeleteAccount(password) {
   try {
@@ -851,7 +898,7 @@ async function mintWalkAccount() {
   await finishOnboarding(page)
 
   if (new URL(page.url()).pathname !== '/postcards') {
-    // `setHomeCountry` commits `home_country` and `onboarding_completed_at` in
+    // `setHomeTown` commits `home_country` and `onboarding_completed_at` in
     // the same submit (see its own header), so a run that reached this point is
     // fully onboarded regardless of where the browser actually landed —
     // `/profile` is reachable and `attemptDeleteAccount` is exactly what
@@ -968,30 +1015,38 @@ if (isFullWalk) {
  * A list with no rows yields no path and the route is skipped rather than
  * guessed at, and it says so — a silent skip here reads as a pass.
  */
+/**
+ * **The id is a query parameter, not a path segment** (PD-142) — so this reads
+ * `?id=` off the first matching link rather than matching the whole pathname.
+ * The old version matched `^/rides/[0-9a-f-]{36}$`, which after the route move
+ * matches nothing at all: every detail link is `/rides/detail`, and a
+ * discovery that silently finds nothing prints a skip notice that reads
+ * exactly like a database with no rides in it.
+ *
+ * **At module scope rather than inside `discoverDetailPaths`, since PD-432**,
+ * because `seedRideThread` below has to ask the SAME question the discovery
+ * will later ask — does this ride show a `/rides/detail/thread` link — and a
+ * second copy of that predicate is one that can drift. Were they ever to
+ * disagree, the walk would seed a thread it cannot discover or skip seeding
+ * for a thread it cannot find, and both end as a shrunken `N/N` that reads
+ * like a pass.
+ */
+async function firstDetailId(listPath, detailPath, exclude = null) {
+  await page.goto(`${BASE}${listPath}`, { waitUntil: 'networkidle' }).catch(() => {})
+  await page.waitForTimeout(800)
+  return page.evaluate(
+    ([p, skip]) =>
+      [...document.querySelectorAll('a[href]')]
+        .map((a) => new URL(a.href, location.origin))
+        .filter((u) => u.pathname === p)
+        .map((u) => u.searchParams.get('id'))
+        .find((id) => id && /^[0-9a-f-]{36}$/.test(id) && id !== skip) ?? null,
+    [detailPath, exclude]
+  )
+}
+
 async function discoverDetailPaths({ quiet = false, preferRide = null, preferClub = null } = {}) {
   const say = (m) => !quiet && console.log(m)
-
-  /**
-   * **The id is a query parameter, not a path segment** (PD-142) — so this reads
-   * `?id=` off the first matching link rather than matching the whole pathname.
-   * The old version matched `^/rides/[0-9a-f-]{36}$`, which after the route move
-   * matches nothing at all: every detail link is `/rides/detail`, and a
-   * discovery that silently finds nothing prints a skip notice that reads
-   * exactly like a database with no rides in it.
-   */
-  const firstDetailId = async (listPath, detailPath, exclude = null) => {
-    await page.goto(`${BASE}${listPath}`, { waitUntil: 'networkidle' }).catch(() => {})
-    await page.waitForTimeout(800)
-    return page.evaluate(
-      ([p, skip]) =>
-        [...document.querySelectorAll('a[href]')]
-          .map((a) => new URL(a.href, location.origin))
-          .filter((u) => u.pathname === p)
-          .map((u) => u.searchParams.get('id'))
-          .find((id) => id && /^[0-9a-f-]{36}$/.test(id) && id !== skip) ?? null,
-      [detailPath, exclude]
-    )
-  }
 
   // **`preferRide`/`preferClub` win over the scan below, when set** (PD-306).
   // This scan answers "is there a ride to open, at all" — the first one in
@@ -1383,18 +1438,65 @@ function fixturesPermitted(ref) {
  * attached to the club they have. Passing it in is what keeps the fixture
  * ride clubbed on a second run.
  */
+/**
+ * Type a term into a `PlaceSearchField` and pick the first suggestion.
+ *
+ * **A pick, not a fill, and that is forced rather than tidy.** In place mode the
+ * visible input is nameless and carries a *search term*: the four hidden inputs
+ * the form actually submits are written from the PICK alone, and `onBlur` drops
+ * an unpicked draft. So filling the box and submitting posts an empty location —
+ * which since PD-446 `clubCreateSchema` refuses, leaving `provision` with a null
+ * club and every later phase failing far from the cause.
+ *
+ * **This spends a vendor credit against an app-wide ceiling** —
+ * `search-places` allows `APP_DAILY_SEARCH` per 24h across every rider, not per
+ * rider — so it is one lookup per fixture and never one per keystroke.
+ * `page.fill` sets the value in one input event, which is exactly one debounce
+ * cycle; typing the term character by character would be N searches for the
+ * same answer.
+ *
+ * Returns false rather than throwing, so a caller can say which fixture could
+ * not be built instead of failing the run with a Playwright stack.
+ */
+async function pickPlace(selector, term) {
+  await page.fill(selector, term)
+  try {
+    // The debounce is 400ms and the round trip is a live geocoder, so this
+    // waits on the RESULTS rather than on a timeout — a fixed sleep is the
+    // version that goes red on a slow morning and green on a fast one.
+    await page.waitForSelector('[role="option"]', { timeout: 15_000 })
+  } catch {
+    console.error(`  ! no place suggestions for "${term}" — the geocoder did not answer`)
+    return false
+  }
+  // The first row, unlike the country picker's exact-name match: the options
+  // here are vendor-returned, so there is no name this script can assert
+  // against without pinning the walk to one geocoder's phrasing.
+  await page.click('[role="option"]')
+  return true
+}
+
 async function provision(wanted, existing = {}) {
   const created = { ride: null, club: null }
 
   if (wanted.club) {
     await page.goto(`${BASE}/clubs/new`, { waitUntil: 'networkidle' })
     await page.fill('input[name="name"]', 'Walk fixture club')
+    // Required since PD-446. `/clubs/new` has one combobox — the place field;
+    // the club form has no other. Without a pick the submit is refused and
+    // `created.club` is null, which surfaces as the ride losing its club and
+    // `checkJoinClub` finding nothing.
+    const placed = await pickPlace('input[role="combobox"]', 'Amsterdam')
+    if (!placed) console.error('  ! the fixture club cannot be created without a location')
     await Promise.all([
       page.waitForURL((u) => !u.pathname.endsWith('/new'), { timeout: 30_000 }).catch(() => {}),
       page.click('button[type="submit"]'),
     ])
     await page.waitForTimeout(1200)
     created.club = new URL(page.url()).searchParams.get('id')
+    if (!created.club) {
+      console.error('  ! fixture club was not created — later club phases will find nothing')
+    }
   }
 
   if (wanted.ride) {
@@ -1442,39 +1544,92 @@ async function provision(wanted, existing = {}) {
     await page.waitForTimeout(1200)
     created.ride = new URL(page.url()).searchParams.get('id')
 
-    // A thread on the fixture ride — `108`, PD-402. Without one
-    // `/rides/detail/thread` is unwalked on every run, because that route takes
-    // a THREAD id and the only place to discover one is the ride's own Threads
-    // list. `103` makes the creator crew of their own ride in the ride's own
-    // transaction, so this account is crew by construction and `108`'s INSERT
-    // policy admits it.
-    //
-    // **Non-fatal, and it says so rather than failing the run.** The route is
-    // then skipped and the discovery step above prints why — the same treatment
-    // the club's thread already gets when a club has none. A fixture that could
-    // not be created must not turn a render check red; what must not happen is
-    // a silent skip, which reads as a pass.
-    if (created.ride) {
-      await page.goto(`${BASE}/rides/detail/threads/new?id=${created.ride}`, {
-        waitUntil: 'networkidle',
-      })
-      const seeded = await page
-        .fill('input[name="title"]', 'Walk fixture thread', { timeout: 5_000 })
-        .then(() => true)
-        .catch(() => false)
-      if (seeded) {
-        await Promise.all([
-          page.waitForURL((u) => !u.pathname.endsWith('/new'), { timeout: 30_000 }).catch(() => {}),
-          page.click('button[type="submit"]'),
-        ])
-        await page.waitForTimeout(1200)
-      } else {
-        console.log('  ! the fixture ride thread could not be created — /rides/detail/thread will be skipped')
-      }
-    }
+    // **The fixture ride's THREAD is no longer seeded here — PD-432.** It moved
+    // to `seedRideThread` below, called on the ride the walk will actually
+    // open, because it has to cover the ride this run REUSED as well as the one
+    // it created and this function never sees the reused one: `wanted` asks
+    // only for what is missing.
   }
 
   return created
+}
+
+/**
+ * A thread on `rideId`, seeded through the app's own composer — `108`, PD-402,
+ * PD-432. Without one `/rides/detail/thread` is unwalked, because that route
+ * takes a THREAD id and since PD-426 the ride's own detail page is the only
+ * place to discover one.
+ *
+ * **This used to sit inside `provision()`, gated on a ride that run had just
+ * CREATED, and that gate is the defect PD-432 names.** `provision()` runs only
+ * for what is *missing* — ownership, never mere existence (PD-306) — so an
+ * account that already owns a ride took the skip branch and seeded nothing.
+ * `walk-fixture@letsride.dev` owns `Walk fixture ride`, so the named account
+ * took that branch every time; the minted account owns nothing and did
+ * provision, but is deleted at teardown, taking its thread with it through the
+ * `ride_id` cascade. Neither account ever left a ride thread behind, which is
+ * why `select count(*) from public.ride_threads` answered **0** across the
+ * whole of DEV on 2026-09-07: the route had never been walked, on any run, by
+ * either account, and the walk said so honestly every time. Seeding against
+ * the ride the walk will USE covers the reused ride and the created one in one
+ * place.
+ *
+ * **Idempotent, and that is what keeps it safe on a shared database.** It asks
+ * `firstDetailId` the same question the discovery will ask and returns early
+ * when the ride already shows a thread, so repeated runs cannot silt DEV up —
+ * the constraint `provision()`'s header sets, and the reason PD-306 rejected a
+ * cleanup pass rather than adding one.
+ *
+ * **Crew-gating holds by construction rather than by luck.** The only id ever
+ * passed here is `owned.ride`, which `discoverOwned` established this rider can
+ * edit, and `103` makes a ride's creator crew of it in the ride's own
+ * transaction — so `108`'s INSERT policy admits them.
+ *
+ * **It re-checks the fixture permit, and that is not redundant.** On the
+ * created-ride path the caller has already cleared it; on the reused-ride path
+ * — the one this change exists for — nothing has, because `provision()` was
+ * never entered. Dropping the check here would make a reused ride the one route
+ * by which a walk writes to a project `WALK_FIXTURES` and `refWritable` were
+ * meant to keep it out of.
+ *
+ * Returns a short reason rather than a boolean, so the caller can report what
+ * actually landed instead of what was attempted — the same discipline as
+ * `provision()`'s own FIXTURE FAILED reporting.
+ */
+async function seedRideThread(rideId) {
+  if (await firstDetailId(`/rides/detail?id=${rideId}`, '/rides/detail/thread')) return 'present'
+
+  // **A refusal is not a failure, and `WALK_FIXTURES` unset is not even a
+  // refusal.** `provision()`'s caller already draws this distinction and this
+  // mirrors it: silent when the permit is `quiet` (the opt-out), parenthesised
+  // when the PROJECT refused the write. Returning a bare reason here instead
+  // printed `!` on every opt-out run once the seed moved outside
+  // `provision()` — and `!` is the marker a session scans for in the one gate
+  // that renders anything.
+  const permit = fixturesPermitted(await authenticatedProjectRef())
+  if (!permit.ok) return permit.why ? `refused:${permit.why}` : 'opted out'
+
+  await page.goto(`${BASE}/rides/detail/threads/new?id=${rideId}`, { waitUntil: 'networkidle' })
+  const opened = await page
+    .fill('input[name="title"]', 'Walk fixture thread', { timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (!opened) return 'the composer did not render'
+
+  await Promise.all([
+    page.waitForURL((u) => !u.pathname.endsWith('/new'), { timeout: 30_000 }).catch(() => {}),
+    page.click('button[type="submit"]'),
+  ])
+  await page.waitForTimeout(1200)
+
+  // Confirmed against the ride's detail page rather than against the redirect:
+  // this is the surface `discoverDetailPaths` will read, so a thread that is
+  // not discoverable HERE is one the walk cannot open whatever the composer
+  // did. Reporting the click instead is the `+ created a ride` failure
+  // `provision()`'s header records — a refused write printed as a success.
+  return (await firstDetailId(`/rides/detail?id=${rideId}`, '/rides/detail/thread'))
+    ? 'created'
+    : 'the composer was submitted and no thread appeared'
 }
 
 /**
@@ -1596,6 +1751,20 @@ if (isFullWalk) {
     } else {
       ownershipUnavailableReason = permit.why ?? 'WALK_FIXTURES is not set, so nothing was provisioned'
       if (permit.why) console.log(`  (fixtures not created — ${permit.why})`)
+    }
+  }
+
+  // **A thread on the ride this walk will open — PD-432.** Outside the block
+  // above on purpose: that block runs only when something is MISSING, and the
+  // case this closes is the ride that was already there. Reported the way
+  // `provision()` reports — what landed, never what was attempted.
+  if (owned.ride) {
+    const seeded = await seedRideThread(owned.ride)
+    if (seeded === 'created') console.log('  + seeded a thread on the fixture ride')
+    else if (seeded.startsWith('refused:')) {
+      console.log(`  (no ride thread seeded — ${seeded.slice('refused:'.length)})`)
+    } else if (seeded !== 'present' && seeded !== 'opted out') {
+      console.log(`  ! the fixture ride thread could not be created — ${seeded}`)
     }
   }
 
@@ -1805,6 +1974,11 @@ const GUARD_CASES_SIGNED_IN = [
   // PD-428 has `home_country` NULL for ever and must never be sent back here.
   // That is the whole of the "existing riders are never re-prompted" decision,
   // measured against a live session rather than asserted.
+  ['/onboarding/town', '/postcards'],
+  // The route PD-445 renamed. Still worth a row: it was live hours before the
+  // rename and `setUsername` redirected to it, so a tab open across the deploy
+  // asks for it. The guard's `isOnboarding` catch-all is what answers, and this
+  // is the walk's half of `guard.test.ts`'s assertion.
   ['/onboarding/country', '/postcards'],
   // PD-286 (`075`) deleted this route. For a fully onboarded rider it is just
   // another path under `/onboarding`, so `resolveDestination`'s existing
@@ -2246,7 +2420,7 @@ async function checkInviteLanding({ kind, path, rpc, dataMarker, claim, signedOu
 
 /**
  * The anonymous ride preview, signed OUT, holding a LIVE token — PD-430,
- * tasks 6.4/6.4b, `openspec/changes/preview-a-ride-before-signing-up/`.
+ * tasks 6.4/6.4b, `openspec/changes/archive/2026-09-08-preview-a-ride-before-signing-up/`.
  *
  * `checkInviteLanding` above proves the shape of every state with a DEAD
  * token, deliberately, so it writes nothing. It cannot prove the one thing
@@ -3366,38 +3540,6 @@ async function checkCommentOnPostcard() {
  * screens reachable, the same way it already dismisses a member-mode
  * introduction sheet it did not ask for.
  */
-// **These are `ContextMenu` `label` props, not visible headings, and the two
-// deliberately differ on the town sheet** — its `aria-label` is `Where you ride
-// from` while its `<h2>` reads `Where are you located?` (measured from
-// `2074:5185`). Match the labels. Changing one of these strings without changing
-// its component leaves this helper silently returning false — it asserts
-// nothing — and the failure surfaces as a red JOIN phase on a screen that works.
-const LOCATION_SHEETS = ['Find rides near you', 'Location is switched off', 'Where you ride from']
-
-async function dismissLocationSheet() {
-  const closed = await page
-    .$$eval(
-      LOCATION_SHEETS.map((label) => `[role="dialog"][aria-label="${label}"] button`).join(','),
-      (buttons) => {
-        const target = buttons.find((b) => ['Not now', 'Close'].includes(b.textContent?.trim()))
-        if (!target) return false
-        target.click()
-        return true
-      }
-    )
-    .catch(() => false)
-
-  // Wait for it to actually detach before returning. Returning on the click
-  // alone would hand the caller a screen whose scrim is still in the tree for a
-  // frame, which is the same failed-actionability click one line later.
-  if (closed) {
-    await page
-      .waitForSelector('[role="dialog"]', { state: 'detached', timeout: 5_000 })
-      .catch(() => {})
-  }
-  return closed
-}
-
 /**
  * A ride this rider neither organizes nor has already answered —
  * `/rides/explore` excludes both by construction (`getExploreRides` filters
@@ -3411,7 +3553,6 @@ async function dismissLocationSheet() {
 async function discoverRsvpCandidate() {
   await page.goto(`${BASE}/rides/explore`, { waitUntil: 'networkidle' }).catch(() => {})
   await page.waitForTimeout(800)
-  await dismissLocationSheet()
   return page.evaluate(() =>
     [...document.querySelectorAll('a[href]')]
       .map((a) => new URL(a.href, location.origin))
@@ -3635,7 +3776,6 @@ const WALK_INTRODUCTION =
 async function discoverJoinableClub() {
   await page.goto(`${BASE}/clubs/explore`, { waitUntil: 'networkidle' }).catch(() => {})
   await page.waitForTimeout(800)
-  await dismissLocationSheet()
   return page.evaluate(() => {
     const button = document.querySelector('button[aria-label^="Join "]')
     if (!button) return null
@@ -4051,12 +4191,6 @@ async function checkJoinClub() {
     }
 
     await page.goto(`${BASE}/clubs/explore`, { waitUntil: 'networkidle' })
-    // The ask is once per device, so it will not normally reappear here — but
-    // `hasJoinButton` reads the DOM rather than clicking, and a stray scrim
-    // would not affect it either way. Called for the same reason the other two
-    // sites do: an Explore navigation is where this sheet can appear, and a
-    // phase that skips it is one localStorage clear away from being flaky.
-    await dismissLocationSheet()
     const backOnExplore = await hasJoinButton()
     report(backOnExplore, 'leaving it again survives a reload (back on Explore)', 'the club did not reappear on Explore')
   } catch (e) {

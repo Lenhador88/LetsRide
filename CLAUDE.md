@@ -67,7 +67,7 @@ necessary, or if I ask for them."*). A flag defaulting off makes the thing behin
 a build-time `NEXT_PUBLIC_*` flag is an undeclared DEV/PROD separator. Say in the same comment what
 has to become true for the flag to be deleted.
 
-**Dependencies are added deliberately.** **Thirteen** runtime dependencies today, and that is a
+**Dependencies are added deliberately.** **Fourteen** runtime dependencies today, and that is a
 feature. Count rather than trust it:
 `node -p "Object.keys(require('./package.json').dependencies).length"`. Before adding one, ask
 whether a thirty-line helper does the job. No UI component libraries — extend `src/components/ui/*`.
@@ -75,13 +75,18 @@ whether a thirty-line helper does the job. No UI component libraries — extend 
 - **Three are observability** — `@sentry/capacitor` + `@sentry/react` (a pinned pair) and
   `posthog-js`. Each is a doorway module in `src/lib/` that nothing else imports the package
   through, enforced by a test. `docs/reference/observability.md` §The dependencies.
-- **Three are the native shell's** — `@capacitor/core`, `@aparajita/capacitor-secure-storage` (the
-  keychain behind `window.__letsrideSecureStore`) and `@capacitor/push-notifications` (the only
-  route to an APNs or FCM token, since the providers hand one to native code alone). Native plugins
+- **Four are the native shell's** — `@capacitor/core`, `@aparajita/capacitor-secure-storage` (the
+  keychain behind `window.__letsrideSecureStore`), `@capacitor/push-notifications` (the only
+  route to an APNs or FCM token, since the providers hand one to native code alone) and
+  `@capacitor/app` (the only route to `appUrlOpen`, which is how a universal link reaches
+  JavaScript at all). Native plugins
   count: each is a permission prompt, a review question and a supply-chain surface, and each needs a
-  one-sentence justification (`.claude/agents/native.md`). The last is a doorway too —
+  one-sentence justification (`.claude/agents/native.md`). The last two are doorways too —
   `src/lib/push/registration.ts`, enforced by `src/lib/push/__tests__/doorway.test.ts`, which also
-  pins that **only that file may raise the OS notification dialog**: iOS grants one per install.
+  pins that **only that file may raise the OS notification dialog** (iOS grants one per install);
+  and `src/lib/native/deep-links.ts`, enforced by
+  `src/lib/native/__tests__/deep-links-doorway.test.ts`, so one file decides where a link from
+  outside the app may send a rider.
 
 **Reads go through `src/lib/data/`. Components never call Supabase directly.** Named, typed
 functions — `getRide(id)`, `getClubMembers(clubId)` — that own their query shape.
@@ -184,7 +189,7 @@ never the **guarantee**. **Forms are hand-rolled** — controlled inputs plus `u
 | Kind | Tool | Status |
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | Gates every PR touching `supabase/**` |
-| Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard, the session store | Vitest — `npm run test:unit` | Gates every PR that touches code. `src/lib/auth/guard.ts` (57 cases, replacing the untestable `proxy.ts`). `lib/actions/__tests__/` reads every action module on comment-stripped source to assert each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Forty-nine** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence, verified both ways. Almost all render through `renderToStaticMarkup` under `environment: 'node'`; **jsdom is the answer only when something needs a mounted effect, a layout, an event or a portal**, and each jsdom test states which in its header — `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'` |
+| Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard, the session store | Vitest — `npm run test:unit` | Gates every PR that touches code. `src/lib/auth/guard.ts` (58 cases, replacing the untestable `proxy.ts`). `lib/actions/__tests__/` reads every action module on comment-stripped source to assert each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Fifty-eight** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence, verified both ways. Almost all render through `renderToStaticMarkup` under `environment: 'node'`; **jsdom is the answer only when something needs a mounted effect, a layout, an event or a portal**, and each jsdom test states which in its header — `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'` |
 | Edge Functions | `deno check`, CI's `functions` job | Type-checks every `index.ts` under Deno when `supabase/functions/**` changes. `tsconfig.json` excludes the directory, so `tsc` never sees the entrypoints |
 | Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything**: signs in, walks every screen including discovered detail routes, checks the guard's redirects and sign-out. `WALK_FIXTURES=1` creates the rows the detail routes need; a shrunken `N/N` is a skip, not a pass. In CI as the `walk` job, minting its own rider, **skipped until the repository variable `WALK_CI=1` is set** because the Actions secrets name PROD. Not a required check yet (PD-370) |
 | End-to-end | Playwright | Deferred as a full suite. The walk asks one question per route — did this render — and asserts behaviour only in named phases, each covering a defect no other gate can see |
@@ -206,9 +211,12 @@ as a **required** argument, `null` meaning "we do not know"; the viewer's own zo
 answer. `080`'s `enforce_ride_timezone` keeps the typed wall-clock when the zone moves;
 `rideZone()` falls back for anything `Intl` cannot format in.
 
-**Deliberately undecided** — raise rather than invent: i18n, and email delivery beyond Supabase's
-built-in auth mails. Analytics is decided: `docs/reference/analytics.md`, and failed requests are
-readable for 24 hours via `npm run logs:errors` (`docs/reference/observability.md`).
+**Deliberately undecided** — raise rather than invent: i18n. **Email delivery was decided on
+2026-09-19** and supersedes PD-322's unbuilt Slack answer: `124` + `send-moderation-digest` mail
+the operator. **The rail is decided, not the vendor** — the provider lives behind `mail.ts` alone,
+so a swap is a one-file diff, and a mail to a RIDER is a new decision. Analytics is decided:
+`docs/reference/analytics.md`, and failed requests are readable for 24 hours via
+`npm run logs:errors` (`docs/reference/observability.md`).
 
 ## Repo Layout
 
@@ -225,7 +233,7 @@ for d in src/components/*/; do echo "$d: $(ls "$d" | sed 's/\.tsx\?$//' | tr '\n
 places, split so the decision can be tested:
 
 - **`src/lib/auth/guard.ts`** — `resolveDestination(pathname, state)`, a pure function.
-  `null` means stay; a string is where to go. 57 cases in `__tests__/guard.test.ts`.
+  `null` means stay; a string is where to go. 58 cases in `__tests__/guard.test.ts`.
 - **`src/lib/auth/guard-cache.ts`** — what the decision reads: the session and the onboarding
   stamps, **held for the page load rather than fetched per route**, with `onAuthStateChange` as
   the single writer for the session half.
@@ -235,7 +243,7 @@ places, split so the decision can be tested:
   decision** — replacing it on every navigation unmounts `(app)/layout.tsx`.
 
 **Any new writer of a stamp the decision reads must invalidate the cache.** There are four
-(`signUp`, `acceptTerms`, `setUsername`, `setHomeCountry`), each calling
+(`signUp`, `acceptTerms`, `setUsername`, `setHomeTown`), each calling
 `invalidateOnboardingState()`; `signOut` calls `clearGuardCache()`.
 Count them rather than trust the number — scope the pathspec, or the natural
 `-- src/lib/actions/` prints four *lines* summing to **7** (the comment trap, two of them tests):
@@ -248,7 +256,7 @@ git grep -c "invalidateOnboardingState()" -- 'src/lib/actions/*.ts' \
 `src/lib/actions/__tests__/writers-invalidate.test.ts` refuses a new writer that does not, and
 **that check is per EXPORTED FUNCTION, not per file** — `onboarding.ts` holds three of the four,
 so a file-granular check passes while any one of them keeps its call (measured: with
-`setHomeCountry`'s invalidation deleted, the per-file version reported 30/30 green). **The
+`setHomeTown`'s invalidation deleted, the per-file version reported 30/30 green). **The
 decision reads three fields and only two are stamps** — `terms_accepted_at`,
 `onboarding_completed_at` and `has_username` — so `setUsername`, which writes no stamp since
 PD-428, still owes the invalidation. **Necessary, never sufficient**: `guard-cache.ts` carries a
@@ -277,10 +285,12 @@ Four rules, each with a test naming the trap it avoids:
 
 ## Supabase Rules
 
-**Three Edge Functions, deployed to both projects**: `delete-account` (the only place a
-service-role key exists — the Auth admin API needs it), `resolve-ride-location` (geocodes a
-meeting point and renders its tiles) and `search-places` (proxies the typeahead). Four rules on
-`delete-account`, which is why it does not contradict §What Not To Do — **the function is not the
+**Five Edge Functions — three on both projects, `push-notify` and `send-moderation-digest` on DEV**: `delete-account` (the Auth admin API needs a
+service-role key; `121`/`124` hold one too), `resolve-ride-location` (geocodes a
+meeting point and renders its tiles), `search-places` (proxies the typeahead), `push-notify`
+(`121`'s outbox drain) and
+`send-moderation-digest` (`124`'s mail sweep). **Both are inert without the owner's secrets, and a merge deploys them — read `list_edge_functions` rather than this line.**
+Four rules on `delete-account`, which is why it does not contradict §What Not To Do — **the function is not the
 app**: the key lives only in the function's secret store (`src/__tests__/no-service-role-key.test.ts`
 is the tripwire); it takes no user id; it verifies the JWT itself; only CI's `functions` job
 type-checks it.
@@ -323,14 +333,18 @@ repointed. `docs/ENVIRONMENTS.md` is the contract. **Never promote a Vercel prev
 — both Supabase variables are inlined at build time and promote does not rebuild. **Check drift
 rather than claiming it**: `npm run db:drift` compares migration *names*.
 
-**Applied state: 116 files. DEV is at `116` and PROD at `112` — measured 2026-09-08.** DEV-ahead
+**Applied state: 126 files; DEV is at `126` and PROD at `116` — measured 2026-09-20.** DEV-ahead
 is the resting state between a merge and its promotion; promote everything the gap contains, in
 filename order, per `docs/ENVIRONMENTS.md` §Migrations, and record each file's ordering in
 `docs/reference/migrations.md` §Applied state. Count rather than trust it — `list_migrations`
-against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV records THREE rows with
-no file and PROD none** — the long-standing hand-applied ones. **`113` then `114` is a required
-order on the PROD promotion and must not be collapsed**: `114` refuses a NULL country, so applied
-ahead of the bundle that writes one it strands every new signup in a wizard with no skip.
+against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV answers 129 rows and
+THREE have no file; PROD none** — the long-standing hand-applied ones. **Three sessions build at
+once, so the DEV ref runs ahead of the tree by however many are in flight**: count the FILE-LESS
+rows rather than the gap, and take the next number off `list_migrations` rather than off `wc -l`.
+**`113` then `114` was a required order on the PROD promotion and must not be collapsed** if it is
+ever replayed: `114` refuses a NULL country, so applied ahead of the bundle that writes one it
+strands every new signup in a wizard with no skip. PROD's last four rows are `home_country`,
+`115`, `116`, `a_completion_carries_a_country` — the gate held.
 `docs/reference/migrations.md` §Applied state has that gate.
 
 **The sequencing rule: additive first, deploy, destructive last — and "additive, so the order does
@@ -353,7 +367,7 @@ before it applies** — every affected path exercised on DEV, in a rolled-back t
 recorded statement that does not equal `md5sum` of its file is the NORM; compare the OBJECT
 (`docs/reference/migrations.md` §Applying a large file, §What reads as drift).
 
-Suite **3850** assertions — re-derive rather than trust it:
+Suite **4245** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs.
 
@@ -366,8 +380,9 @@ for whom no barrier exists.
 inside a `security definer` function `current_user` is the owner and the
 `if current_user <> 'authenticated'` guards never run.
 
-**Security advisors: one WARN per `security definer` RPC in `public` and one INFO per table whose
-client grants were revoked outright, and those are chosen.** `115` added a **second WARN class**,
+**Security advisors: one WARN per `security definer` RPC in `public`, and an INFO per table with
+RLS on and no policy — which reads POLICIES, not grants, so it neither matches nor tracks the
+revoked list. Those are chosen.** `115` added a **second WARN class**,
 `anon_security_definer_function_executable` (lint `0028`) — one finding, and it is decision #1's
 named exception rather than a 39th of the `authenticated_*` class, whose count did not move. The
 only outstanding one is `auth_leaked_password_protection`, a dashboard click. Re-derive with `get_advisors(security)`;
@@ -379,10 +394,10 @@ difference between the projects is almost always a pending promotion.
 
 **A new table KEEPS Supabase's default `service_role` grants. Revoking is the exception, for a
 restricted-readership sink** — rows the one credential that bypasses RLS must not be able to
-enumerate (`076` §3). Three are revoked today, and the criterion is a judgement about the ROWS
+enumerate (`076` §3). Ten are revoked today, and the criterion is a judgement about the ROWS
 with no mechanical test — an earlier mechanical test excluded the two reporting tables and would
 have re-opened the exposure. `rls_enabled_no_policy` is a candidate set worth checking, never the
-criterion; PD-413 holds the two candidates found unrevoked. Re-run rather than trust any list:
+criterion; `126` revoked the last two it surfaced. Re-run rather than trust any list:
 
 ```sql
 select count(*) filter (where sr)                          as kept,
@@ -391,7 +406,10 @@ select count(*) filter (where sr)                          as kept,
   from (select c.relname, has_table_privilege('service_role', c.oid, 'SELECT') as sr
           from pg_class c join pg_namespace n on n.oid = c.relnamespace
          where n.nspname='public' and c.relkind='r') t;
--- 30 kept · 3 revoked · club_thread_reports, postcard_reports, push_devices (2026-09-06).
+-- 27 kept · 10 revoked (2026-09-20):
+-- club_removals, club_thread_reports, feedback, moderation_digest_entries,
+-- password_reset_grants, postcard_comment_reports, postcard_reports,
+-- push_deliveries, push_devices, ride_thread_reports.
 ```
 
 Each revoke carries a grantee-scoped assertion in one of two forms — a savepoint-staged
@@ -441,7 +459,7 @@ npm run lint     # eslint
 npx tsc --noEmit # type check
 npm run build    # production build (requires NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY)
 npm run test:unit # Vitest
-npm test         # RLS policy suite (needs Postgres + psql; see supabase/tests/README.md)
+npm test         # RLS policy suite — Postgres 16 IS in this image; running-locally.md, RLS suite row
 npm run functions:check   # deno check on the Edge Functions — needs deno; CI runs it for you
 
 PROD_DATABASE_URL=... DEV_DATABASE_URL=... npm run db:drift   # do repo, DEV and PROD agree?
@@ -787,16 +805,18 @@ is the backlog, and it is not this hook's to clear.
 **Full detail is [`docs/reference/linear.md`](docs/reference/linear.md).** Read it before the first
 Linear call of a session, and before ANY call touching a Routine. What must be true without it:
 
-- Workspace **`lets-ride`**, team **Pedro & Dave (`PD`)**. **Pass the project id —
-  `88f3f224-ecf0-46f0-a032-c86b7a12f81c`** — never the name (it holds a curly apostrophe, and the
-  straight-quote version silently matches the deprecated project). Read the field back off the
-  response.
+- Workspace **`lets-ride`**, team **`PD`**. **Pass the ids, never the display names** — team
+  `7388c68e-ef17-4998-a9b7-d8ad8ce66038` (its name has been changed, and a stale team name fails
+  in more than one shape — `[]` from one call and `Could not find team` from another, so an empty
+  answer is not proof the name is right), project `88f3f224-ecf0-46f0-a032-c86b7a12f81c` (the name
+  holds a curly apostrophe, and the straight-quote version silently matches the deprecated
+  project). Read the field back off the response.
 - **Do not ask permission to touch Linear** (standing grant, 2026-08-07) — except to delete
   anything a human authored.
 - **`Queued (AI)` is the only start signal.** `Development (AI)` claims **one issue**; so does
   `Needs help`. The one queue-wide stop is a `<!-- halt-queue -->` marker.
 - **The two `slot-*` labels are the concurrency cap, and the board is the whole lock.**
-- **Never type a status name from memory** — `list_issue_statuses team=Pedro & Dave`.
+- **Never type a status name from memory** — `list_issue_statuses team=7388c68e-ef17-4998-a9b7-d8ad8ce66038`.
 - **An issue opens with the five-rating block; a parked one owes a comparison table.**
 - **A story closes when the thing it names exists, not when the part you built does.** Partly
   delivered stays open. "The rest needs an owner action" is not a split.
@@ -824,7 +844,8 @@ defaults — after applying a migration to a hosted project, also read the secur
   `grep -rn "window.location.origin" src/ --include=*.ts --include=*.tsx | grep -vE ':[0-9]+:\s*(\*|//|/\*)'`
   is 1 — the definition inside `canonicalOrigin()`, nowhere else. The third holds the ceiling on
   the `og:image` literal:
-  `grep -rn "letsride\.social" src/ --include=*.ts --include=*.tsx | grep -v "__tests__" | grep -vE ':[0-9]+:\s*(\*|//|/\*)'` is 1.
+  `grep -rn "letsride\.social" src/ --include=*.ts --include=*.tsx | grep -v "__tests__" | grep -v "@letsride\.social" | grep -vE ':[0-9]+:\s*(\*|//|/\*)'` is 1 — the
+  `@` exclusion is `SUPPORT_EMAIL`, an address on the same domain and not an origin.
 - **Branch off `development`, and open PRs against `development` — not `main`.** `main` receives
   exactly one kind of PR: the promotion from `development`.
 - **Never promote a Vercel preview to production**, and never merge `main` into a feature branch.

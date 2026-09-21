@@ -24,7 +24,7 @@ import { useSwipeBack } from '@/lib/actions/navigate'
  * Another rider's profile — `Profile / View someone else's profile / Profile
  * - Prescoll header` (`2084:9006`), reached today from a postcard byline
  * (`PostcardCard`) and reachable at `/profile/detail?id=<uuid>`.
- * `openspec/changes/view-rider-profile/` is the proposal this was built
+ * `openspec/changes/archive/2026-09-08-view-rider-profile/` is the proposal this was built
  * against; read its spec before changing this file.
  *
  * **Three things the design frame draws and this deliberately does not
