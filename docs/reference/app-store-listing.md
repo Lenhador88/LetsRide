@@ -472,10 +472,9 @@ requests."* A `mailto:` is not a URL that satisfies it.
 guard change because protection is a denylist of public paths and `/legal/*` is on it. Five
 public pages now, not four: `ls src/app/legal/`.
 
-**It is live on DEV and not yet on the host this table names.** `app.letsride.social` is served
-from `main` and the page merged to `development`, so the URL 404s until the promotion — check
-rather than paste: `git cat-file -e origin/main:src/app/legal/support/page.tsx`. Do not fill the
-Support URL field from this table before that command succeeds.
+**It is live on the host this table names.** `app.letsride.social` is served from `main`, and the
+2026-09-21 promotion carried the page there — check rather than trust it: the command
+`git cat-file -e origin/main:src/app/legal/support/page.tsx` succeeds.
 
 **The address is rendered as readable TEXT as well as inside the `mailto:`, and that is the half
 Apple's wording is about.** A tidy-up that turns the visible address into the words "contact us"

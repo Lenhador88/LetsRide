@@ -66,8 +66,7 @@ adopts them as written rather than reopening them.
 
 ### Requirement: Club membership role SHALL NOT be self-assignable
 
-**This is the merged text the coordination banner above asked for.** The database SHALL refuse any
-`club_members` row whose `role` is `owner` or `admin` from `authenticated`, without exception:
+The database SHALL refuse any `club_members` row whose `role` is `owner` or `admin` from `authenticated`, without exception:
 `authenticated` may insert `role = 'member'` and nothing else, and **no client SHALL be able to
 claim `owner` or `admin` by any verb, on any table.** The owner's row SHALL be written by the
 database itself when the club is created — `103`'s `AFTER INSERT` trigger — and SHALL NOT be
@@ -157,7 +156,7 @@ deploy, on the pattern `021`'s split established.
 
 #### Scenario: A rider who demoted themselves through Explore is repaired
 - **WHEN** a club owner holds a `club_members` row with `role = 'member'` for their own club,
-  which is reachable today by tapping `Join club` on their own orphan club in Explore
+  which was reachable by tapping `Join club` on their own orphan club in Explore until `103`
 - **THEN** the migration SHALL correct the role to `owner`
 - **AND** it SHALL be an UPDATE, since an insert would find the existing row and do nothing
 
@@ -3276,13 +3275,15 @@ wrong, not the ACL.
 ### Requirement: Ownership SHALL be tested at `clubs.owner_id`, and a role-only predicate SHALL be treated as a regression
 
 `clubs.owner_id` is the column that establishes ownership. `club_members.role = 'owner'` is a roster
-row that `019` pins to that column, and a club owner holding **no** roster row is a reachable state
-today (`054`, PD-128; `enforce-creator-membership` is a separate open change).
+row kept in step with it, and a club owner holding **no** roster row was a reachable state (`054`,
+PD-128) until `103` wrote the owner's row in the same statement as the club and repaired every club
+that lacked one. The owner arm SHALL stay regardless, because a predicate SHALL NOT depend on an
+invariant a trigger enforces elsewhere.
 
 Any predicate deciding an owner's authority SHALL therefore include the `clubs.owner_id` arm —
 directly, or through a helper whose first disjunct is that arm. A predicate written as
 `club_members.role in ('owner','admin')` alone SHALL be treated as a **regression**, not a
-simplification, because it removes a right the ownerless owner holds today.
+simplification, because it would silently remove the owner's right the day that invariant breaks.
 
 **The client carries the identical trap.** A viewer gate written as `viewer_role === 'owner' ||
 viewer_role === 'admin'` SHALL be treated as the same defect as the SQL one; the correct gate reads
