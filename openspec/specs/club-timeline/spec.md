@@ -145,9 +145,28 @@ A timeline is four such queries.
 
 ### Requirement: A blocked rider SHALL be absent from every source, and an event whose actor cannot be named SHALL be dropped
 
-Blocking SHALL be enforced by the source policies and by nothing the client adds. The merge SHALL
-NOT reintroduce a blocked rider, and it cannot take a row from anywhere the policies have not
-already answered for.
+Blocking SHALL be enforced by the source policies and by nothing the client adds. The conjunct per
+source, each an own-row escape hatch OR-ed with the symmetric helper:
+
+- `club_threads` — `(author_id = auth.uid()) OR (NOT private.is_blocked(auth.uid(), author_id))`
+- `postcards` — `(author_id = auth.uid()) OR ((NOT private.is_blocked(auth.uid(), author_id)) AND …)`
+- `rides` — `(organizer_id = auth.uid()) OR ((NOT private.is_blocked(auth.uid(), organizer_id)) AND …)`
+- `club_members` — `… AND ((user_id = auth.uid()) OR (NOT private.is_blocked(auth.uid(), user_id)))`
+
+`private.is_blocked(a, b)` is symmetric, so the directional row's direction SHALL NOT matter.
+
+**The merge SHALL NOT reintroduce a blocked rider**, and it cannot take a row from anywhere the
+policies have not already answered for.
+
+**The one path the merge adds is the actor's name.** `profiles` SELECT is
+`(auth.uid() = id) OR ((username IS NOT NULL) AND (NOT private.is_blocked(auth.uid(), id)))` — a
+separate predicate that can withhold a profile whose parent row arrived. An **event row** whose
+actor profile is absent SHALL be dropped, never drawn nameless, extending the rule
+`getClubMembers` already applies.
+
+A **postcard entry** SHALL keep `PostcardStamp`'s existing `Rider` fallback, because a postcard is
+a photo with a byline rather than a sentence about a person, and partial fidelity there does not
+invert its message.
 
 **A wave adds a fifth author column to that rule and SHALL be filtered by its own table's policy,
 not by the entry's.** A thread by an unblocked author may carry a wave by a blocked rider, exactly

@@ -55,19 +55,40 @@ timestamp to an authority.
 A rider whose `profiles.onboarding_completed_at` is NULL MUST NOT be able to create content or join
 anything, and the refusal SHALL come from the database rather than from a redirect.
 
-**The gate's scope SHALL be counted rather than enumerated.** The rule that does not go stale:
-*every table into which a rider inserts content another rider can see carries the gate.* Both tables
-this change adds do — `club_invites`, because inviting is participation, and `club_invite_links`,
-because minting a bearer token into a club is participation — so the count moves by **+2**, and the
-delta SHALL be asserted together with the two table names, never the absolute:
+Decision #5 states onboarding is required and not skippable. This requirement is **met**:
+`023`'s `enforce_participation_gate` is the enforcement, applied 2026-08-05, and the route
+guard is only a UX affordance on top of it.
+
+The argument that produced it, kept because it is why the gate exists: before `023`, `proxy.ts`
+was the *only* thing holding decision #5 — no policy prevented a rider whose
+`onboarding_completed_at` was NULL from inserting a postcard, creating a club or a ride, or
+joining anything, because `003`'s trigger guards the *stamp*, not the participation. Demoting
+the route guard to a client component would have removed the only thing holding it.
+
+**The gate is narrower than the requirement above reads, and its scope SHALL be counted rather
+than enumerated.** Earlier revisions of this requirement listed the gated tables by name and
+asserted "thirteen tables carry an INSERT policy and this gate names eight of them". Both numbers
+went stale within a day of being written — `034` added `ride_messages` as a ninth gated table, and
+`036` adds `notifications` as a fifteenth table that carries **no INSERT policy at all**, which is
+a third category the enumeration cannot express. A standing spec asserting a stale count is worse
+than one asserting nothing, because a table added without a gate looks exactly like the list being
+right. The scope is therefore stated as a rule with the command that measures it:
 
 ```sql
 select count(*) from pg_trigger
  where tgname = 'enforce_participation_gate' and not tgisinternal;
 ```
 
-**17 on DEV and 17 on PROD, measured 2026-08-31**, before the concurrent changes holding `092`,
-`094` and `095` land. An absolute after-count is therefore meaningless in isolation, which is
+The rule, which does not go stale: **every table into which a rider inserts content another rider
+can see carries the gate.** Per-viewer tables that produce nothing anyone else can see do not —
+`profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`, `feed_reads`, and every
+`storage.objects` policy, which check the path prefix only.
+
+Both tables `093` adds carry it — `club_invites`, because inviting is participation, and
+`club_invite_links`, because minting a bearer token into a club is participation — so the count
+moves by **+2**, and the delta SHALL be asserted together with the two table names, never the
+absolute. **17 on DEV and 17 on PROD, measured 2026-08-31**, before the concurrent changes holding
+`092`, `094` and `095` land. An absolute after-count is therefore meaningless in isolation, which is
 exactly why the rule is stated as a delta plus two names.
 
 **A table no rider can insert into at all is a third case and needs no gate**, because the gate
@@ -176,11 +197,17 @@ nothing, which is what `078.9` asserts the absence of.
 
 ### Requirement: A table with no designed edit SHALL carry no UPDATE grant
 
-A table whose rows have no rider-editable column SHALL hold no UPDATE grant and no UPDATE policy for
-any client role. **The absence is the enforcement**: with RLS on, a command with no policy is refused
-for every row.
+Where editing a row has not been designed, the table SHALL have no UPDATE policy **and** no
+UPDATE grant to `authenticated`. **The absence is the enforcement**: with RLS on, a command with no
+policy is refused for every row.
 
-Both tables this change adds are in that class, and each has one column a client would otherwise be
+The grant is the second, independent layer — the one that still holds if a future policy is
+written too permissively. `009` applied this to `postcard_likes` and `blocks`, `011` to
+`postcard_comments`, `postcard_hides` and `postcard_reports`, and each stated the same reason: a
+table with no mutable column has nothing to grant UPDATE for. It is stated here as a rule rather
+than repeated a sixth time in a migration comment.
+
+Both tables `093` adds are in that class, and each has one column a client would otherwise be
 able to write to its own advantage:
 
 - **`club_invites`** — `status` and `responded_at` are written by `accept_club_invite` and
