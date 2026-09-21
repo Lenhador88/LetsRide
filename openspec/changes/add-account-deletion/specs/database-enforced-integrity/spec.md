@@ -1,8 +1,10 @@
-> **⚠ COORDINATION — two active changes modify `Club membership role SHALL NOT be
-> self-assignable`, and OpenSpec will not warn you.** The other is
-> `enforce-creator-membership`. Archiving folds a delta into
-> `openspec/specs/database-enforced-integrity/spec.md` by replacing the requirement wholesale,
-> so **whichever change archives second silently discards the first one's edit**.
+> **⚠ COORDINATION — `Club membership role SHALL NOT be self-assignable` is modified by this change,
+> and the other two claimants have archived.** `manage-club-riders` and `enforce-creator-membership`
+> both archived on 2026-09-21, and the standing requirement now carries the merged text below —
+> including this change's own transfer, `private.transfer_owned_clubs`, which is built. Archiving
+> folds a delta in by replacing the requirement wholesale, so **this block, drafted before either,
+> would silently discard both**; `openspec archive` refuses it only because the standing scenarios
+> are missing from it.
 >
 > They are reconcilable in substance, and this is the merged text both should converge on:
 >
@@ -15,8 +17,7 @@
 >   simultaneously making `clubs.owner_id`. It bypasses RLS, so the narrowing above does not
 >   bind it.
 >
-> Before archiving whichever of the two goes second: re-read
-> `openspec/specs/database-enforced-integrity/spec.md` as the first one left it, and rewrite this
+> Before archiving: re-read `openspec/specs/database-enforced-integrity/spec.md` and rewrite this
 > delta against *that* text rather than against the version you drafted.
 
 > **⚠ COORDINATION, SECOND AND UNRELATED — `Storage object ownership SHALL remain

@@ -1,3 +1,13 @@
+<!--
+MERGED AT ARCHIVE (2026-09-21). The MODIFIED block below is the banner's merged text, written
+against the standing requirement as `manage-club-riders` left it: this change's owner-row trigger and
+removed arm (`103`, `104`), `088`'s admin RPCs and their four scenarios, and both ownership transfers
+— account deletion's (`032`/`107`, reached through `031`'s `service_role`-only wrapper) and `095`'s
+`leave_owned_club`, both built. It asserts nothing `add-account-deletion` has not built. The standing
+scenario `The creator's own owner row is still permitted` is replaced by `Not even the club's own
+owner may insert an owner row`, and the roster-screen sentence `manage-club-riders` dropped is back.
+-->
+
 # database-enforced-integrity (delta)
 
 > **⚠ COORDINATION — THREE active changes modify `Club membership role SHALL NOT be
@@ -304,35 +314,54 @@ outcome, so that removing one predicate later fails a test rather than passing s
 
 ### Requirement: Club membership role SHALL NOT be self-assignable
 
-**This is the merged text — see the coordination banner above.** The database SHALL refuse any
-`club_members` row whose `role` is `owner` or `admin`, from `authenticated`, without exception.
-The owner's row SHALL be written by the database itself when the club is created, and SHALL NOT
-be writable by the client at all.
+**This is the merged text the coordination banner above asked for.** The database SHALL refuse any
+`club_members` row whose `role` is `owner` or `admin` from `authenticated`, without exception:
+`authenticated` may insert `role = 'member'` and nothing else, and **no client SHALL be able to
+claim `owner` or `admin` by any verb, on any table.** The owner's row SHALL be written by the
+database itself when the club is created — `103`'s `AFTER INSERT` trigger — and SHALL NOT be
+writable by the client at all.
 
-**One privileged exception exists and must survive whichever change archives second.**
-`add-account-deletion` proposes an ownership transfer that promotes the rider it is
-simultaneously making `clubs.owner_id`. It runs `security definer` in the `private` schema with
-no `authenticated` EXECUTE, so it never writes as `authenticated` and the narrowing above does
-not bind it. Stated here explicitly because this delta would otherwise fold into the standing
-spec as an unconditional prohibition and silently delete that exception.
+**Every writer of a role other than `member` is a `security definer` function that takes no role
+argument, so none of them writes as `authenticated` and the narrowing above does not bind them:**
+
+- **`admin`** — `public.promote_club_member(target_club, rider)` writes the literal `'admin'` and
+  `public.demote_club_admin(target_club, rider)` writes the literal `'member'` (`088`); neither
+  accepts a role parameter, so — as with `085`'s `private.join_club_from_request` — there is no
+  input by which a caller could attempt a value the design does not offer. Each is gated inside its
+  own body — promotion on `private.is_club_admin_for(auth.uid(), target_club)`, the owner or an
+  admin; demotion on the owner, or the admin stepping down — because RLS does not apply inside a
+  definer function and that check is therefore the entire access control.
+  `club-membership-administration` states the authority in full.
+- **`owner`, by ownership transfer** — two transfers set `role = 'owner'` on the rider they are
+  simultaneously making `clubs.owner_id`: account deletion's `private.transfer_owned_clubs`
+  (`032`/`107`), reached only through `public.transfer_owned_clubs_for_deletion`, whose EXECUTE is
+  granted to `service_role` alone (`031`); and `public.leave_owned_club` (`095`), published to
+  `authenticated` but taking a club and no rider id. Both run as the owner and bypass RLS.
+
+`019` enforced the client half through the INSERT policy's WITH CHECK plus the **absence of any
+UPDATE policy**, and `036` §7.6 rests on the second half. Both survive: `088` adds no UPDATE policy
+and revokes `048`'s dead per-column UPDATE grant with nothing re-granted, so the absence is an
+absence of privilege as well as of policy.
 
 **What changed and why.** `019` admitted one exception: the rider named in `clubs.owner_id` could
 insert their own `role = 'owner'` row, because `createClub` wrote it as a second round trip and
 without that arm club creation stopped working. Creator membership is now established by the
 database in the same statement as the club, so nothing in the application ever sends `role`
 `'owner'` again and the arm's only remaining use would be to duplicate a row that already exists.
-Removing it leaves `authenticated` able to insert `role = 'member'` and nothing else — strictly
-narrower than `019`, and the last self-assignable non-member role closed.
+`104` removes it, leaving `authenticated` able to insert `role = 'member'` and nothing else —
+strictly narrower than `019`, and the last self-assignable non-member role closed.
 
 The rest of `019` is unchanged and restated because a requirement is replaced whole: `club_members`
-INSERT is still `auth.uid() = user_id` plus the club being public or owned by the caller, the
-roster screen still renders the value, and there is still no UPDATE policy.
+INSERT is still `auth.uid() = user_id` plus the club being public or owned by the caller, and there
+is still no UPDATE policy. The roster screen renders the value — `/clubs/detail/members` labels
+`owner` and `admin` and draws an owner ring — so a forged role would be visible to every member of
+the club.
 
-**Ordering is load-bearing.** The arm must be removed only after the deployed client has stopped
+**Ordering is load-bearing.** The arm had to be removed only after the deployed client stopped
 sending `role: 'owner'`. Removing it earlier makes every club creation fail against a client that
 still sends it, and whether a `WITH CHECK` is evaluated for a row an `on conflict do nothing`
-discards is unmeasured — so the removal is its own migration, applied after the code deploy, on the
-pattern `021`'s split established.
+discards is unmeasured — so the removal is its own migration (`104`), applied after the code
+deploy, on the pattern `021`'s split established.
 
 #### Scenario: A non-member joining a public club cannot arrive as owner or admin
 - **WHEN** a signed-in rider who is not a member inserts a `club_members` row for a public club
@@ -349,8 +378,30 @@ pattern `021`'s split established.
 #### Scenario: Nobody can promote an existing member
 - **WHEN** any rider — including the club owner — attempts to UPDATE `club_members.role`
 - **THEN** the write SHALL be refused, because no UPDATE policy on `club_members` exists
-- **AND** this SHALL remain true until the invitations feature ships its own policy, so that the
-  absence is a recorded gap rather than an accident
+- **AND** this SHALL remain true until the invitations feature ships its own policy, so that
+  the absence is a recorded gap rather than an accident
+
+#### Scenario: No client role can write `admin` by any verb
+- **WHEN** a rider attempts to insert a `club_members` row with `role = 'admin'`, or to update an
+  existing row to `'admin'`, on a public club, a private club, and a club they own
+- **THEN** every attempt SHALL be refused
+- **AND** the UPDATE half SHALL be refused **twice over** — by the absent grant and by the absent
+  policy — and both SHALL be asserted, because removing either alone would look like a passing test
+
+#### Scenario: The RPCs take no role argument
+- **WHEN** the two functions' signatures are read from `pg_proc`
+- **THEN** neither SHALL accept a `text` role parameter, and each SHALL write its value as a literal
+  in `prosrc`
+
+#### Scenario: Only the owner or an admin can make an admin
+- **WHEN** a rider who is neither the club's owner nor one of its admins calls `promote_club_member`
+- **THEN** it SHALL raise `insufficient_privilege`
+- **AND** an admin's promotion SHALL succeed — `club-membership-administration`'s *Promotion SHALL be
+  open to admins* is the decision, and it records the counter-argument
+
+#### Scenario: The owner's roster row is unreachable by either RPC
+- **WHEN** either RPC targets `clubs.owner_id`
+- **THEN** it SHALL raise, whether or not that rider holds a roster row and whatever role it carries
 
 #### Scenario: A rider who demoted themselves through Explore is repaired
 - **WHEN** a club owner holds a `club_members` row with `role = 'member'` for their own club,
