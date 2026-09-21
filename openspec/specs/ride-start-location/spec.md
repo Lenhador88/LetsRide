@@ -377,7 +377,7 @@ into the ride, or infers one rider's whereabouts from another's ride.
 ### Requirement: One picker SHALL exist, and this change SHALL extend it rather than fork it
 
 `src/components/ui/PlaceSearchField.tsx` is the picker, placed in `ui/` by PD-259 precisely so PD-114
-would find it. A second picker SHALL NOT be written, and rides SHALL NOT get a divergent search
+would find it. A second picker SHALL NOT be written, and no caller SHALL get a divergent search
 surface.
 
 **The picker is now the field itself.** The separate full-screen search surface is removed, and with
@@ -390,11 +390,18 @@ What each caller still supplies, and nothing more: its own field names, its own 
 required-ness, and — for the ride's start alone — recents. A club's **storage** behaviour SHALL be
 unchanged by this: the same four hidden fields under the same names, written together or not at all.
 
+**The rule is now symmetric, because the extension has gone the other way.** A caller extending the
+picker for its own needs SHALL add optional, additive props whose absence leaves every other caller
+byte-identical, and SHALL assert that rather than assume it. A prop that changes default behaviour is
+a fork wearing a prop's clothes.
+
 #### Scenario: The clubs form stores exactly what it stored before
 - **WHEN** a club is created or edited after the change
 - **THEN** its location SHALL be written from the same four hidden fields under the same names, all
   four together or all four NULL
 - **AND** no typed text SHALL reach `clubs.location_name` without the pick that goes with it
+- **AND** the seeded search term SHALL be no exception: it lands in the draft, which place mode never
+  submits, so a rider who focuses the field and walks away SHALL store nothing
 
 #### Scenario: Rides pass their own names and bound
 - **WHEN** the field is used on a ride form
@@ -405,6 +412,27 @@ unchanged by this: the same four hidden fields under the same names, written tog
 - **WHEN** any form in the app needs a place
 - **THEN** it SHALL use this field
 - **AND** no second search surface, sheet or screen SHALL exist for places
+
+#### Scenario: A third caller extends the picker
+- **WHEN** the club form adds an initial-query prop and a handle on the visible input
+- **THEN** both SHALL be optional, and every existing caller — both ride forms, the postcard composer,
+  `TownQuestionSheet`, `EditClubForm` — SHALL be unchanged with them omitted
+- **AND** the ride forms' free-text mode, their recents, their debounce and their abort behaviour
+  SHALL be untouched
+- **AND** no second picker, no divergent sheet and no club-specific copy of this component SHALL be
+  written
+
+#### Scenario: The seed is optional and its absence changes nothing
+- **WHEN** the initial-query prop is omitted, or is an empty string, or the field already holds a
+  value or a draft, or the field has already been focused once
+- **THEN** the field SHALL behave exactly as it does today: no text, no lookup, no list until the
+  rider types
+- **AND** when the prop IS supplied, the seed SHALL be applied **once, on first focus** — never on
+  mount — because a mount-time seed either spends a metered credit for a rider who never touches the
+  field, or displays text that a submit would not store and that `onBlur` then erases
+- **AND** a fourth caller may use this picker with no new prop at all: the onboarding town step
+  (PD-445) does exactly that, in place mode with no `names` and no `freeText`, and SHALL NOT be
+  understood as a second extension
 
 ### Requirement: The surfaces this change does not build SHALL be named rather than half-built
 

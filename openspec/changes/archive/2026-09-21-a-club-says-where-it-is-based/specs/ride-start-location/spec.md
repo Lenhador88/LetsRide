@@ -49,12 +49,17 @@ changes cannot both claim to be the extension.
 
 `src/components/ui/PlaceSearchField.tsx` is the picker, placed in `ui/` by PD-259 precisely so PD-114
 would find it. A second picker SHALL NOT be written, and no caller SHALL get a divergent search
-sheet.
+surface.
 
-What rides need on top, and nothing more: an **editable text input** in place of the read-only value
-box, so the field is free text with search on top; a search affordance that opens the same sheet; and
-the caller's own field names, length bound and required-ness. Clubs' behaviour SHALL be unchanged by
-the extension.
+**The picker is now the field itself.** The separate full-screen search surface is removed, and with
+it the last place the two callers could diverge: both modes present an editable input with a
+suggestion list attached, and the difference between them is what is *stored*, not what is drawn. A
+ride's meeting point is free text with search on top and the input is the stored value; a club's
+location is a picked place or nothing and the input is a search box whose text is never stored.
+
+What each caller still supplies, and nothing more: its own field names, its own length bound, its own
+required-ness, and — for the ride's start alone — recents. A club's **storage** behaviour SHALL be
+unchanged by this: the same four hidden fields under the same names, written together or not at all.
 
 **The rule is now symmetric, because the extension has gone the other way.** A caller extending the
 picker for its own needs SHALL add optional, additive props whose absence leaves every other caller
