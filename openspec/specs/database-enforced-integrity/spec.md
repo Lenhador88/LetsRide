@@ -351,9 +351,21 @@ organizer, club member, non-member with a public ride, non-member with a private
 blocked rider and signed-out visitor — five of which `openspec/config.yaml` requires, with
 **owner and admin absent**. `private.is_club_member` reads `club_members` only, so an owner
 holding no membership row fell through every scenario here and lost their own private club's
-rides in both directions. The two scenarios below close that, and are stated in terms of
+rides in both directions. The scenarios below close that, and are stated in terms of
 `clubs.owner_id` rather than of any membership row so they remain true whether or not the row
 exists.
+
+**A ride's crew is NOT one of those roles, and that omission cost a second defect.** Nothing here
+said so, and *"a rider on this ride's crew"* reads as a role that can obviously see the ride.
+It cannot: `rides` SELECT resolves through organizer, public, or club member, and **neither
+`ride_members` nor `private.is_ride_crew` appears in its `qual`** — transcribed from `055`'s
+migration header and from `supabase/tests/rls_test.sql` §055.7, and **confirmed against DEV
+(`fpmrimzxadewsaiwpsel`) on 2026-08-17**, where the policy text is verbatim as `055` recorded it.
+A `ride_members` row survives every event that takes the ride away —
+blocking removes nobody from a roster, and leaving a club reaches nothing on `ride_members` — so
+*"holds a crew row"* and *"can see the ride"* are **independent**. A fan-out addressing the crew
+therefore addressed riders the read policy discards, permanently and with nothing to raise. The
+negative scenario below states that so it is a contract rather than an observation.
 
 **This change adds no arm.** `public.rides` SELECT and `private.can_read_ride` are untouched, and
 an assertion pins both — a failing pin here means the change is wrong, not that the pin is stale.
@@ -397,6 +409,23 @@ same migration and in the same position.
 - **AND** no admin-specific arm SHALL exist in any ride policy, since `admin` has no
   representation outside `club_members`
 
+#### Scenario: Crew member with no other route to the ride
+- **WHEN** a rider holding a `ride_members` row reads that ride while satisfying none of the
+  organizer, public or club-member arms — because they blocked the organizer, or because they
+  left the ride's private club
+- **THEN** zero rows SHALL be returned, and crew membership SHALL NOT be a route to a ride
+- **AND** `rides` SELECT SHALL carry **no** `ride_members` arm and **no** `private.is_ride_crew`
+  arm, which SHALL be asserted as an absence rather than assumed from the policy reading
+  correctly today
+- **AND** the reason SHALL be recorded: two audiences narrower than the crew — `034`'s
+  `ride_messages` SELECT/INSERT and `041`'s postcard ride-tag `WITH CHECK` — are expressed as an
+  **intersection** of an RLS-filtered `EXISTS` against `rides` with `private.is_ride_crew`, so a
+  crew arm here would make the `EXISTS` implied by the crew conjunct and collapse both to crew
+  membership alone, restoring the ex-club-member chat leak `034` shipped in draft and fixed
+- **AND** anything needing to know whether a **specific other** rider can see a ride SHALL ask a
+  candidate-relative predicate instead, per the `candidate-relative-visibility` capability, rather
+  than widening this policy
+
 #### Scenario: Non-member, public ride with no club
 - **WHEN** any signed-in rider reads a ride with `club_id` NULL and `is_public = true`
 - **THEN** it SHALL be returned, since decision #1 makes "public" mean "any signed-in rider"
@@ -428,6 +457,7 @@ same migration and in the same position.
   reads a ride in it
 - **THEN** zero rows SHALL be returned immediately, because reach is keyed on the current row or
   on `clubs.owner_id` and never on membership history
+- **AND** this SHALL hold even while they still hold a `ride_members` row for that ride
 
 #### Scenario: Blocked rider
 - **WHEN** a rider blocked by the organizer reads the ride, by any route including a club they
@@ -435,6 +465,7 @@ same migration and in the same position.
 - **THEN** zero rows SHALL be returned
 - **AND** the token route SHALL be refused by a check in the RPC's own body, since no policy runs
   beneath a `security definer` function
+- **AND** this SHALL hold even while they still hold a `ride_members` row for that ride
 
 #### Scenario: Blocked rider who owns the club
 - **WHEN** the club's owner reads a ride in their own club whose organizer they have blocked, or
@@ -459,6 +490,23 @@ same migration and in the same position.
 #### Scenario: Invited rider who declined
 - **WHEN** a rider who declined an invite reads the ride
 - **THEN** zero rows SHALL be returned, unless another arm admits them
+
+#### Scenario: The policy text itself is pinned, because a fan-out now restates it
+- **WHEN** `rides` SELECT is reviewed, refactored or replaced
+- **THEN** its full `qual` text SHALL be pinned by an assertion whose label names
+  `private.can_read_ride`, so a rewrite fails the suite with a pointer at the function that
+  restates it rather than silently turning a fan-out's recipient set into a wrong answer
+- **AND** the pin SHALL be understood as deliberately brittle: it fails on a cosmetic reformat as
+  well as on a semantic change, which costs one session five minutes and is the cheaper of the two
+  errors
+- **AND** `clubs` SELECT SHALL carry the **twin** pin, labelled with `private.can_read_club`,
+  because `ride_created_in_club` restates both policies and one pin covers only one of them
+- **AND** neither pin SHALL be read as covering the helper bodies its policy text delegates to —
+  an arm added to `private.is_club_member` leaves both `qual` texts byte-identical, so that
+  function carries its own pin, by equality
+- **AND** the two structural pins that already exist — that the policy leads with an unconditional
+  organizer arm, and that it has no crew arm — SHALL remain, because neither catches a rewrite of
+  the middle of the policy
 
 ### Requirement: Blocking SHALL remain enforced in RLS and SHALL survive the client owning the queries
 

@@ -49,6 +49,31 @@ or exists (…)` — leaves every policy's `qual` text unchanged, still satisfie
 level down: a stronger claim than the evidence behind it. An earlier revision of this paragraph
 said the two entry points *"cannot drift apart"*, which no assertion then supported.
 
+**The rule binds a fan-out whose recipient is a single named rider exactly as hard, and that is the
+reading this requirement previously left open.** Where the recipient comes straight out of `NEW` —
+`new.invitee_id`, `new.inviter_id` — no *set* is computed, so the sentence above has nothing to bite
+on and invites the conclusion that a caller-relative helper is harmless here. It is not. Every
+question a fan-out asks about that named rider is still a question about **somebody other than the
+caller**: whether they are blocked with the actor, and above all whether the read policy can ever
+return the row to them. A caller-relative helper answers all of those for the **actor**, and with a
+single recipient the wrong answer produces one wrong row rather than a wrong set, which is harder to
+see and not less wrong.
+
+Any new caller-relative helper introduced alongside a fan-out SHALL therefore ship with its
+candidate-relative form in the same migration, and the fan-out SHALL use the candidate form.
+
+#### Scenario: A single named recipient is still evaluated candidate-relative
+- **WHEN** a fan-out addresses one rider read out of `NEW`
+- **THEN** every predicate it evaluates about that rider SHALL take the rider as an argument
+- **AND** no helper reading `auth.uid()` SHALL appear in the fan-out, including one added by the
+  same migration for the policy's own use
+
+#### Scenario: A new visibility arm reaches the fan-out through the candidate form
+- **WHEN** a migration adds an arm to a policy that a fan-out's resolvability check restates
+- **THEN** the fan-out SHALL see the new arm through the candidate-relative restatement
+- **AND** a fan-out that would have written a row before the arm and not after it, or the reverse,
+  SHALL be treated as evidence the two copies have drifted
+
 #### Scenario: The owner union applies to `club_joined` AND to `ride_created_in_club`, because readability is what decides
 - **WHEN** a club's `owner_id` holds no `club_members` row
 - **THEN** **both** recipient sets SHALL include `clubs.owner_id`, and the reason SHALL be that
