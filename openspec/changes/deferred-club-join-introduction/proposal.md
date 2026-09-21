@@ -11,7 +11,7 @@
 >
 > It narrows one decision of **PD-365** (`openspec/changes/archive/2026-09-21-introduce-yourself-on-joining-a-club/`,
 > migration `097`) and inherits **PD-384**'s sheet-ownership rule and **PD-372**'s
-> (`openspec/changes/an-introduction-appears-only-as-its-announcement/`) placement rule. All three
+> (`openspec/changes/archive/2026-09-21-an-introduction-appears-only-as-its-announcement/`) placement rule. All three
 > are merged.
 
 > **No migration, and this change must not add one.** The sheet has to open for a rider who is not
