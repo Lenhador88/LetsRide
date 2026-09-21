@@ -97,6 +97,17 @@ A stashed invite token is a trace and a credential at once. It is not the signin
 property in any meaningful sense — it came from a message — but leaving it behind means the next
 rider on that device inherits a spendable grant.
 
+**There are now two capability tokens of the same shape and they SHALL be cleared together.** The
+ride invite token (`091`) and the club invite token both live in `sessionStorage`, both are 32
+lowercase hex characters, and both are credentials as well as traces — possession is the whole grant.
+One module SHALL own both keys, and `signOut` SHALL clear both by clearing that module rather than by
+naming a key at the call site, because a second key named individually is a key the third one is
+forgotten beside.
+
+**`sessionStorage`, never `localStorage`**, for both: a credential whose security is possession must
+not outlive its tab. On a shared device an abandoned sign-up would otherwise leave a live grant into
+a private club sitting on somebody else's machine, with an expiry only the server knows about.
+
 #### Scenario: A stashed invite token does not survive sign-out
 - **WHEN** a rider signs out with `letsride.pendingInviteToken` set
 - **THEN** the key SHALL be absent afterwards, alongside the session and the query cache
@@ -118,6 +129,21 @@ rider on that device inherits a spendable grant.
 - **THEN** local state SHALL still be destroyed and the rider SHALL still land signed out
 - **AND** the still-valid refresh token SHALL be discarded rather than retried later
 
+#### Scenario: Sign-out clears both stashes
+- **WHEN** a rider holding a stashed ride token and a stashed club token signs out
+- **THEN** both SHALL be gone, asserted by reading the storage keys rather than by calling the
+  accessors
+
+#### Scenario: The next rider inherits no token
+- **WHEN** rider A abandons an invite flow and rider B signs in on the same device
+- **THEN** B SHALL hold no stashed token from A, and no automatic claim SHALL occur under any
+  circumstance
+
+#### Scenario: A stash that cannot be written is not an error
+- **WHEN** `sessionStorage` throws — a Safari private window, a third-party-blocked iframe
+- **THEN** the failure SHALL be silent and the rider SHALL simply re-tap their own message, because
+  the URL is the durable copy and a public screen must not be taken down for a convenience
+
 ### Requirement: A signed-out visitor SHALL reach no data
 
 A visitor with no session SHALL be able to load the shell and MUST NOT be able to read any rider
@@ -125,8 +151,8 @@ data, from the network or from a cache — **with exactly one exception, which S
 rather than discovered in a migration.**
 
 Decision #1 is narrowed by one function and otherwise unchanged: **`anon` holds zero table grants**,
-no policy names `anon`, and every route except `/auth/*`, `/legal/*` and `/rides/join` requires a
-session. What changed when the shell became static is that a bundle is served to anyone who asks, so
+no policy names `anon`, and every route except `/auth/*`, `/legal/*`, `/rides/join` and
+`/clubs/join` requires a session. What changed when the shell became static is that a bundle is served to anyone who asks, so
 the shell itself is public even though almost nothing in it is.
 
 **The exception is `public.ride_invite_link_public_preview(t)`** (`115`, PD-430): EXECUTE on one
@@ -166,6 +192,21 @@ added to this one **that is not already in `public.ride_invite_link_preview`'s p
 listing or search reachable without a token, or any grant to `anon` on a table SHALL be proposed on
 its own terms and SHALL NOT be justified by citing this exception.
 
+**There are now two public routes that exist to hold a credential rather than to show anything**, and
+the rule for both is identical: `/rides/join` (`091`) and `/clubs/join`. Each is in `PUBLIC_PATHS`
+**and** in `needsOnboardingState()`'s set — two edits, because the latter's first line is
+`if (!isPublicPath(pathname)) return true` and one edit alone strands a newly signed-up rider on a
+screen whose only button raises `check_violation`.
+
+With no session, `/clubs/join` SHALL render the shell, a **generic** sentence and the auth buttons.
+It SHALL name **neither the club nor its minter**, and SHALL call neither RPC — both need
+`auth.uid()` for their block and participation checks, so there is nothing to render before a session
+exists and nothing anonymous to leak.
+
+**The temptation this refuses is a product one**: a landing page naming the club would convert
+better, and "they were sent the link, they already know". Anyone can hold a URL, and the club is
+private by construction — naming it is the one disclosure a bearer token must not make for free.
+
 #### Scenario: The shell renders, the data does not
 - **WHEN** a signed-out visitor loads any authenticated route
 - **THEN** no rider data SHALL be rendered from any source, including a cache left by a previous
@@ -192,6 +233,22 @@ its own terms and SHALL NOT be justified by citing this exception.
 - **WHEN** a signed-out visitor previews a ride and then signs in as a different rider
 - **THEN** the anonymous preview SHALL be held under its own cache key and SHALL NOT be served to the
   signed-in session, and sign-out SHALL clear it exactly as it clears every other cached read
+
+#### Scenario: Three tokens, one screen
+- **WHEN** a signed-out visitor opens `/clubs/join` with a live token, with a dead one, and with none
+- **THEN** all three SHALL render the identical screen and issue no request that names the club
+
+#### Scenario: No `anon` grant is added to enrich it
+- **WHEN** the landing screen would be more persuasive with the club's name
+- **THEN** the answer SHALL be to wait for the session, never to grant `anon` a read or to add an
+  `anon`-executable preview
+
+#### Scenario: The token leaves the address bar but not the log
+- **WHEN** the landing screen has read the token
+- **THEN** it SHALL drop the query string with `history.replaceState`
+- **AND** the specification SHALL still state that the token reached the server that served the page
+  — a capability URL is logged by whatever serves it, which is why expiry and revoke are the
+  controls rather than secrecy of transport
 
 ### Requirement: A capability token held on the device SHALL be tab-scoped and spendable only by an explicit action
 
@@ -280,7 +337,6 @@ not have and a shared device has wrongly.
 - **AND** the walk's existing sign-out phase SHALL NOT be extended with an assertion that is
   vacuous by construction, which is the trap a flag defaulting off already set once
 
-
 ### Requirement: A device-local deferral record SHALL hold no rider data, SHALL fail open, and SHALL NOT survive sign-out
 
 A record kept on the device to postpone a question SHALL contain only what postponing needs — a
@@ -329,3 +385,4 @@ is accepted because the question has just been answered — only the ladder posi
 #### Scenario: A clock that moves backwards does not silence the question for ever
 - **WHEN** the stored timestamp is in the future relative to the device clock
 - **THEN** the record SHALL be treated as absent and the question SHALL be asked
+

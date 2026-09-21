@@ -1,10 +1,9 @@
 # club-invite-links
 
-> **Read this delta against the active changes, not against `openspec/specs/`.** The
-> `club-invite-links` capability is added by `invite-riders-to-a-club` (PD-360) and **is not
-> archived**, so the base text these requirements modify lives in
-> `openspec/changes/invite-riders-to-a-club/specs/club-invite-links/spec.md`. Archive that change
-> before this one, or the delta has nothing to attach to.
+> **Read this delta against `openspec/specs/club-invite-links/spec.md`.** The capability was added
+> by `invite-riders-to-a-club` (PD-360), which archived on 2026-09-21 —
+> `openspec/changes/archive/2026-09-21-invite-riders-to-a-club/specs/club-invite-links/spec.md` —
+> so the standing spec is the base text these requirements modify.
 
 ## MODIFIED Requirements
 

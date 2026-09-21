@@ -124,6 +124,21 @@ The table SHALL carry **no UPDATE grant and no UPDATE policy for any client role
 happen only inside the two `security definer` RPCs, which is what makes "the club answers"
 enforceable rather than conventional.
 
+A join request SHALL be created only by the rider it names, and only for a club
+`private.club_takes_join_requests_for` would return to them.
+
+`private.club_takes_join_requests_for` is **not modified by this change**, and that is a decision
+rather than an omission.
+
+The tempting narrowing is to exclude a rider who already holds a live invite, so the two mechanisms
+cannot coexist at all. It is refused: that predicate is also `public.discoverable_private_clubs`'
+filter, so narrowing it removes the club from an invited rider's Explore list — a visible change to a
+shipped screen, for no safety gain, since a rider who can be invited can already ask.
+
+**The determinism is enforced from the other side.** `private.club_takes_invites_for` is false while
+a `pending` request exists, so the **invite** is what gives way; and where the two nonetheless meet,
+the membership write clears the request.
+
 #### Scenario: A rider requests to join a private club
 - **WHEN** a signed-in, onboarded rider inserts a row naming themselves and a club the accessor
   returns to them
@@ -171,6 +186,15 @@ enforceable rather than conventional.
 #### Scenario: A signed-out visitor reaches nothing
 - **WHEN** `anon` is examined against the table
 - **THEN** it SHALL hold **zero** grants and be named by no policy
+
+#### Scenario: A rider holding a live invite may still ask
+- **WHEN** an invited rider finds the club in Explore and requests to join
+- **THEN** the request SHALL be created and the club SHALL remain discoverable to them
+- **AND** `discoverable_private_clubs`' result set SHALL be unchanged by the existence of an invite
+
+#### Scenario: An invite to a rider who has asked is refused instead
+- **WHEN** an admin invites a rider holding a pending request for the same club
+- **THEN** the invite SHALL be refused, and the admin's remedy SHALL be to approve the request
 
 ### Requirement: A request SHALL be unique per club and rider, and a second one SHALL be refused rather than duplicated
 
@@ -291,6 +315,23 @@ This is the inversion of `083`'s rule, and the inversion is the point: there, de
 against the **inviter** because the inviter is the party who could spam. Here the requester is that
 party, so the terminality binds them.
 
+A declined request SHALL NOT be moved or removed by the requester, and SHALL be clearable only by
+the club.
+
+Unchanged in substance. **One new writer of the row exists** and it is not a client:
+`private.join_club_from_invite` deletes a **pending** request for the pair it has just admitted,
+running as the owner and therefore bypassing the DELETE policy.
+
+That is not an exception to this requirement — the policy still governs every client delete, and a
+`declined` row is untouched by the new writer. It is stated here because a reader of this requirement
+alone would conclude a request row can only leave by a client's delete, and it can now also leave
+because the rider joined by another route.
+
+**The retraction is the point of doing it in the database rather than in the client.** `085`/`087`'s
+`private.retract_club_join_requested` fires on that delete and takes the admins' *"X asked to join"*
+notification with it. Without the delete, every admin keeps an actionable request line for a rider
+who is already a member — `087`'s defect, arriving by a third route.
+
 #### Scenario: The requester withdraws a pending request
 - **WHEN** a rider deletes their own `pending` row
 - **THEN** it SHALL succeed
@@ -310,6 +351,26 @@ party, so the terminality binds them.
 #### Scenario: Nobody else can delete a request
 - **WHEN** an ordinary member of the club, or any other signed-in rider, attempts a delete
 - **THEN** it SHALL match zero rows
+
+#### Scenario: Joining through an invite clears the pending request
+- **WHEN** a rider with a pending request accepts an invite or claims a link for the same club
+- **THEN** the pending request SHALL be deleted in the same transaction, **after** the membership row
+  is written
+- **AND** the `club_join_requested` notification held by each admin SHALL be retracted by the
+  existing trigger
+- **AND** the club's Requests list SHALL not show a rider who is already a member
+
+#### Scenario: A declined request is not cleared by a later join
+- **WHEN** the rider's request was `declined` rather than `pending` and they later join through a
+  link
+- **THEN** the declined row SHALL survive, because it is the record of a refusal and only an admin
+  may clear it
+- **AND** the rider being a member SHALL not depend on it in any way
+
+#### Scenario: The order is asserted, not assumed
+- **WHEN** the writer's body is read
+- **THEN** the membership INSERT SHALL precede the request DELETE, so no window exists in which the
+  rider is neither requested nor a member
 
 ### Requirement: Request visibility SHALL be stated per role
 

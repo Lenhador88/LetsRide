@@ -1,6 +1,6 @@
 # Refuse a removed rider a live invite link
 
-> Linear **PD-361**, filed out of `openspec/changes/invite-riders-to-a-club/`'s design (its
+> Linear **PD-361**, filed out of `openspec/changes/archive/2026-09-21-invite-riders-to-a-club/`'s design (its
 > *What removal does not do, and the gap that leaves* section) rather than built there, on
 > PD-351's precedent. This file is the specification and the issue does not restate it.
 
