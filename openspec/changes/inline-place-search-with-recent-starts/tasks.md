@@ -10,7 +10,7 @@
 - [x] 1.4 Record in the PR that **this change adds no migration** — no table, column, grant, policy or
       RLS assertion — and that 1.1–1.3 are why. If any of the three has changed, stop and re-propose:
       the no-migration claim is the whole cost case
-- [x] 1.5 Re-read `openspec/changes/replace-places-index-with-geocoder/specs/place-search/spec.md`'s
+- [x] 1.5 Re-read `openspec/changes/archive/2026-09-21-replace-places-index-with-geocoder/specs/place-search/spec.md`'s
       seven-state table and confirm the reworded copy in this change's delta still matches it state
       for state
 

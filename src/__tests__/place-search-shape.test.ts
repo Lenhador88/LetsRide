@@ -41,12 +41,13 @@ import type { PlaceSearchResult } from '@/types'
  * ---------------------------------------------------------------------------
  * What this CANNOT tell you
  * ---------------------------------------------------------------------------
- * **Not one request has been issued to the vendor.** `*.geoapify.com` is
+ * **No payload below was captured from the vendor.** `*.geoapify.com` is
  * egress-blocked from the build container, so every payload below is
  * hand-written against the vendor's *documented* GeoJSON shape rather than
  * captured from a response. Tasks 0.1 and 0.3 in
- * `openspec/changes/replace-places-index-with-geocoder/tasks.md` are the live
- * calls that replace them, and both are still open.
+ * `openspec/changes/archive/2026-09-21-replace-places-index-with-geocoder/tasks.md`
+ * record the two live responses taken on 2026-08-19 from outside it — compare
+ * a fixture against those before trusting it.
  *
  * So these tests prove the mapping does what this repo intends. They cannot
  * prove the vendor sends what this repo expects. **Do not read "the tests pass"

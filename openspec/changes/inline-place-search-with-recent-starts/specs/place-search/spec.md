@@ -1,10 +1,9 @@
 ## MODIFIED Requirements
 
-<!-- These three requirements currently live in
-     openspec/changes/replace-places-index-with-geocoder/specs/place-search/spec.md,
-     which cannot be archived yet (46 open tasks), so `place-search` is not in
-     openspec/specs/. Each is restated here IN FULL so that folding is mechanical
-     whenever that change closes. -->
+<!-- These three requirements were ADDED by
+     openspec/changes/archive/2026-09-21-replace-places-index-with-geocoder/specs/place-search/spec.md,
+     which archived on 2026-09-21, so the base text is openspec/specs/place-search/spec.md.
+     Each is restated here IN FULL. -->
 
 ### Requirement: The lookup surface SHALL tell its seven states apart
 

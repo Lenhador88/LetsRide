@@ -211,9 +211,11 @@ Stated as reach, positive and negative:
   blocking is symmetric in RLS and applies to the row. No filtering happens in a screen.
 - **Signed-out visitor** — reaches the shell and no data. `anon` holds zero grants and none is added
   here; decision #1 is untouched.
-- **Any signed-in rider** — MAY call `search_places()` and therefore MAY read the public places
-  index. That is unchanged by this story: the index is reference data, not rider data, and `049`
-  and `050` already bound what one call can cost.
+- **Any signed-in rider who has accepted the terms** — MAY search, through the proxy, subject to the
+  per-rider and application-wide ceilings the `place-search` capability defines. Membership,
+  ownership and club role SHALL NOT change what a rider may search for or what they get back. There
+  is no index to read since `070`, and the cost bound is a per-request bill against a shared daily
+  quota rather than a query planner's.
 
 #### Scenario: A non-member cannot read a private club ride's coordinate
 - **WHEN** a rider who is not a member of a private club selects that club's ride by id, asking for
@@ -245,98 +247,26 @@ Stated as reach, positive and negative:
 - **WHEN** the column grants on `rides` are read for grantee `anon`
 - **THEN** there SHALL be none, for any column, for any operation
 
-### Requirement: The search SHALL be answered by our own index, and no keystroke SHALL reach a third party
-
-The typeahead reads `public.search_places()` against the self-hosted Overture extract — 736,538 rows
-on both projects. A rider's partial typing SHALL NOT be sent to any external service, at any point,
-including as a prefetch, a suggestion or an analytics event.
-
-The vendor is reachable from exactly one place, `resolve-ride-location`, which runs after a save,
-holds the only copy of the key, and — once this change lands — is not called at all for a ride whose
-location was picked.
-
-#### Scenario: Nothing leaves our infrastructure while typing
-- **WHEN** a rider types into the search sheet
-- **THEN** every request SHALL be to our own Supabase project
-- **AND** no request SHALL be issued to a geocoding, mapping, autocomplete or analytics vendor
-
-#### Scenario: The search does not fire per keystroke
-- **WHEN** a rider types continuously
-- **THEN** requests SHALL be debounced and the in-flight request SHALL be aborted, so cost to the
-  shared index is bounded and results cannot arrive out of order
-
-#### Scenario: Nothing below the floor is sent at all
-- **WHEN** the trimmed term is shorter than the client's minimum
-- **THEN** no request SHALL be made, and the sheet SHALL say what the minimum is rather than showing
-  "no results"
-
-### Requirement: The right to keep a coordinate SHALL be stated, and the search sheet SHALL link to the attribution page
-
-PD-114 names storage rights as load-bearing — *"'We may keep the lat/lng' is load-bearing for all
-three payoffs, so verify it before the migration lands"* — and its body's answer (Google's 30-day
-delete clause, Mapbox as the recommendation) is superseded. **The answer SHALL be written down here
-rather than left to be inferred from a decision made on another issue.**
-
-`public.places` is Overture's Places theme, published under **CDLA Permissive 2.0 and Apache 2.0** —
-**not ODbL**. There is no share-alike, no deletion clause, no rights that lapse with a subscription,
-and no per-result credit obligation: §3 of CDLA Permissive 2.0 exempts what an app renders
-("Results") from carrying the licence text. So a GERS id and a coordinate copied out of that index
-MAY be kept permanently, which is what makes a denormalised copy on `rides` lawful as well as
-correct. Settled by the product owner on PD-191, 2026-08-18.
-
-**The credit is paid once, on `/legal/attributions`, and the sheet SHALL link to it.** That is a
-requirement carried by both PD-114 and PD-259, in the same words — *"the search sheet must link to
-`/legal/attributions`… One link from the sheet, not a per-result credit and not a per-source line"* —
-because the licence argument depends on that page being reachable, and today it is linked only from
-Terms and Privacy, which a rider sees at signup and never again.
-
-**Measured 2026-08-18: `PlaceSearchField` carries no such link** — `grep -rn "attributions" src/`
-returns only `src/types/index.ts`, `legal/terms` and `legal/privacy`. PD-259 built the control first
-and did not build this. It SHALL be added to the shared control, where both stories expect it, and
-SHALL NOT be added twice.
-
-Map tiles are a **different vendor and a different obligation**: Geoapify requires an unconditional
-OpenStreetMap credit, discharged by the credit burned into the tile image and by its own line on that
-page. This requirement SHALL NOT merge the two.
-
-#### Scenario: The sheet reaches the attribution page
-- **WHEN** the search sheet is open
-- **THEN** it SHALL offer a link to `/legal/attributions`
-- **AND** no per-result or per-source credit line SHALL be rendered on a result row
-
-#### Scenario: The link is on the shared control
-- **WHEN** the link is added
-- **THEN** it SHALL live in `src/components/ui/`, so the club picker gains it in the same change
-- **AND** neither story SHALL ship a second copy
-
-#### Scenario: A stored coordinate has no expiry
-- **WHEN** a picked coordinate and GERS id are written to a ride
-- **THEN** no deletion deadline, cache window or subscription condition SHALL apply to them
-- **AND** the retention that governs them SHALL be the ride's own, per this spec's retention
-  requirement
+#### Scenario: A rider who has not accepted the terms cannot spend a credit
+- **WHEN** an account created without accepting the terms calls the proxy
+- **THEN** the metering row SHALL be refused by the participation gate
+- **AND** no vendor call SHALL be made
 
 ### Requirement: The search surface SHALL define every state it can be in
 
-Search sits in a sheet over a form the rider is part-way through. Every state below SHALL be
-designed, and **permission-denied and empty SHALL NOT be conflated** where a rider could act on the
-difference.
+The standing requirement stands unchanged in intent and SHALL NOT be co-owned by two lists. Its
+enumeration was written against a database-backed search and cannot describe a metered one — it has
+no ceiling state and no vendor-outage state.
 
-| State | Required behaviour |
-|---|---|
-| Idle / below the minimum | The minimum is named. Not "no results". |
-| Searching | A searching state distinct from "nothing matched". |
-| Results | Rows with a label line and a locality/street meta line. |
-| No matches | Says nothing matched, and the free text remains usable. |
-| Error / offline | Says the search failed and can be retried; Cancel returns to the intact form. |
-| Picked | The field shows the picked place and offers to clear it. |
-| Typed over | Typing in the text drops the pick — **product owner, 2026-08-18: _"Lets throw away the pin if the rider types more."_** |
-| Cleared | Text and pick cleared together; the field is back to its placeholder. |
-| Refused save | The pick survives a refused create or edit, like every other field. |
+The authoritative enumeration SHALL be the `place-search` capability's, which this change adds and
+which carries seven states including both rider ceilings and the application-wide one. This
+requirement SHALL defer to it rather than restate it, so that a state added later is added in one
+place.
 
-#### Scenario: `null` and `[]` are told apart
-- **WHEN** a search has been issued but has not returned
-- **THEN** the sheet SHALL show its searching state and SHALL NOT show "no places match", which would
-  otherwise flash on every successful search
+#### Scenario: One enumeration governs the sheet
+- **WHEN** a reader asks which states the lookup surface can be in
+- **THEN** the `place-search` capability SHALL be the answer
+- **AND** this capability SHALL NOT carry a second, divergent list
 
 #### Scenario: A refused save keeps the pick
 - **WHEN** a create or edit is refused — an audience violation, a length violation, a capacity rule —
@@ -351,11 +281,6 @@ difference.
 - **AND** the field SHALL stop showing a pick, so the screen never claims a pin the write will not
   store
 - **AND** the resulting write SHALL carry the typed text with all three location columns NULL
-
-#### Scenario: Results are bounded and ordered by the index
-- **WHEN** a term matches many rows
-- **THEN** the sheet SHALL show the bounded set `search_places()` returns, in the order it returns
-  them, with no client-side re-ranking and no pagination — there is no "next page" to offer
 
 ### Requirement: The stored place id SHALL be provenance and SHALL NOT be treated as a join key
 
@@ -492,4 +417,82 @@ Each surface below SHALL be left unbuilt and named, and SHALL NOT be half-built 
 #### Scenario: Nothing half-builds the autocomplete
 - **WHEN** the search sheet is implemented
 - **THEN** no inline completion SHALL be written into the input the rider is typing in
+
+### Requirement: The search SHALL be answered by a geocoder reached through our own proxy, and no keystroke SHALL reach the vendor from a rider's device
+
+This requirement is the direct reversal of the one it replaces, and the reversal is the whole point
+of this change — so it is restated here rather than left to be inferred from a capability that did
+not exist when `add-ride-start-location-search` was written.
+
+**Why it is being reversed.** The standing text requires the typeahead to read
+`public.search_places()` against the self-hosted Overture extract, and asserts that a rider's
+partial typing reaches no external service at any point. That index is Overture's **Places** theme —
+businesses and amenities — so a residential street with no registered business on it has no row and
+never will. Measured on PROD: `street ilike '%claijstraat%'` returns 0 rows nationally, and
+`search_places('Willem Claijstraat Berkhout')` returns nothing for a street that exists in the
+Dutch BAG. The requirement is satisfiable and the product is not.
+
+The typeahead SHALL therefore read the vendor through the Edge Function proxy this change adds.
+
+**The half of the old requirement that survives is the half about the device.** A rider's partial
+typing SHALL NOT be sent to the vendor *from their device*, at any point, including as a prefetch,
+a suggestion or an analytics event: the request SHALL originate from our infrastructure, so the
+vendor receives the text and never a rider's IP, identity or session. The key SHALL remain
+unreachable from the client bundle.
+
+**What genuinely changes, and SHALL be stated to riders rather than absorbed:** the search term
+itself now leaves our infrastructure. That is a rider-facing factual change, and `/legal/privacy`
+SHALL be broadened to cover it in the same PR that ships the proxy — not in a follow-up.
+
+#### Scenario: A partial term reaches the vendor only through our own infrastructure
+- **WHEN** a rider types into the lookup field
+- **THEN** the request SHALL be issued by the Edge Function proxy
+- **AND** no request to the vendor SHALL originate from the rider's device
+- **AND** the vendor SHALL receive no rider identity, session token or IP
+
+#### Scenario: The search term is never retained on our side
+- **WHEN** the proxy handles a lookup
+- **THEN** the term SHALL NOT be written to the metering ledger, the function's logs, or analytics
+
+#### Scenario: The search does not fire per keystroke
+- **WHEN** a rider types continuously
+- **THEN** requests SHALL be debounced and the in-flight request SHALL be aborted, so cost to the
+  shared index is bounded and results cannot arrive out of order
+
+#### Scenario: Nothing below the floor is sent at all
+- **WHEN** the trimmed term is shorter than the client's minimum
+- **THEN** no request SHALL be made, and the sheet SHALL say what the minimum is rather than showing
+  "no results"
+
+### Requirement: The right to keep a coordinate SHALL be stated, and the attribution SHALL name the provider actually used
+
+The standing text states the right to keep a coordinate under Overture's licence and requires the
+search sheet to link to the attribution page. The right survives; the licence behind it does not.
+
+Coordinates returned by the vendor SHALL be storable indefinitely, and the basis for that SHALL be
+recorded rather than assumed — this change's `design.md` §Open Questions carries it as Q1, and it
+SHALL be answered before the proxy serves PROD traffic. The Overture credit SHALL be removed from
+`/legal/attributions` in the same PR that drops the table, and the OpenStreetMap credit SHALL
+remain and SHALL be broadened to cover search results rather than map tiles alone.
+
+#### Scenario: The sheet reaches the attribution page
+- **WHEN** the search sheet is open
+- **THEN** it SHALL offer a link to `/legal/attributions`
+- **AND** no per-result or per-source credit line SHALL be rendered on a result row
+
+#### Scenario: The link is on the shared control
+- **WHEN** the link is added
+- **THEN** it SHALL live in `src/components/ui/`, so the club picker gains it in the same change
+- **AND** neither story SHALL ship a second copy
+
+#### Scenario: A stored coordinate has no expiry
+- **WHEN** a picked coordinate and GERS id are written to a ride
+- **THEN** no deletion deadline, cache window or subscription condition SHALL apply to them
+- **AND** the retention that governs them SHALL be the ride's own, per this spec's retention
+  requirement
+
+#### Scenario: The attribution page names no contributor that supplied nothing
+- **WHEN** the places table is dropped
+- **THEN** `/legal/attributions` SHALL no longer credit Overture
+- **AND** it SHALL credit the vendor and OpenStreetMap for both tiles and search results
 
