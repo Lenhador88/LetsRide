@@ -9,11 +9,22 @@ writes a default-club membership inside one transaction (`058`), so shared insta
 rather than an edge case, and a stream without a tiebreak reshuffles between loads for no reason
 the rider can see.
 
-Each source SHALL be read with its own bound. A source that returns **exactly** its bound is
-saturated and is incomplete below its oldest returned row. The **coherence horizon** SHALL be the
-**most recent** of the saturated sources' oldest timestamps, and the stream SHALL NOT include any
-entry older than it. A source returning fewer rows than its bound SHALL impose no horizon,
-because it is complete back to the club's beginning.
+Each source SHALL be read with its own bound and SHALL **declare** the instant
+below which its picture is incomplete, rather than the merge deriving it from the rows that
+survived — a read that post-processes its window is the only thing that knows how far back it
+looked. The **coherence horizon** SHALL be the **most recent** of the declared horizons, and the
+stream SHALL NOT include any entry older than it. A source returning fewer rows than its bound
+SHALL impose no horizon, because it is complete back to the club's beginning.
+
+**A wave read is NOT a source and SHALL declare no horizon.** It is scoped to the subject ids the
+timeline already holds, so it is bounded by the timeline's bound and contributes no window over the
+club's history. Adding a horizon for it would be worse than omitting one: the latest of the
+declared horizons is the cut, so a decoration read's oldest row could truncate the stream it
+decorates.
+
+**The condition under which that changes SHALL be stated rather than discovered.** If a later
+change draws a wave as its own entry — *"Ana waved at Bruno"* — it becomes a source and owes a
+horizon like every other.
 
 The stream SHALL then be capped for display.
 
@@ -67,6 +78,23 @@ part-way through paging.
 - **AND** entries between the two SHALL be excluded, because at least one source is already
   truncated there
 
+#### Scenario: The merge rule is covered by a unit test rather than by inspection
+- **WHEN** the horizon, the tiebreak, the saturation test and the three tail states are
+  implemented
+- **THEN** they SHALL live in pure functions with their own unit tests
+- **AND** each of the behaviours above SHALL have a case, because no other gate in this repo can
+  see a silently truncated stream
+
+#### Scenario: The horizon is unchanged by this change
+- **WHEN** the wave reads are added
+- **THEN** the set of declared horizons SHALL be exactly the five the timeline already computes
+- **AND** the stream's length and cut point SHALL be identical to what they were before
+
+#### Scenario: A wave read that returns nothing does not shorten the stream
+- **WHEN** either wave read returns zero rows or fails outright
+- **THEN** every entry SHALL still render
+- **AND** `complete` SHALL be computed from the same five sources as before
+
 #### Scenario: A paged club reaches its founding rather than a wall
 - **WHEN** a rider extends a stream whose sources all saturated on the first read
 - **THEN** each source's horizon SHALL move down as its next window is read
@@ -78,13 +106,6 @@ part-way through paging.
 - **THEN** `complete` SHALL be false
 - **AND** the `club-created` entry SHALL NOT be drawn, because it would assert that nothing
   happened between the club's founding and the oldest entry on screen
-
-#### Scenario: The merge rule is covered by a unit test rather than by inspection
-- **WHEN** the horizon, the tiebreak, the saturation test and the three tail states are
-  implemented
-- **THEN** they SHALL live in pure functions with their own unit tests
-- **AND** each of the behaviours above SHALL have a case, because no other gate in this repo can
-  see a silently truncated stream
 
 ## ADDED Requirements
 

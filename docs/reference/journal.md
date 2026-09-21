@@ -2112,7 +2112,7 @@ npx vitest run src/lib/data/__tests__/announcement-rule.test.ts
 
 **PD-375, branch `claude/pd-375-club-timeline-load-more`.** `CLUB_TIMELINE_LIMIT` was a hard stop at
 20 entries with no `load more`; the club timeline now extends as the rider scrolls, via
-`openspec/changes/page-the-club-timeline-on-scroll/` (proposal reviewed once, revised against 8
+`openspec/changes/archive/2026-09-21-page-the-club-timeline-on-scroll/` (proposal reviewed once, revised against 8
 findings, then implemented — read `design.md` before touching any of this again). **This is what
 closes PD-374's hole**, which was cancelled on 2026-09-02 on the assumption that scrolling back
 through the timeline — rather than a second door on the members list — was the fix: an
