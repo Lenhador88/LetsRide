@@ -44,6 +44,15 @@ for name in NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY NEXT_PUBLIC_C
     fail "$name is not set. Add it to the workflow's Environment section — native-shell.md §Xcode Cloud lists each variable and where its PROD value lives."
 done
 
+# Exact, because release:check cannot catch a wrong origin that is not
+# localhost: layout.tsx's og:image fallback and public/app-version.json put
+# this value into the bundle whatever the variable says. The literal is
+# RELEASE_ORIGIN in scripts/native/release-guards.mjs; the tripwire runs the
+# script with that constant, so the two cannot drift apart silently.
+release_origin='https://app.letsride.social'
+[ "$NEXT_PUBLIC_CANONICAL_ORIGIN" = "$release_origin" ] ||
+  fail "NEXT_PUBLIC_CANONICAL_ORIGIN is '$NEXT_PUBLIC_CANONICAL_ORIGIN', not '$release_origin'. A TestFlight build with any other origin sends auth and share links to the wrong host, and no later gate can see it."
+
 cd "$CI_PRIMARY_REPOSITORY_PATH"
 
 # The major comes from .nvmrc so this is not a fourth hand-kept copy of it

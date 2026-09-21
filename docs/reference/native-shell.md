@@ -504,12 +504,14 @@ checklist below, done by hand in Xcode and App Store Connect.
 
 | File | Why it exists |
 |---|---|
-| `ios/App/ci_scripts/ci_post_clone.sh` | Apple runs it after the clone and before `xcodebuild`. A bare clone cannot archive (§The shell has why: three gitignored Copy Bundle Resources inputs, plugins resolved out of `node_modules`), so it runs `brew install node@<.nvmrc>`, `npm ci`, `npm run build:native`, `npx --no cap sync ios`, then `npm run release:check`, under `set -eu` |
+| `ios/App/ci_scripts/ci_post_clone.sh` | Apple runs it after the clone and before `xcodebuild`. A bare clone cannot archive (§The shell has why: three gitignored Copy Bundle Resources inputs, plugins resolved out of `node_modules`), so it installs Node, builds the bundle, syncs it and gates it under `set -eu` — the steps and their order are the script's and the test's `STEPS`, not this cell's |
 | `ios/App/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme` | Xcode Cloud builds only **shared** schemes, and the Capacitor template ships none |
 | `scripts/native/__tests__/xcode-cloud.test.mjs` | Runs the script against stub tools and pins the order, the refusals and the execute bit |
 
-**The script refuses, by name and before running anything, on a branch other than `main` or a
-missing required variable.** The branch guard is the one thing `release:check` cannot do — it reads
+**The script refuses, by name and before running anything, on a branch other than `main`, a
+missing required variable, or a canonical origin that is not exactly `RELEASE_ORIGIN`** — that last
+because `release:check` cannot see a wrong non-`localhost` origin: the `og:image` fallback and
+`public/app-version.json` put `RELEASE_ORIGIN` into every bundle whatever the variable says. The branch guard is the one thing `release:check` cannot do — it reads
 what a bundle points at, not which branch built it — and without it a manual build of `development`
 reaches TestFlight carrying PROD's backend. **It also fails when `cap sync` leaves `ios/` different
 from the commit**, rather than warning: Xcode Cloud resolves SwiftPM from the committed
@@ -542,8 +544,8 @@ right column says, never in the repo:
 | Variable | Set it? | PROD value from |
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | **Required** — the script refuses without it | Vercel → Production. `release:check` refuses any ref but `letsride`'s |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | **Required** | Vercel → Production (the publishable key) |
-| `NEXT_PUBLIC_CANONICAL_ORIGIN` | **Required** | `RELEASE_ORIGIN` in `scripts/native/release-guards.mjs`; `release:check` refuses anything else. Never on Vercel |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | **Required** | Vercel → Production (the publishable key). **Nothing checks it belongs to PROD** — DEV's key beside PROD's URL passes every gate and fails every request |
+| `NEXT_PUBLIC_CANONICAL_ORIGIN` | **Required** | `RELEASE_ORIGIN` in `scripts/native/release-guards.mjs`, exactly — the script refuses anything else. Never on Vercel |
 | `NEXT_PUBLIC_SENTRY_DSN` | Optional — unset is a silent no-op | Vercel → Production, once `observability.md` §The owner action still outstanding lands |
 | `NEXT_PUBLIC_SENTRY_ENVIRONMENT` | With the DSN: `production` | The TestFlight binary is the one the store later releases. Unset reports `unknown` |
 | `NEXT_PUBLIC_POSTHOG_KEY` | Optional | Vercel → Production — the Production-only key, for the same reason |
@@ -551,9 +553,9 @@ right column says, never in the repo:
 
 **Never set** `CAPACITOR_BUILD` (`build:native` sets it), `NODE_ENV` (`production` makes `npm ci`
 drop the devDependencies `cap sync` needs), `VERCEL_PROJECT_PRODUCTION_URL` (its fallback is
-correct), or any name containing `SERVICE_ROLE` or `GEOAPIFY` — the only files naming
-`NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY` and `NEXT_PUBLIC_GEOAPIFY_KEY` are the tripwire tests that
-refuse them.
+correct), or any name containing `SERVICE_ROLE` or `GEOAPIFY` — nothing in `src/` reads
+`NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY` or `NEXT_PUBLIC_GEOAPIFY_KEY`; the tripwire tests that
+refuse them are their only code mentions.
 
 **Owner checklist** — in this order:
 

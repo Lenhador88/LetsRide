@@ -4,6 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { RELEASE_ORIGIN } from '../release-guards.mjs'
 
 const ROOT = path.resolve(fileURLToPath(new URL('../../..', import.meta.url)))
 const RELATIVE = 'ios/App/ci_scripts/ci_post_clone.sh'
@@ -41,7 +42,9 @@ const REQUIRED_ENV = {
   CI_BRANCH: 'main',
   NEXT_PUBLIC_SUPABASE_URL: 'https://example.invalid',
   NEXT_PUBLIC_SUPABASE_ANON_KEY: 'stub',
-  NEXT_PUBLIC_CANONICAL_ORIGIN: 'https://example.invalid',
+  // The constant itself, so a drift between it and the script's literal turns
+  // the good run red rather than letting either move alone.
+  NEXT_PUBLIC_CANONICAL_ORIGIN: RELEASE_ORIGIN,
 }
 
 let tmp
@@ -143,7 +146,7 @@ describe('a good run', () => {
 })
 
 describe('any failing step fails the build, and nothing after it runs', () => {
-  it.each(STEPS.filter((step) => !step.startsWith('git ')))('%s', (failing) => {
+  it.each(STEPS)('%s', (failing) => {
     const { status, calls } = run({ STUB_FAIL: failing })
     expect(status).not.toBe(0)
     const ran = steps(calls)
@@ -166,6 +169,18 @@ describe('refuses before running anything', () => {
     expect(stderr).toContain(name)
     expect(calls).toEqual([])
   })
+
+  // release:check cannot see these: the og:image fallback and app-version.json
+  // carry RELEASE_ORIGIN into the bundle whatever the variable says.
+  it.each(['https://app-dev.letsride.social', 'https://letsride.social', `${RELEASE_ORIGIN}/`])(
+    'when NEXT_PUBLIC_CANONICAL_ORIGIN is %s',
+    (origin) => {
+      const { status, stderr, calls } = run({ NEXT_PUBLIC_CANONICAL_ORIGIN: origin })
+      expect(status).toBe(1)
+      expect(stderr).toContain(origin)
+      expect(calls).toEqual([])
+    }
+  )
 
   // A manual build of another branch would reach TestFlight carrying PROD's
   // backend and unreleased code; release:check cannot see the branch.
