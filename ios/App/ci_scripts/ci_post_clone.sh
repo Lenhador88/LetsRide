@@ -88,7 +88,7 @@ drift=$(git status --porcelain --untracked-files=all -- ios) ||
   fail 'git status failed, so whether cap sync rewrote a committed file is unknown.'
 if [ -n "$drift" ]; then
   printf '%s\n' "$drift" >&2
-  fail 'cap sync changed the files above. Run `npx cap sync ios` locally, commit the result, and merge it to main.'
+  fail 'cap sync changed the files above. Run "npx cap sync ios" locally, commit the result, and merge it to main.'
 fi
 
 # After the sync, never before: it compares the copy the archive will contain
