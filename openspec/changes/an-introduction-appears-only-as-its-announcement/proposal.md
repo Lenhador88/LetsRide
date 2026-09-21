@@ -11,7 +11,7 @@
 >
 > It supersedes two decisions of **PD-365**
 > (`openspec/changes/introduce-yourself-on-joining-a-club/`, migration `097`) and one of **PD-356**
-> (`openspec/changes/club-timeline-engagement/`, migration `092`). Both are merged and applied.
+> (`openspec/changes/archive/2026-09-21-club-timeline-engagement/`, migration `092`). Both are merged and applied.
 > **DEV is at `100`, measured** — `list_migrations` against `fpmrimzxadewsaiwpsel`, 2026-09-02, with
 > the three hand-applied rows that make its row count read high and every file present. **PROD was
 > level at `100` on 2026-09-01 per `CLAUDE.md` and was NOT re-measured here**, because this change

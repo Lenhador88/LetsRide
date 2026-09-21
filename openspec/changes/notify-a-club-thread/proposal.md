@@ -78,7 +78,7 @@ re-derives it. The Linear half is first-hand: `get_issue` and `list_comments` on
 `node_modules` was absent when they were written, so `openspec new change` could not run and the
 artifacts were written to the exact shape the scaffold produces (`.openspec.yaml` with `schema` and
 `created`, plus `proposal.md`, `design.md`, `specs/<capability>/spec.md`, `tasks.md`), copied from
-`openspec/changes/club-timeline-engagement/`. The CLI is installed now and has been run:
+`openspec/changes/archive/2026-09-21-club-timeline-engagement/`. The CLI is installed now and has been run:
 
 ```bash
 node_modules/.bin/openspec validate notify-a-club-thread --type change            # valid

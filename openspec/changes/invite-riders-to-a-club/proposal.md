@@ -88,7 +88,7 @@ re-derive the rule from a false premise and may conclude it can be dropped.
 **A private club's `Share club` row is a live defect, and it now has two callers.**
 `ClubOptionsMenu` calls `shareAppLink(routes.club(clubId))` unconditionally; `clubs` SELECT refuses
 that route to the non-member you sent it to, so the recipient gets "content unavailable". PD-356's
-`openspec/changes/club-timeline-engagement/design.md` §Q1 — answered 2026-08-31, *the row shares the
+`openspec/changes/archive/2026-09-21-club-timeline-engagement/design.md` §Q1 — answered 2026-08-31, *the row shares the
 CLUB, labelled `Share club`* — records this defect as open and, deliberately and annotated at the
 site, adds a **second caller**: that row on the club thread screen, which inherits the same breakage
 the moment the club is private. Its own words: *"this change is not allowed to ship a second caller

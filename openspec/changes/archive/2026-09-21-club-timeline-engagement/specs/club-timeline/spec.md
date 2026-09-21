@@ -94,6 +94,35 @@ decorates.
 change draws a wave as its own entry — *"Ana waved at Bruno"* — it becomes a source and owes a
 horizon like every other.
 
+#### Scenario: The tail cannot claim an event that is missing
+- **WHEN** one source saturates and another does not
+- **THEN** the stream SHALL stop at the saturated source's oldest returned timestamp
+- **AND** SHALL NOT contain an older entry from the unsaturated source, even though that entry
+  was fetched
+
+#### Scenario: An ordinary club reaches its own beginning
+- **WHEN** no source saturates
+- **THEN** there SHALL be no horizon, the stream SHALL run to the club's creation entry, and no
+  handoff row SHALL be drawn
+
+#### Scenario: Two events at one instant keep a stable order
+- **WHEN** two entries share a timestamp
+- **THEN** the row id SHALL break the tie
+- **AND** the order SHALL be identical across reloads
+
+#### Scenario: The horizon is the most recent of the oldest, not the oldest
+- **WHEN** two sources are saturated with different oldest timestamps
+- **THEN** the horizon SHALL be the **later** of the two
+- **AND** entries between the two SHALL be excluded, because at least one source is already
+  truncated there
+
+#### Scenario: The merge rule is covered by a unit test rather than by inspection
+- **WHEN** the horizon, the tiebreak, the saturation test and the two tail states are
+  implemented
+- **THEN** they SHALL live in a pure function with its own unit test
+- **AND** each of the behaviours above SHALL have a case, because no other gate in this repo can
+  see a silently truncated stream
+
 #### Scenario: The horizon is unchanged by this change
 - **WHEN** the wave reads are added
 - **THEN** the set of declared horizons SHALL be exactly the five the timeline already computes
@@ -121,6 +150,29 @@ neither.
 about a person to leave subject-less. If a later change draws a waver list, it inherits
 `getClubJoins`' rule — a rider whose profile the policies hide is dropped rather than drawn
 nameless.
+
+#### Scenario: A blocked rider's join never appears
+- **WHEN** a rider blocked in either direction holds a `club_members` row for the club
+- **THEN** the join event SHALL be absent from the timeline
+- **AND** the absence SHALL come from the `club_members` SELECT policy, not from a client filter
+
+#### Scenario: A blocked rider's thread, postcard and ride never appear
+- **WHEN** a blocked rider has started a thread, posted a club postcard and created a club ride
+- **THEN** none of the three SHALL appear as a timeline entry
+- **AND** each absence SHALL come from that table's own policy
+
+#### Scenario: An unnameable actor drops its event rather than rendering "Rider"
+- **WHEN** an event row's actor profile is withheld — most reachably, an account with a NULL
+  `username` between signup and the username step
+- **THEN** the event SHALL be dropped from the stream
+- **AND** the timeline SHALL NOT render a sentence naming nobody
+
+#### Scenario: The club's own creation event survives a blocked owner
+- **WHEN** the club's owner is blocked in either direction, so their profile and roster row are
+  both withheld
+- **THEN** the creation entry SHALL render as a club-scoped sentence with no avatar and no name
+- **AND** it SHALL NOT be dropped, because it is an event about the club rather than about a
+  person
 
 #### Scenario: A blocked rider's wave on a visible thread is filtered by its own policy
 - **WHEN** A has blocked B, and B has waved a thread authored by C whom A has not blocked
