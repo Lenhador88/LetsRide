@@ -369,41 +369,6 @@ known-broken path, and the site says so.
 - **THEN** it SHALL design the expiry, the revoke, the use count and the secret-authorised RPCs
 - **AND** SHALL NOT reach a capability URL as a side effect of wanting a share button to work
 
-### Requirement: The words half of "say welcome" SHALL be rider-initiated and SHALL create no schema
-
-A join entry MAY offer **Say welcome**, which opens the existing thread composer with its title
-pre-filled and nothing else pre-decided. It SHALL create no row until the rider submits, and it
-SHALL add no table, column, trigger or RPC.
-
-**No trigger SHALL create a `club_threads` row.** `club_threads.author_id` is `NOT NULL` with no
-default and cascades from `profiles`, so an automatic thread must name a rider who did not write
-it — and both candidates fail: the joiner as author may delete the thread others welcomed them in,
-cascading their messages away, and the club owner as author means the application has published a
-rider's username into a title that no verb can edit (`club_threads` has no UPDATE policy and no
-UPDATE grant), that the named rider cannot delete, and that keeps naming them after they leave.
-
-The Welcome club (`058`) makes the automatic shape self-defeating besides: one join per signup
-means one thread per rider for ever, and carving that club out — as `private.notify_club_joined`
-already does for its own fan-out — leaves the rider with the emptiest app as the only one
-guaranteed no welcome.
-
-#### Scenario: No thread is created without a rider composing it
-- **WHEN** any rider joins any club, by any path — `joinClub`, `createClub`,
-  `complete_onboarding` (`058`), or `private.join_club_from_request` (`085`)
-- **THEN** no `club_threads` row SHALL be written
-- **AND** no trigger SHALL be added to `club_members` by this change
-
-#### Scenario: The composer is pre-filled and fully editable
-- **WHEN** a member taps Say welcome on a join entry
-- **THEN** the thread composer SHALL open with a title naming the joiner and an empty body
-- **AND** the rider SHALL be able to change or discard both, the row being written only on submit
-
-#### Scenario: A welcome thread names a rider who may leave, and that is a rider's own sentence
-- **WHEN** the joiner later leaves the club, blocks the author, or deletes their account
-- **THEN** the thread SHALL behave exactly as any other rider-authored thread does under `081`
-- **AND** no additional rule SHALL be introduced for it, because the title is a rider's sentence
-  about another rider and not the application publishing a name on its own initiative
-
 ### Requirement: Historical joins SHALL be wavable with no backfill
 
 Every `club_members` row predating this change SHALL be wavable the moment `092` applies, because

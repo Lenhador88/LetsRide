@@ -9,7 +9,7 @@
 > `migration: N`, `primitive: N`, this change directory named at full path) — **nothing overtakes
 > the body**, so there is no correction to reconcile into what follows.
 >
-> It narrows one decision of **PD-365** (`openspec/changes/introduce-yourself-on-joining-a-club/`,
+> It narrows one decision of **PD-365** (`openspec/changes/archive/2026-09-21-introduce-yourself-on-joining-a-club/`,
 > migration `097`) and inherits **PD-384**'s sheet-ownership rule and **PD-372**'s
 > (`openspec/changes/an-introduction-appears-only-as-its-announcement/`) placement rule. All three
 > are merged.

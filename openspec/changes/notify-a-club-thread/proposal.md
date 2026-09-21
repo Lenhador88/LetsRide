@@ -7,7 +7,7 @@
 > `list_comments` were both called and the body is the whole of it.
 >
 > Migration number is **`098`** and it is fixed. `097` belongs to
-> `openspec/changes/introduce-yourself-on-joining-a-club/` and `099` to PD-368. This change
+> `openspec/changes/archive/2026-09-21-introduce-yourself-on-joining-a-club/` and `099` to PD-368. This change
 > touches **nothing** in that directory, and **no column of `club_threads`**.
 
 ## ⚠ Read this first

@@ -1,7 +1,7 @@
 # Tasks — notify a club thread (`098`)
 
 **Migration number is `098` and it is fixed.** `097` belongs to
-`openspec/changes/introduce-yourself-on-joining-a-club/`, `099` to PD-368. **Do not touch that
+`openspec/changes/archive/2026-09-21-introduce-yourself-on-joining-a-club/`, `099` to PD-368. **Do not touch that
 directory, and do not touch a column of `club_threads`.** If both stories are in flight at once, use
 `isolation: "worktree"` — they must never share a working tree or a migration file.
 
@@ -357,7 +357,7 @@ Both are in `src/components/notifications/`. **There is no `src/lib/notification
 - [ ] **5.2** No change to `club_threads`, `club_messages` or `club_thread_waves` — not a column, not
       a policy, not a grant. The three triggers are the only additions to them.
 - [ ] **5.3** No push. Adding a type does not enrol it for delivery.
-- [ ] **5.4** Nothing in `openspec/changes/introduce-yourself-on-joining-a-club/`, and no
+- [ ] **5.4** Nothing in `openspec/changes/archive/2026-09-21-introduce-yourself-on-joining-a-club/`, and no
       `introduces_user_id` or `introduction`.
 - [ ] **5.5** No feature flag. Nothing concrete is wrong right now that a flag would make safe, and
       a flag defaulting off would make the fan-out untestable.

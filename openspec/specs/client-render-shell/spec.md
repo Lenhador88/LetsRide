@@ -891,3 +891,83 @@ in a hurry.
 - **THEN** the postcard's and the timeline's toggles SHALL share one implementation
 - **AND** the rollback and `aria-pressed` rules SHALL exist in exactly one place
 
+### Requirement: The introduction prompt SHALL define every state, and SHALL never be the only way out of a screen
+
+The prompt is a sheet over the club it belongs to. Its states:
+
+| State | Behaviour |
+|---|---|
+| **Not owed** | Absent. No flash, no placeholder, and no read issued for a rider the rule already excludes |
+| **Deciding** | The read that decides whether one is owed has not answered. The sheet SHALL NOT open, and the club behind it SHALL render normally |
+| **Open** | The welcome sentence, the input, a submit and a way out. The input SHALL show a starter as a **placeholder** and SHALL hold no value. Submit SHALL be inert until the input holds non-whitespace text the rider typed, and a `Not now` SHALL always be present |
+| **Submitting** | Submit shows pending; the input SHALL NOT be cleared and SHALL NOT be disabled in a way that loses what was typed |
+| **Failed** | The message stays in the input, the error is shown against it, and the sheet stays open so the rider can retry. The rider SHALL be told the **introduction** failed and SHALL NOT be told the join failed |
+| **Offline** | Submit SHALL be refused with an offline message and the text SHALL be preserved. The write SHALL NOT be queued for later — there is no write queue in this app and inventing one here would post an introduction into a club minutes or hours after the rider stopped expecting it |
+| **Done** | The sheet closes, the join row gains its count, and no confirmation screen is interposed |
+
+**A rider SHALL always be able to reach the club behind the sheet.** "Mandatory" means the Post
+control is inert without text; it SHALL NOT mean the sheet cannot be closed. A rider who is already
+a member and cannot complete the write SHALL NOT be held in a modal — a dropped connection would
+otherwise lock them out of a club they have joined.
+
+**The dismissal SHALL hold for the session and SHALL NOT be recorded in the schema.** The prompt
+returns on the rider's next visit to that club and never twice in one session. A dismissal is a fact
+about a moment, not about the club, and it SHALL be cleared with the rest of the session on
+sign-out.
+
+**The starter SHALL be a placeholder and SHALL NOT be a value, and the two rules above are why.**
+Submit is inert until the field holds non-whitespace text; a field carrying a prefilled value is
+never empty, so submit would be live on open and one tap would post the starter unedited. Shipping
+both a prefilled value and an inert submit is a rule that can never fire, and SHALL NOT be done: if
+a value is ever chosen instead, the inert-submit rule SHALL be dropped in the same change and the
+sheet SHALL say plainly that submit is live on open.
+
+#### Scenario: The sheet opens with a starter and an inert submit
+- **WHEN** the prompt opens
+- **THEN** the input SHALL display the starter wording
+- **AND** the input's value SHALL be empty
+- **AND** submit SHALL be inert
+
+#### Scenario: The starter cannot be posted by one tap
+- **WHEN** a rider opens the prompt and taps submit without typing
+- **THEN** nothing SHALL be written
+- **AND** no introduction SHALL exist for that membership
+
+#### Scenario: A failed introduction does not read as a failed join
+- **WHEN** the introduction write fails
+- **THEN** the message SHALL say the introduction was not posted
+- **AND** it SHALL NOT suggest the rider is not a member
+
+#### Scenario: The typed text survives every failure
+- **WHEN** the write fails, or the rider is offline
+- **THEN** the text SHALL still be in the input
+
+#### Scenario: The sheet is never a trap
+- **WHEN** the write cannot succeed for any reason
+- **THEN** the rider SHALL be able to dismiss the sheet and use the club
+
+### Requirement: A count that describes rows the viewer cannot read SHALL be absent, not zero
+
+A join row's comment count summarises a thread. Where the viewer cannot read that thread — a
+non-member of a public club, a rider blocked by the subject, a rider who has left — the count SHALL
+be **absent** along with its icon and its link, and SHALL NOT be rendered as `0`.
+
+Zero and not-allowed are identical from the client, and rendering the second as the first would
+assert that a conversation with no comments exists to somebody who may not know it exists at all.
+Absent is also what a genuine zero draws, so the two remain indistinguishable to the viewer — which
+is the intended outcome, and different from telling them a number.
+
+#### Scenario: Permission-denied is drawn as absent
+- **WHEN** a viewer cannot read the introduction thread
+- **THEN** the join row SHALL draw no comment icon, no number and no link
+
+#### Scenario: A genuine zero draws the same
+- **WHEN** an introduction exists that the viewer can read and nobody has commented
+- **THEN** the row SHALL draw no count
+- **AND** tapping the row SHALL still open the thread
+
+#### Scenario: The decoration never gates the row
+- **WHEN** the read that supplies introductions fails entirely
+- **THEN** every join row SHALL still render its sentence, its time and its wave
+- **AND** the failure SHALL cost the doors, not the rows
+

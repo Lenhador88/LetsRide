@@ -2531,7 +2531,7 @@ share the new value. The reset was one SQL `update` on `auth.users.encrypted_pas
 
 **The two `walk-fixture*` accounts are a PAIR and the second is the point.** A club's owner is
 exempt from the introduction prompt (`097`, and
-`openspec/changes/introduce-yourself-on-joining-a-club/design.md` §D7), so walking as the owner alone
+`openspec/changes/archive/2026-09-21-introduce-yourself-on-joining-a-club/design.md` §D7), so walking as the owner alone
 renders a code path the feature does not have. Walk as **both** when the club detail changes.
 
 **Replacing them, if they are ever lost or you want fresh ones:** sign up through
