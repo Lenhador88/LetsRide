@@ -505,7 +505,6 @@ club's 5 rides still says *this club rides*, and stays; a stream showing 3 of 30
 - **AND** the two decisions SHALL be reachable independently, so a later change to one does not
   silently move the other
 
-
 ### Requirement: A control's states SHALL be a function of its own inputs, and SHALL NOT be gated on an unrelated read
 
 A control whose visibility is decided by its own data SHALL be mounted where that decision is the
@@ -549,3 +548,816 @@ is ever written down.
 - **THEN** the control SHALL draw nothing until that input has settled
 - **AND** the input SHALL be a required prop, so a caller that omits it renders nothing rather than
   the wrong message
+
+### Requirement: A surface backed by a third party SHALL distinguish refusal, exhaustion and outage from emptiness
+
+The standing rules already separate *failed* from *empty*, and *offline* from *generic error*. A
+metered third-party dependency adds two states neither of those covers, and both look exactly like
+zero rows from the client:
+
+- **This rider has been refused for now** — they have used their share, the app has not failed, and
+  waiting fixes it.
+- **The application has been refused for now** — nothing about this rider's behaviour is relevant, and
+  waiting fixes it for reasons they cannot influence.
+
+The two SHALL NOT be collapsed into each other, because one is a fact about the rider and the other is
+not, and a message blaming a rider for the application's spending is a message they will act on
+wrongly. The second SHALL be presented as unavailability.
+
+Neither SHALL be presented as "nothing matched", which sends the rider to correct a spelling that was
+already correct.
+
+A screen carrying such a surface SHALL remain usable in every one of these states: the surface is an
+accelerator on a form, and a form SHALL never be blocked by a third party's availability or by a
+budget.
+
+#### Scenario: Five zero-row causes render as five different screens
+- **WHEN** the surface has nothing to show
+- **THEN** it SHALL render the state matching the cause: below the minimum, searching, nothing matched,
+  unavailable, or this rider has searched a lot just now
+- **AND** the offline case SHALL be reported as offline, per the standing requirement, rather than as
+  any of the other four
+
+#### Scenario: The vendor is never named in an error a rider reads
+- **WHEN** any of these states renders
+- **THEN** it SHALL NOT contain a vendor name, a status code, a quota number, or a retry-after value
+- **AND** it SHALL say what the rider can do instead, which is always "type it yourself" where the field
+  accepts text
+
+#### Scenario: The form outlives the surface
+- **WHEN** the third-party surface is in any failure state
+- **THEN** the form it sits on SHALL still submit
+- **AND** everything already typed SHALL survive opening, failing and closing the surface
+
+### Requirement: A newly-required form field SHALL refuse in the shape the form already refuses, and its pre-fill SHALL NOT manufacture an answer
+
+Where a change makes an existing optional field required, the refusal SHALL use the mechanism that
+form already uses for its other required fields, and any pre-fill SHALL leave the rider's answer
+unmade until the rider makes it.
+
+`CreateClubForm`'s location field is the case, and both halves have a wrong-looking-correct
+alternative.
+
+**The refusal is schema-and-focus, not a disabled submit.** The form's header records the disabled
+submit as tried and reverted — *"a disabled submit here read as the resting state of an untouched
+form and left the tab order early"* — on a form with six controls. The onboarding town step does the
+opposite, correctly, because it has one control and one question. Two screens in one change doing
+opposite things is only safe if the reason is written down.
+
+**The pre-fill is a search term, never a value.** A rider's resolved position cannot become a pick:
+`RiderLocation` is `{ lat, lon, source }` and a `PlaceValue` needs a `name` and a `placeId` too, so
+any seeded *value* would be fabricated. Seeding the *term* on first focus keeps the rider's pick the
+rider's, spends no metered credit for a rider who never touches the field, and never displays text a
+submit would not store.
+
+#### Scenario: Submitting with no location
+- **WHEN** the rider submits the create-club form having picked no place
+- **THEN** the action SHALL refuse before any write, with the message **"Pick where your club is
+  based."**, and no `clubs` row SHALL be inserted
+- **AND** the submit button SHALL NOT have been disabled — it stays gated on `busy` alone, as it is
+  today
+- **AND** focus SHALL move to the **visible search input**, which requires the form to reach past the
+  hidden `location_name` field; a refusal whose focus move silently does nothing SHALL be treated as
+  a defect rather than as acceptable
+
+#### Scenario: A place typed and never picked
+- **WHEN** the rider types a place name, does not choose a suggestion, and submits
+- **THEN** the submit SHALL be refused with the same message, and nothing SHALL be stored
+- **AND** the four hidden fields SHALL be empty, because in place mode they read through the pick and
+  the visible input carries no `name`
+- **AND** the typed draft SHALL revert on blur, so the rider is never shown a location a submit would
+  not store
+
+#### Scenario: A partial set of hidden fields
+- **WHEN** fewer than all four of `location_name`, `location_place_id`, `latitude` and `longitude`
+  arrive
+- **THEN** `readClubLocation` SHALL return `null` — not a partial object and not an error — and the
+  create gate SHALL then refuse it with the same message
+- **AND** the emptiness test SHALL stay on the **string**, never on the parsed number, because
+  `Number('')` is `0` and `0` is a real coordinate
+- **AND** the new gate SHALL NOT be implemented as a truthiness test on a coordinate, which would
+  refuse a genuine club on the equator or the prime meridian
+
+#### Scenario: The pre-fill when the rider has a town
+- **WHEN** the rider's `profiles.location` holds a town and they focus the location field for the
+  first time
+- **THEN** that town SHALL become the input's text and the lookup's term, and the suggestion list
+  SHALL open on real results the rider can pick from
+- **AND** no lookup SHALL have been performed before that focus, because a lookup spends a metered
+  credit whose ledger row is written before the vendor is called
+- **AND** the rider SHALL still have to pick; no value SHALL be selected on their behalf
+
+#### Scenario: The pre-fill when there is nothing to seed
+- **WHEN** the rider has no `profiles.location`, or the read has not settled, or they have declined
+  device location
+- **THEN** the field SHALL behave exactly as it does today — empty, no seed, no lookup — and the form
+  SHALL be fully usable
+- **AND** the pre-fill SHALL NOT fall back to a device fix, SHALL NOT raise an OS permission prompt,
+  and SHALL NOT perform an IP lookup
+
+#### Scenario: The seed never becomes a stored answer
+- **WHEN** a rider focuses the field, sees the seeded term, and blurs without picking
+- **THEN** the field SHALL be empty, because the draft is dropped on blur — which is the truth about
+  their answer rather than a loss of one
+- **AND** the submit SHALL be refused if they then submit, exactly as if they had never focused it
+
+#### Scenario: Editing a club is untouched
+- **WHEN** a club owner edits a club that carries no location, changing only its name
+- **THEN** the edit SHALL succeed, no location SHALL be required, and the field SHALL carry no
+  refusal
+- **AND** an owner adding a location on edit SHALL still be able to, through the same field and the
+  same four names
+
+### Requirement: A screen for a resource the reader may not read SHALL be a separate render branch, not the full screen with every section empty
+
+Where a route can be reached by a reader whose row security refuses most of what the route draws,
+the route SHALL render a **distinct branch** that issues only the reads that can succeed, rather
+than the full screen with each gated section falling to its empty state.
+
+The reason is `client-render-shell`'s own standing requirement that permission-denied and empty be
+told apart: a full screen with four empty sections asserts four false facts about the resource —
+that it has no rides, no postcards, no threads and, by the roster's absence, no members — each of
+which the reader is in no position to know.
+
+The branch SHALL be selected on a **decided** answer, never on a falsy one. `null` from the primary
+read is decided; `undefined` is "not yet".
+
+#### Scenario: The private club preview renders no query that can return zero rows
+- **WHEN** a rider who is not a member reaches a private club's detail route
+- **THEN** the screen SHALL issue exactly two reads — the ordinary club read, which decides `null`,
+  and the preview accessor — and no others
+- **AND** `getClubFeed`, `getClubMembers`, `getRides` and the threads read SHALL NOT be called at all
+
+#### Scenario: The 404 still exists and is still indistinguishable
+- **WHEN** the id names no club, or a private club the reader may not discover
+- **THEN** **both** reads SHALL answer `null` and the route SHALL `notFound()`
+- **AND** a nonexistent club and an undiscoverable one SHALL reach the same screen, per decision #1
+
+#### Scenario: Neither read's `undefined` triggers a 404
+- **WHEN** either read is still in flight
+- **THEN** the route SHALL render its skeleton and SHALL NOT call `notFound()`
+- **AND** the preview read SHALL be disabled entirely until the primary read has decided, so it is
+  never issued for a club the reader can see
+
+#### Scenario: The branch states why it is empty
+- **WHEN** the preview branch renders
+- **THEN** it SHALL carry one sentence naming the club's privacy as the reason
+- **AND** it SHALL NOT render any existing empty-state string, including "This club has not
+  ridden, yet!" and "This club has not written a description, yet!"
+
+#### Scenario: Membership-gated affordances are absent, not disabled
+- **WHEN** the preview branch renders
+- **THEN** the create-ride row, the add-postcard tile, the thread composer, the options menu and
+  every `See all` SHALL be **absent**
+- **AND** the reason SHALL be this screen's own recorded rule: a control that always fails RLS is
+  worse than no control
+
+#### Scenario: `viewer_role` gains no third value
+- **WHEN** the two branches are compared
+- **THEN** `isMember` SHALL be computed only on the full branch, from a real `ClubDetail`
+- **AND** no existing gate on it SHALL change meaning
+
+#### Scenario: The header works on both branches
+- **WHEN** the preview branch renders its header
+- **THEN** the club's name SHALL be shown from the preview and the avatar SHALL fall back to
+  initials
+- **AND** back SHALL return to the list the rider came from, as it does on the full branch
+
+### Requirement: A list assembled from two reads SHALL NOT present one of them as the whole answer when the other fails
+
+Where a screen merges two independent reads into one list, a failure of either SHALL be visible.
+Rendering the surviving half alone is indistinguishable, to the rider, from there being nothing
+more to find.
+
+#### Scenario: The private half fails
+- **WHEN** `discoverable_private_clubs` errors and the public page succeeds
+- **THEN** the screen SHALL surface the failure with a retry rather than render the public clubs as
+  a complete list
+
+#### Scenario: The public half fails
+- **WHEN** the reverse happens
+- **THEN** the same rule SHALL apply
+
+#### Scenario: The strip's claim stays true
+- **WHEN** `ExploreClubsStrip` draws its `near <place>` clause
+- **THEN** it SHALL be derived from the same merged array `/clubs/explore` renders under the same
+  key, so the row and its destination cannot disagree — the property PD-258 and PD-254 both cost a
+  defect to establish
+
+#### Scenario: An unknown request status draws no control
+- **WHEN** the per-rider request-status read has not resolved, or failed
+- **THEN** the private card SHALL draw **no** trailing control, rather than `Request to join`
+- **AND** the reason SHALL be that offering a control which turns out to be a duplicate is a
+  promise the database will refuse with `23505`
+
+### Requirement: A screen whose entire content is destructive controls SHALL define every state, and its permission-denied state SHALL be a refusal rather than an empty list
+
+Manage riders SHALL define all seven states, and two of them differ from every other screen in this
+app because the screen has no read-only value at all.
+
+| State | Behaviour |
+|---|---|
+| Empty | a club with one member is the **normal** state, not an edge case. The roster draws the owner alone with no controls on them, and the requests section is **absent** rather than empty — `085`'s rule, because "no requests" on every club detail an admin opens is noise |
+| Loading | gate on the **data**, never on `isLoading`: `useQuery` starts its fetch in an effect, so the first render pass has no data and no fetch in flight. A skeleton roster, not a spinner over a blank screen |
+| Error | the roster read failing SHALL show a retryable error, **not** an empty roster — an empty roster on a management screen reads as "this club has nobody in it", which is a statement the screen has not verified |
+| Offline | every control SHALL be disabled, never queued. Removing a rider is a promise to the rest of the club and the three RPCs are not writes to be optimistic about — `ClubJoinRequestsSection`'s existing rule, extended |
+| Permission denied | A **redirect to the club**, with a banner stating the RULE and never a change — the screen knows *you may not manage this* and not *you used to*, and the same state is reached by a member following a shared link and by a rider whose cache predates their own promotion. Never an empty or read-only screen — a *Manage riders* whose every control refuses is PD-125's unreachable screen arriving from the other side. Not `notFound()`: reaching this screen means `getClub` returned a club, so the reader can already see it and the "no such club, or not one you may see" conflation has nothing left to protect |
+| Partial | the roster resolving while the requests read fails SHALL render the roster and omit the requests section, matching `085`'s existing behaviour — a failed additive read draws nothing rather than an error over a screen that already rendered |
+| Stale | after any successful mutation the roster, the club detail and the requests list SHALL be invalidated together; see the `client-cache-invalidation` delta |
+
+#### Scenario: Denied is not empty
+- **WHEN** an ordinary member navigates directly to the route
+- **THEN** the screen SHALL not render, and the rider SHALL NOT be shown a roster with inert
+  controls or an empty list
+- **AND** the RPCs SHALL refuse independently, so the client gate can be wrong without the boundary
+  being wrong
+
+#### Scenario: A one-member club renders correctly rather than emptily
+- **WHEN** the club has only its owner
+- **THEN** the roster SHALL draw that one row with no destructive control on it, and the requests
+  section SHALL be absent
+
+#### Scenario: The screen never renders `undefined` on first paint
+- **WHEN** the first render pass runs, before the effect that starts the fetch
+- **THEN** the screen SHALL render its skeleton, gated on the absence of data rather than on
+  `isLoading`, which is `false` at that moment
+
+### Requirement: A destructive control SHALL name what it actually does, including when what it does is reversible
+
+Removal SHALL be confirmed, and the confirmation SHALL state the outcome honestly rather than
+implying permanence it does not have.
+
+On a **public** club the removed rider rejoins in one tap through the existing INSERT policy, and the
+confirmation SHALL say so in one clause. On a **private** club they must request again and an admin
+must answer, and the confirmation SHALL NOT carry the public clause.
+
+The confirmation SHALL NOT claim the rider is told, because they are not, and SHALL NOT claim their
+content is removed, because it is not: their postcards, threads and messages stay in the club and
+stay visible to it.
+
+#### Scenario: The public and private copy differ
+- **WHEN** the confirmation is shown for a public club and for a private one
+- **THEN** only the public one SHALL say the rider can join again at any time
+
+#### Scenario: The confirmation does not overstate the blast radius
+- **WHEN** the confirmation is read
+- **THEN** it SHALL NOT say or imply that the rider's postcards, threads or messages are removed,
+  and SHALL NOT say the rider will be notified
+
+### Requirement: A notification row whose subject cannot be reached by its ordinary embed SHALL still render completely or not at all
+
+The `club_join_request_declined` row's `club:clubs(...)` embed returns null by construction — the
+reader is not a member — so the row SHALL resolve its club through
+`public.discoverable_private_clubs` before rendering, and SHALL degrade to the drawn fallback
+("A club") rather than to a blank name or an id if that resolution fails.
+
+The row SHALL take its destination from the notification's own `club_id` **column**, which the
+client already holds SELECT on, rather than from the embed.
+
+#### Scenario: The name is resolved, not left empty
+- **WHEN** a decline row is rendered
+- **THEN** the club's name SHALL be drawn from the accessor
+- **AND** if the accessor returns nothing the row SHALL still render, with the fallback string and
+  a working destination
+
+#### Scenario: The list does not crash on a type it does not know
+- **WHEN** any future notification type reaches a bundle whose `switch` has no arm for it
+- **THEN** the failure mode SHALL be recorded rather than assumed benign: `describe` returns
+  `undefined` today and the destructuring throws, taking the whole list down — which is why `089`
+  applies **after** the build serves, and which SHALL be re-checked before any later type is added
+
+### Requirement: A decoration on a list SHALL NOT gate the list, and its failure SHALL cost marks rather than rows
+
+Where a screen enriches rows it has already fetched with a second, smaller read — a wave count, an
+unread map, a like state — the enrichment SHALL be a decoration and SHALL NOT become a
+prerequisite:
+
+| State | Behaviour |
+|---|---|
+| Empty | zero decorations render as **absence**, never as `0`. A row of zeroes on every entry is noise that makes the first real value harder to see |
+| Loading | the rows render immediately with the decoration's control disabled and no value. The list SHALL NOT be gated on the decoration read, nor on `isLoading` |
+| Error | **marks, not rows** — the rows render undecorated and no error state is shown for the list. `getClubThreadUnread`'s existing behaviour of resolving to `{}` is the model |
+| Offline | the decoration renders from cache when there is one and is absent when there is not. A **write** to it SHALL NOT be queued: a reaction is an expression at a moment, and replaying it on reconnect makes the app act for the rider later, possibly after they have blocked its subject |
+| Permission denied | the control SHALL be **absent**, not disabled and not erroring. The write policy's predicate is the read policy's, so a row the rider can see is one they can act on and the case is empty by construction. A refusal SHALL NOT be rendered as a message naming a block |
+| Partial | one decoration read failing SHALL NOT affect another. Two kinds of subject decorate independently |
+| Stale | read on load, no subscription. The rider's own toggle is optimistic and locally authoritative until the write answers; another rider's arrives on the next load |
+
+#### Scenario: A failed decoration read never blanks the list
+- **WHEN** the decoration read errors and the list read succeeded
+- **THEN** every row SHALL render
+- **AND** no error state, retry affordance or skeleton SHALL replace the list
+
+#### Scenario: The list is not gated on the decoration
+- **WHEN** the list read has resolved and the decoration read has not
+- **THEN** the rows SHALL be on screen
+- **AND** the decoration's control SHALL be present and disabled rather than absent, so the row's
+  height does not change when the value arrives
+
+#### Scenario: A zero decoration draws nothing
+- **WHEN** a row has no reactions
+- **THEN** no numeral SHALL be drawn
+- **AND** the arrival of the first one SHALL NOT shift the controls beside it under a rider's thumb
+
+### Requirement: An optimistic control SHALL state what it is, and SHALL NOT be queued when the write fails
+
+A two-state reaction toggle SHALL follow `LikeButton`'s established rules rather than being
+re-derived:
+
+- **`aria-pressed` is the non-visual signal**, and the accessible name is therefore **constant** —
+  it states what the control is, never what the next tap does. A control that both reports
+  `pressed` and renames itself to the undo action announces "Unwave, 5 waves, pressed": a control
+  named for undoing, reported as done.
+- **A refused write rolls the local state back and surfaces its message without reflowing the
+  row**, so a failed tap cannot move the controls beside it.
+- **Nothing is retried or queued.**
+
+Where the same behaviour is now needed on more than one surface it SHALL be **extracted**, not
+copied. Two optimistic toggles with two copies of the rollback and the `aria-pressed` rule is two
+places for the accessibility rule to be dropped from, and the second copy is always the one written
+in a hurry.
+
+#### Scenario: The accessible name does not flip
+- **WHEN** a rider waves and un-waves
+- **THEN** the control's accessible name SHALL be unchanged in both states
+- **AND** `aria-pressed` SHALL be the only thing that moves
+
+#### Scenario: A refused write does not move the row
+- **WHEN** a wave write is refused
+- **THEN** the toggle SHALL revert and a message SHALL appear without changing the row's height
+- **AND** no retry SHALL be scheduled
+
+#### Scenario: The toggle exists once
+- **WHEN** the change is complete
+- **THEN** the postcard's and the timeline's toggles SHALL share one implementation
+- **AND** the rollback and `aria-pressed` rules SHALL exist in exactly one place
+
+### Requirement: The introduction prompt SHALL define every state, and SHALL never be the only way out of a screen
+
+The prompt is a sheet over the club it belongs to. Its states:
+
+| State | Behaviour |
+|---|---|
+| **Not owed** | Absent. No flash, no placeholder, and no read issued for a rider the rule already excludes |
+| **Deciding** | The read that decides whether one is owed has not answered. The sheet SHALL NOT open, and the club behind it SHALL render normally |
+| **Open** | The welcome sentence, the input, a submit and a way out. The input SHALL show a starter as a **placeholder** and SHALL hold no value. Submit SHALL be inert until the input holds non-whitespace text the rider typed, and a `Not now` SHALL always be present |
+| **Submitting** | Submit shows pending; the input SHALL NOT be cleared and SHALL NOT be disabled in a way that loses what was typed |
+| **Failed** | The message stays in the input, the error is shown against it, and the sheet stays open so the rider can retry. The rider SHALL be told the **introduction** failed and SHALL NOT be told the join failed |
+| **Offline** | Submit SHALL be refused with an offline message and the text SHALL be preserved. The write SHALL NOT be queued for later — there is no write queue in this app and inventing one here would post an introduction into a club minutes or hours after the rider stopped expecting it |
+| **Done** | The sheet closes, the join row gains its count, and no confirmation screen is interposed |
+
+**A rider SHALL always be able to reach the club behind the sheet.** "Mandatory" means the Post
+control is inert without text; it SHALL NOT mean the sheet cannot be closed. A rider who is already
+a member and cannot complete the write SHALL NOT be held in a modal — a dropped connection would
+otherwise lock them out of a club they have joined.
+
+**The dismissal SHALL hold for the session and SHALL NOT be recorded in the schema.** The prompt
+returns on the rider's next visit to that club and never twice in one session. A dismissal is a fact
+about a moment, not about the club, and it SHALL be cleared with the rest of the session on
+sign-out.
+
+**The starter SHALL be a placeholder and SHALL NOT be a value, and the two rules above are why.**
+Submit is inert until the field holds non-whitespace text; a field carrying a prefilled value is
+never empty, so submit would be live on open and one tap would post the starter unedited. Shipping
+both a prefilled value and an inert submit is a rule that can never fire, and SHALL NOT be done: if
+a value is ever chosen instead, the inert-submit rule SHALL be dropped in the same change and the
+sheet SHALL say plainly that submit is live on open.
+
+#### Scenario: The sheet opens with a starter and an inert submit
+- **WHEN** the prompt opens
+- **THEN** the input SHALL display the starter wording
+- **AND** the input's value SHALL be empty
+- **AND** submit SHALL be inert
+
+#### Scenario: The starter cannot be posted by one tap
+- **WHEN** a rider opens the prompt and taps submit without typing
+- **THEN** nothing SHALL be written
+- **AND** no introduction SHALL exist for that membership
+
+#### Scenario: A failed introduction does not read as a failed join
+- **WHEN** the introduction write fails
+- **THEN** the message SHALL say the introduction was not posted
+- **AND** it SHALL NOT suggest the rider is not a member
+
+#### Scenario: The typed text survives every failure
+- **WHEN** the write fails, or the rider is offline
+- **THEN** the text SHALL still be in the input
+
+#### Scenario: The sheet is never a trap
+- **WHEN** the write cannot succeed for any reason
+- **THEN** the rider SHALL be able to dismiss the sheet and use the club
+
+### Requirement: A count that describes rows the viewer cannot read SHALL be absent, not zero
+
+A join row's comment count summarises a thread. Where the viewer cannot read that thread — a
+non-member of a public club, a rider blocked by the subject, a rider who has left — the count SHALL
+be **absent** along with its icon and its link, and SHALL NOT be rendered as `0`.
+
+Zero and not-allowed are identical from the client, and rendering the second as the first would
+assert that a conversation with no comments exists to somebody who may not know it exists at all.
+Absent is also what a genuine zero draws, so the two remain indistinguishable to the viewer — which
+is the intended outcome, and different from telling them a number.
+
+#### Scenario: Permission-denied is drawn as absent
+- **WHEN** a viewer cannot read the introduction thread
+- **THEN** the join row SHALL draw no comment icon, no number and no link
+
+#### Scenario: A genuine zero draws the same
+- **WHEN** an introduction exists that the viewer can read and nobody has commented
+- **THEN** the row SHALL draw no count
+- **AND** tapping the row SHALL still open the thread
+
+#### Scenario: The decoration never gates the row
+- **WHEN** the read that supplies introductions fails entirely
+- **THEN** every join row SHALL still render its sentence, its time and its wave
+- **AND** the failure SHALL cost the doors, not the rows
+
+### Requirement: A filtered list SHALL define every state, and an empty result SHALL NOT be read as a refusal
+
+The Threads list now excludes rows for a reason unrelated to permission, so its states SHALL be
+stated in full and none of them SHALL be inferred from the row count.
+
+| State | Behaviour |
+|---|---|
+| Empty | A club with no listable threads SHALL draw the ordinary empty state, including the create affordance. It SHALL NOT be distinguished in copy from a club that has never had a thread — the rider is not owed the fact that other rows exist but are drawn elsewhere |
+| Loading | Gated on the data, never on a loading flag. The skeleton SHALL be drawn until the club and — for a member — the list have resolved |
+| Error | A failed list read SHALL draw the retryable error state. A failed **unread** read SHALL cost the marks alone and SHALL leave the list rendering unmarked |
+| Offline | The existing offline message on the list and on "load more" SHALL be unchanged |
+| Permission denied | Zero rows from the policies and zero rows after the filter are the same value and SHALL be told apart by the club's own viewer role, never by the count. A non-member of a public club SHALL see the join prompt; a member SHALL see the empty state |
+| Partial | A page that filled SHALL offer "load more" on exactly the condition it does today, computed from the page the query returned |
+| Stale | Read on load with no subscription. A thread created, deleted, marked or unmarked elsewhere appears on the next load or the next invalidation |
+
+#### Scenario: Empty and denied are told apart by the viewer role
+- **WHEN** the Threads list returns zero rows
+- **THEN** the screen SHALL choose its message from the club's viewer role
+- **AND** SHALL NOT infer permission from the number of rows
+
+#### Scenario: An empty list still offers the create
+- **WHEN** a member sees an empty Threads list
+- **THEN** the create affordance SHALL be present in the empty state
+
+#### Scenario: A failed decoration costs marks and not rows
+- **WHEN** the unread read fails
+- **THEN** the list SHALL render unmarked
+- **AND** no error state SHALL replace it
+
+### Requirement: An aggregate mark SHALL count only what its destination shows
+
+A dot that summarises a list SHALL be computed over exactly the rows that list draws. A mark the
+rider cannot clear by going where it points is a defect, not a decoration: it survives the visit,
+so the affordance stops meaning anything.
+
+Where the underlying source answers more broadly than the destination shows, the read SHALL narrow
+it, and the narrowing SHALL use the same rule the destination uses to choose its rows.
+
+The narrowing SHALL NOT be done by intersecting with one page of the destination, because a list
+ordered by creation can hold an active row past its first page, and a mark that fails to appear is
+worse than one that fails to clear.
+
+#### Scenario: The dot clears by visiting what it points at
+- **WHEN** the only unread activity in a club is a comment on a current member's introduction
+- **THEN** the Threads entrance SHALL NOT be marked
+- **AND** visiting the Threads list SHALL leave nothing unexplained
+
+#### Scenario: The dot still lights for an unread ordinary thread
+- **WHEN** any listed thread holds an unread message
+- **THEN** the Threads entrance SHALL be marked
+- **AND** the mark SHALL not depend on that thread being on the first page
+
+#### Scenario: A failed narrowing costs the marks
+- **WHEN** the read that narrows the unread map fails
+- **THEN** the map SHALL resolve to nothing rather than to unverified marks
+- **AND** every surface reading it SHALL render unmarked
+
+### Requirement: A removed control SHALL leave the row it was on intact
+
+Removing the wave from a thread row SHALL change nothing else about that row: its title, its lead
+line, its participants, its comment count and floor mark, its unread dot, its accessible name, its
+scroll anchor and its outbound link SHALL all be exactly as before.
+
+Where the row's structure existed only to hold the removed control — a wrapper that stopped a button
+being nested inside a link — the structure MAY be simplified, provided the row's anchor id and its
+tap target survive unchanged.
+
+#### Scenario: The row keeps everything else
+- **WHEN** a thread row is drawn after the change
+- **THEN** its title, lead, faces, count, floor mark, unread dot and accessible name SHALL be
+  unchanged
+- **AND** its scroll anchor SHALL still be present and SHALL still carry the row's own key
+
+#### Scenario: The absence is asserted
+- **WHEN** the change is tested
+- **THEN** a test SHALL assert that no wave control renders on a thread row
+- **AND** it SHALL be verified in both directions, since a test that only checks what rendered
+  cannot see a control that should not be there
+
+### Requirement: A screen that grows SHALL define a tail state, and the tail SHALL NOT displace what the rider is reading
+
+A list that extends itself has three tails rather than the two a fixed list has, and each SHALL be
+distinguishable to the rider:
+
+- **more coming** — an indicator that a further page is on its way, drawn **below** the content;
+- **cannot get more** — the read failed, the device is offline, or a stated ceiling was reached;
+- **nothing more exists** — the end of the data, drawn as an ending rather than as an absence.
+
+The tail SHALL be drawn below the rows and SHALL NOT replace them. A screen that is already
+showing content SHALL NOT fall back to a skeleton, a spinner over the whole list, or an error
+state covering the region the rider is reading, because a further page failed. This is the
+standing "a repeat fetch does not blank the screen" rule applied to a fetch the rider triggered by
+scrolling, where the temptation to reuse the whole-screen loading gate is strongest.
+
+New rows SHALL be appended **below** the rider's viewport, so that extending the list never moves
+what is already on screen.
+
+#### Scenario: A failed extension costs the tail, not the list
+- **WHEN** a request for a further page fails
+- **THEN** the rows already drawn SHALL remain
+- **AND** the tail SHALL offer a retry that re-runs only the failed page
+
+#### Scenario: An offline rider is told so, and nothing retries in a loop
+- **WHEN** the device has no connectivity and the rider reaches the end of the list
+- **THEN** the tail SHALL say so specifically rather than showing the generic error state
+- **AND** no automatic retry SHALL be issued while offline
+- **AND** the tail SHALL NOT draw a loading treatment, which offline is the state that would leave
+  on screen for ever
+- **AND** the list SHALL resume extending on its own when connectivity returns, without the rider
+  navigating or tapping
+
+#### Scenario: The end of the data reads as an ending
+- **WHEN** there is genuinely nothing more to fetch
+- **THEN** the tail SHALL say so in the screen's own terms
+- **AND** SHALL NOT be an indicator that never resolves
+
+#### Scenario: Extending does not move the reader
+- **WHEN** a further page arrives
+- **THEN** the entries already on screen SHALL keep their scroll position
+
+### Requirement: A browser observer SHALL be created in an effect and torn down with its component
+
+Any use of `IntersectionObserver`, `ResizeObserver`, `MutationObserver` or a `window` listener
+SHALL be created inside an effect and disconnected in that effect's cleanup.
+
+The reason is the standing one and it does not lift when the SSR shell is retired: a
+`'use client'` component body still executes in a prerender pass — the same pass an
+`output: 'export'` build runs at build time — where none of these globals exists. A component
+that constructs one during render fails the build rather than the browser, and one that never
+disconnects keeps a detached node observed for the life of the page.
+
+An observer SHALL NOT be required for the component to render. Under `renderToStaticMarkup`, where
+no effect runs, the observed element SHALL still render as ordinary markup, so a component test
+needs no jsdom.
+
+#### Scenario: The observer is never constructed during render
+- **WHEN** a component that observes an element is rendered on the server or in a prerender pass
+- **THEN** no observer SHALL be constructed
+- **AND** the markup SHALL render without one
+
+#### Scenario: The observer dies with its component
+- **WHEN** the component unmounts
+- **THEN** the observer SHALL be disconnected
+- **AND** no callback SHALL fire afterwards
+
+### Requirement: The onboarding resume order SHALL be derivable from `my_onboarding_state()` alone
+
+`resolveDestination` SHALL resolve the resume step from the three values `my_onboarding_state()`
+already returns — `terms_accepted_at`, `has_username`, `onboarding_completed_at` — and the
+accessor's return shape SHALL NOT change to carry the home country **or the town**.
+
+The wizard's steps are terms → username → town, and the town adds no information the existing three
+do not already carry: *"has a username and no stamp"* means *"is at the last step"*, whether or not
+the column write has already landed, because that screen is where both the write and its retry live.
+
+**This holds across the step's rename.** The terminal step's path changes from `/onboarding/country`
+to `/onboarding/town`; the *state* that resolves to it does not, which is the entire reason the
+resume order is expressed in stamps rather than in paths.
+
+Widening the accessor is the expensive option and the failure is silent: a newer bundle
+destructuring a field an older function does not return reads `undefined`, which is falsy, which —
+on a misordered branch — resolves to the last step for **every rider on the app**, onboarded or not.
+`tsc` cannot see it and the guard is mounted in the root layout, so the blast radius is every screen.
+
+#### Scenario: The resume step for each reachable state
+- **WHEN** `resolveDestination` is called for a signed-in rider on a path that needs the stamps
+- **THEN** it SHALL resolve `/onboarding/terms` when `terms_accepted_at` is NULL;
+  `/onboarding/username` when consent is stamped, `has_username` is false and
+  `onboarding_completed_at` is NULL; `/onboarding/town` when consent is stamped, `has_username` is
+  true and `onboarding_completed_at` is NULL; and the app otherwise
+- **AND** consent SHALL remain gated **ahead** of the wizard, because `023` refuses to stamp
+  completion while the consent stamp is NULL
+- **AND** neither `profiles.location` nor `profiles.home_country` SHALL appear in this decision
+
+#### Scenario: A rider abandons the town step and returns
+- **WHEN** a rider sets a username, reaches `/onboarding/town`, closes the app, and returns — in the
+  same session or a new one, on the same device or another
+- **THEN** they SHALL land on `/onboarding/town`, and SHALL NOT be asked for their username again
+- **AND** they SHALL be sent there from `/onboarding/username`, from `/onboarding/terms`, from
+  **`/onboarding/country`** — the path this step used to have, now in bookmarks, in a stale tab and
+  in a native shell's restored path — and from any other path under `/onboarding`, and from every
+  app route
+- **AND** the step SHALL offer no skip affordance, per decision #5
+- **AND** nothing SHALL have been written by the abandoned visit: the step performs no write before
+  its submit, so re-entering is idempotent
+
+#### Scenario: A rider mid-wizard across the deploy
+- **WHEN** a rider set a username under the previous bundle, was stamped complete by it, and returns
+  after this change ships
+- **THEN** they SHALL reach the app with whatever `location` and `home_country` they hold — including
+  neither — and SHALL NOT be sent into the wizard, because `onboarding_completed_at` is set
+- **AND** the deploy window itself SHALL be understood to manufacture a small number of such riders,
+  who join the permanently-tolerated NULL population rather than being re-prompted
+
+#### Scenario: The guard is not the enforcement
+- **WHEN** a rider defeats the guard and navigates directly to an app route with no completion stamp
+- **THEN** every content write SHALL still be refused by `023`'s participation gate, and the screens
+  SHALL return zero rows under RLS
+
+### Requirement: The town step SHALL define every state it can be in
+
+`/onboarding/town` SHALL have a defined behaviour for each state below, and SHALL NOT gate its render
+on `isLoading`.
+
+**The list of states grew when the control changed.** The country step's picker read a local
+constant, so it had no empty, loading or error state worth naming. A town is answered by a metered
+third-party lookup over the network, from a rider who has just installed the app and may be on a
+moving motorcycle's connection — so the suggestion list has its own empty, in-flight and failed
+states, distinct from the submit's.
+
+#### Scenario: First paint and the list
+- **WHEN** the screen mounts
+- **THEN** it SHALL render its form immediately with no read of its own and no skeleton, and the
+  suggestion list SHALL be closed and empty
+- **AND** it SHALL NOT perform a lookup on mount, because a lookup spends a metered credit
+  (`069`'s ledger row is written before the vendor is called) for a rider who has touched nothing
+- **AND** the submit SHALL be disabled until a town is picked — and, in the fallback branch below,
+  until a country is chosen as well — so there is no state in which tapping it can mean *"whatever
+  was preselected"*
+- **AND** a rider returning after a failed stamp — the narrow window where the column UPDATE landed
+  and `complete_onboarding` did not — **SHALL re-pick**, and that is the accepted cost of the step
+  performing no read. An earlier draft of this scenario promised the opposite and was internally
+  unsatisfiable: a step with no read of its own cannot know what is already stored on the row, so
+  the three clauses above could not all hold. The window needs an RPC failure after a successful
+  UPDATE, it costs one lookup, and adding a read to a wizard step to save it would owe the
+  gate-on-data rule and a loading state on the app's most critical gate
+
+#### Scenario: The lookup is empty
+- **WHEN** the rider types a term the geocoder answers with no results
+- **THEN** the field SHALL say so in its own list, SHALL leave the typed text in place, and SHALL
+  NOT be reported as an error
+- **AND** the submit SHALL remain disabled, because no pick has been made
+
+#### Scenario: The lookup fails
+- **WHEN** the lookup errors, times out, or the rider is rate-limited by `069`'s per-rider ceiling
+- **THEN** the failure SHALL be shown on the field with a retry, SHALL NOT be shown as a failure of
+  the step, and SHALL NOT clear a pick the rider has already made
+- **AND** where the failure is the LOOKUP being unavailable rather than a term not matching, the
+  country select SHALL appear on its own as the route forward — see the requirement below
+- **AND** the remaining dead end — a town the geocoder finds nothing for, while the lookup itself is
+  working — is `design.md` Q3 and is named rather than silently handled
+
+#### Scenario: A town typed and never picked
+- **WHEN** the rider types a town name and submits without choosing a suggestion
+- **THEN** nothing SHALL be stored, the typed text SHALL NOT be submitted, and the field SHALL NOT
+  present the text as an answer
+- **AND** this SHALL hold because the step passes **no `freeText`** to `PlaceSearchField`: in place
+  mode the visible input carries no `name`, the draft reverts on blur, and the hidden inputs read
+  through the pick. Passing `freeText` here SHALL be understood as converting a typed string into a
+  stored town, which is the one thing this screen must not do
+
+#### Scenario: The submit is in flight
+- **WHEN** the rider submits
+- **THEN** the button SHALL show its `loading` state through `useActionState`'s pending value, and
+  the control SHALL refuse a second submit
+- **AND** the screen SHALL NOT navigate until the RPC has answered, because the stamp it writes is
+  what the guard reads on arrival
+
+#### Scenario: The submit fails
+- **WHEN** the `profiles` UPDATE or `complete_onboarding` answers an error
+- **THEN** `23514` SHALL render as an actionable message rather than a raw Postgres error, and every
+  other error SHALL render as a retryable message that leaves the picked town and the chosen country
+  in place
+- **AND** the rider SHALL be able to submit again without re-picking, and re-submitting the same pick
+  SHALL succeed — it rewrites the rider's own row with the same values before re-running the RPC
+
+#### Scenario: Offline
+- **WHEN** the rider has no connection
+- **THEN** the lookup SHALL fail on the field and the submit SHALL fail visibly, and neither SHALL be
+  queued — a completion stamp written later would let a rider walk into the app before the database
+  agrees they may
+- **AND** the picked town SHALL survive the failure in component state
+
+#### Scenario: Permission denied and empty are told apart
+- **WHEN** the `profiles` UPDATE matches no row
+- **THEN** it SHALL be treated as *"your profile could not be found — sign in again"* rather than as
+  a success, matching `setUsername`'s existing handling of the same shape
+- **AND** `null` SHALL be read as a decided answer and `undefined` as *"not yet"*, so no 404 flashes
+  on the way in
+
+#### Scenario: Stale — the rider is already onboarded
+- **WHEN** the rider completed onboarding in another tab or on another device while this screen was
+  open, and submits
+- **THEN** `complete_onboarding` SHALL succeed idempotently and return the **original** stamp, and
+  the rider SHALL be sent on rather than shown an error
+- **AND** their stored town SHALL NOT be overwritten by this submit's RPC call, because
+  `p_location` is passed as `null` and `075`'s `coalesce` reads that as *leave it alone*
+
+#### Scenario: The screen claims no proximity
+- **WHEN** the step renders any explanatory copy
+- **THEN** it SHALL NOT offer to use the device location and SHALL NOT trigger an OS permission
+  prompt — a form field answered is consent; an OS prompt with no escape is not, and a mandatory town
+  SHALL NOT become an argument for either that prompt or an IP lookup
+- **AND** a country SHALL never be rendered as `near <country>` anywhere in the app, because a
+  country is a filter and not a proximity
+- **AND** the copy SHALL describe what the town is used for in terms that are true — rides and clubs
+  measured from it — rather than repeating the country step's promise that nothing kept
+
+### Requirement: Onboarding SHALL NOT be completable ONLY through a third party
+
+**This is the change's largest risk and it was missed by the first draft.** The country step's
+control read a local constant and was therefore always answerable. A town is answered by
+`search-places`, which carries an **application-wide** ceiling — `APP_DAILY_SEARCH`, 2000 per 24h
+across every rider rather than per rider — behind a vendor with its own global rate limit. Decision
+#5 forbids a skip and `114` refuses the completion stamp while `home_country` is NULL. So a naive
+build has a state in which **no new rider anywhere can finish onboarding at all**, for as long as
+the outage or the ceiling lasts, with no route forward.
+
+The escape SHALL be the control the step is replacing: `CountrySelect`, standing alone.
+
+#### Scenario: The lookup is unavailable, so the country select stands alone
+- **WHEN** a lookup fails with the app-wide ceiling or an outage — `PlaceSearchUnavailableError`, or
+  a rider's own `PlaceSearchCeilingError`
+- **THEN** the step SHALL render `CountrySelect` beneath the town field, and the submit SHALL be
+  enabled once a country is chosen, with or without a town
+- **AND** the action SHALL accept that submit and complete onboarding with `home_country` set and
+  `profiles.location` left NULL
+
+#### Scenario: The trigger is a failure signal and never a rider's silence
+- **WHEN** the rider has simply not picked a town, or has typed a term with no matches, or the
+  lookup has not been attempted
+- **THEN** the country select SHALL NOT appear and the submit SHALL stay disabled
+- **AND** the escape SHALL NOT be reachable by any control the rider can operate at will, because a
+  control that lets a working rider skip the town is the `Skip` decision #5 forbids and the page
+  header explicitly refuses to build
+
+#### Scenario: What a rider who took the escape ends up with
+- **WHEN** onboarding completes with a country and no town
+- **THEN** that rider SHALL be exactly the rider every completion produced before this change, and
+  SHALL NOT be a new population
+- **AND** the town rung that already exists outside the wizard — `TownQuestionSheet`, reached from
+  Explore — SHALL remain their route to a town, since completion is a one-way stamp and they never
+  return to the wizard
+- **AND** this SHALL be recorded as a **degraded** path under a named failure rather than as a
+  second way to finish, so the change's promise reads *every rider who can reach the geocoder gets a
+  town*, not *every rider gets a town*
+
+#### Scenario: The escape is distinguishable afterwards
+- **WHEN** the escape is taken
+- **THEN** `onboarding_step` SHALL carry a `reason` naming it, so the funnel can say how often
+  onboarding completed without a town and whether the geocoder is the cause
+
+### Requirement: A fallback control SHALL appear only when the value it substitutes for is absent, and SHALL NOT share a field name with it
+
+Where one rider action can supply a value directly, and a second control exists only for the case
+where it did not, the second control SHALL be rendered **only in that case**, and the two SHALL NOT
+both be able to write the same form field name at the same time.
+
+This is the country select on the town step, and both halves are load-bearing.
+
+Rendering it always — pre-filled from the pick, as a confirmation — turns a branch nobody usually
+sees into a question everybody answers, on a wizard step that already has no skip. The common case
+is a pick that carries a country, and the correct number of controls in the common case is one.
+
+Sharing a name is the silent half. `CountrySelect` renders a hidden input named `country`; a pick
+that carries a country would render another under the same name, and `formData.get('country')`
+returns the **first** match. A rider's explicit fallback answer could be shadowed by a stale one, or
+the reverse, with nothing wrong on screen, nothing red in `tsc` and nothing red in the suite. The
+two SHALL be mutually exclusive by construction rather than by ordering.
+
+#### Scenario: The pick carries a country
+- **WHEN** the picked place's `countryCode` is a non-empty string
+- **THEN** no country control SHALL be rendered — not pre-filled, not disabled, not as a confirmation
+- **AND** exactly one form field named `country` SHALL exist, carrying the picked code
+- **AND** the submit SHALL be enabled
+
+#### Scenario: The pick carries no country
+- **WHEN** the picked place's `countryCode` is `null` **or the property is absent entirely**
+- **THEN** a `CountrySelect` SHALL appear beneath the town field, on the same step, with no
+  navigation
+- **AND** exactly one form field named `country` SHALL exist — the select's — because the pick renders
+  none
+- **AND** the submit SHALL stay disabled until a country is chosen
+- **AND** the branch SHALL test for both `null` and `undefined`, because `countryCode` is optional on
+  `PlaceValue`: `toPlaceValue` always sets it from a fresh lookup, but a seeded value omits the
+  property, so a test written as `=== null` misses half the cases
+
+#### Scenario: The rider changes their pick after the fallback appeared
+- **WHEN** a rider picks a place with no country, is shown the select, and then picks a different
+  place that does carry one
+- **THEN** the select SHALL disappear, and the country SHALL be the new pick's
+- **AND** a country the rider chose in the select SHALL NOT survive as a hidden field, because the
+  select is unmounted with it
+
+#### Scenario: The gate is an affordance, not the guarantee
+- **WHEN** a rider defeats the disabled submit and posts with no country by either route
+- **THEN** `114` SHALL refuse to stamp completion with `check_violation`, the rider SHALL remain
+  un-onboarded, and the screen SHALL show an actionable message rather than a raw Postgres error
+- **AND** `023`'s participation gate SHALL refuse their content writes independently
+

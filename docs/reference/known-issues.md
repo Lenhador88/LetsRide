@@ -15,7 +15,7 @@ its organizer alone is refused, an edit to a ride already in that shape saves.
 
 **Two things about the fix that a later reader will otherwise re-litigate.** The `Narrow` reading
 was a **stated assumption rather than an owner answer** — it was taken in an unattended run, and
-`openspec/changes/scope-the-strand-guard-to-the-transition/design.md` §Open questions Q1 carries
+`openspec/changes/archive/2026-09-21-scope-the-strand-guard-to-the-transition/design.md` §Open questions Q1 carries
 the `Wide` alternative (drop the guard outright) with the evidence a later decision needs; Wide is
 Narrow minus one predicate, so nothing is foreclosed. And the guard is **advisory by design**:
 the `rides` UPDATE policy carries no `is_public` predicate at all, which is why the change needed
@@ -60,7 +60,7 @@ than gaps (`085`, PD-325).**
   under the reader's RLS, so a non-member reads neither object, `signImagePaths` answers null and
   `Avatar` falls back. `085.6` pins both zeros so the day a storage arm lands the test names it;
   the one-arm change that would alter it is written out in
-  `openspec/changes/show-private-clubs-and-request-to-join/design.md` §The avatar that will not
+  `openspec/changes/archive/2026-09-21-show-private-clubs-and-request-to-join/design.md` §The avatar that will not
   sign rather than made. The COVER stays members-only either way — an avatar is the
   club's identity, a cover is its content.
 - **The `Requests` section on the club detail is the MINIMUM that makes a request answerable, and
@@ -201,7 +201,7 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   being one when the writes moved to the browser. PostgREST has no multi-statement transaction, so
   **every** two-round-trip create has that window — the fix was to leave the intermediate state
   unrepresentable (an `AFTER INSERT` trigger seeds the row), not to narrow the window.
-  `openspec/changes/enforce-creator-membership/` holds the reasoning, and `openspec/changes/enforce-creator-membership/design.md` §D1 says why
+  `openspec/changes/archive/2026-09-21-enforce-creator-membership/` holds the reasoning, and `openspec/changes/archive/2026-09-21-enforce-creator-membership/design.md` §D1 says why
   a trigger rather than the `security definer` RPC both call sites named for months.
 
   **One claim it made that was wrong, corrected rather than deleted, because a careful reader

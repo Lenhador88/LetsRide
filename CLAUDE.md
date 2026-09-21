@@ -285,7 +285,7 @@ Four rules, each with a test naming the trap it avoids:
 
 ## Supabase Rules
 
-**Five Edge Functions — three on both projects, `push-notify` and `send-moderation-digest` on DEV**: `delete-account` (the Auth admin API needs a
+**Five Edge Functions, on both projects**: `delete-account` (the Auth admin API needs a
 service-role key; `121`/`124` hold one too), `resolve-ride-location` (geocodes a
 meeting point and renders its tiles), `search-places` (proxies the typeahead), `push-notify`
 (`121`'s outbox drain) and
@@ -333,7 +333,7 @@ repointed. `docs/ENVIRONMENTS.md` is the contract. **Never promote a Vercel prev
 — both Supabase variables are inlined at build time and promote does not rebuild. **Check drift
 rather than claiming it**: `npm run db:drift` compares migration *names*.
 
-**Applied state: 126 files; DEV is at `126` and PROD at `116` — measured 2026-09-20.** DEV-ahead
+**Applied state: 126 files; DEV is at `126` and PROD at `126` — measured 2026-09-21.** DEV-ahead
 is the resting state between a merge and its promotion; promote everything the gap contains, in
 filename order, per `docs/ENVIRONMENTS.md` §Migrations, and record each file's ordering in
 `docs/reference/migrations.md` §Applied state. Count rather than trust it — `list_migrations`
@@ -341,11 +341,11 @@ against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV answers
 THREE have no file; PROD none** — the long-standing hand-applied ones. **Three sessions build at
 once, so the DEV ref runs ahead of the tree by however many are in flight**: count the FILE-LESS
 rows rather than the gap, and take the next number off `list_migrations` rather than off `wc -l`.
-**`113` then `114` was a required order on the PROD promotion and must not be collapsed** if it is
-ever replayed: `114` refuses a NULL country, so applied ahead of the bundle that writes one it
-strands every new signup in a wizard with no skip. PROD's last four rows are `home_country`,
-`115`, `116`, `a_completion_carries_a_country` — the gate held.
-`docs/reference/migrations.md` §Applied state has that gate.
+**A file's own header names its side of the deploy, and some want the build SERVING first**:
+`114` refuses a NULL country, so ahead of the bundle that writes one it strands every signup in a
+wizard with no skip; `118` stamps a terms version, so ahead of the page that shows it every consent
+records an agreement nobody saw.
+`docs/reference/migrations.md` §Applied state has each promotion's order.
 
 **The sequencing rule: additive first, deploy, destructive last — and "additive, so the order does
 not matter" is wrong in both directions.** Ask which side fails safe:

@@ -1,9 +1,9 @@
 <!--
 ⚠ COORDINATION — THREE-WAY, AND THIS ONE IS THE DANGEROUS DIRECTION.
 
-`Storage object ownership SHALL remain database-enforced` is modified by THREE active changes:
-`add-account-deletion`, `add-ride-map-tiles`, and this one. Both of the others already carry
-their own coordination banners about each other; neither knows about this one. Re-derive rather
+`Storage object ownership SHALL remain database-enforced` is modified by two open changes,
+`add-account-deletion` and this one. `add-ride-map-tiles` modified it too and archived on
+2026-09-21 with the capacity scenario below carried in, so its text is the standing one. Re-derive rather
 than trust it:
 
     grep -rn "^### Requirement:" openspec/changes/*/specs/ | grep -v archive
@@ -33,9 +33,9 @@ the subject rather than the name:
 
     grep -n "max_riders" openspec/specs/database-enforced-integrity/spec.md
 
-**ALL THREE deltas therefore fail to archive TODAY, and the deletion below does not fix that.**
+**BOTH open deltas therefore fail to archive TODAY, and the deletion below does not fix that.**
 `openspec archive` refuses a MODIFIED block missing a scenario the current spec has
-(`specs-apply.js`), and none of the three carries
+(`specs-apply.js`), and neither carries
 ``#### Scenario: No capacity rule is claimed for `ride_members` ``. That is a loud throw rather
 than a silent reinstatement — so **the reinstatement danger THIS banner describes is smaller
 than it claims**, and §6.4's refresh is what clears it (§6.1 covers this change alone).
@@ -59,10 +59,9 @@ Two things followed, and both are tasks (see tasks.md §6):
      pointer to this change in its coordination banner. So no delta can land the stale text
      beside the standing spec's accurate `No capacity rule is claimed for ride_members`.
 
-  4. **NEW — §6.4, and it is the one that actually unblocks archiving.** All three deltas need
-     the §6.1 refresh, not just this one. `add-account-deletion`'s tasks do not mention it;
-     `add-ride-map-tiles` §7.2 does, but names only "whichever of the two" and is ticked `[x]`
-     while still owing it. §6.4 also carries the scenario name to copy, backticks included.
+  4. **NEW — §6.4, and it is the one that actually unblocks archiving.** Both open deltas need
+     the §6.1 refresh, not just this one; `add-account-deletion`'s tasks do not mention it.
+     §6.4 also carries the scenario name to copy, backticks included.
 
 The two ADDED requirements below have no other claimant.
 

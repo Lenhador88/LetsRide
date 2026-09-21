@@ -199,43 +199,79 @@ An `updated_at` column with no UPDATE grant behind it is a dead column that read
 
 ### Requirement: A thread SHALL be deletable by its author and by the club's owner, and the owner's right SHALL survive a block
 
+**The heading is preserved verbatim, and it now under-describes its own body.** A MODIFIED
+requirement is matched by its heading, so renaming it to say "owner or admin" would either fail to
+match or land as a second, competing requirement. The authority below is **owner or admin**; the
+heading is a key.
+
 DELETE on `public.club_threads` SHALL be permitted to `author_id = auth.uid()` by policy.
 
-The **club owner's** moderation right SHALL be exposed as
-`public.moderate_club_thread(thread uuid)` — `security definer`, re-checking
-`clubs.owner_id = auth.uid()` in its own body — and SHALL NOT be a second arm on the DELETE
-policy.
+The **moderation** right SHALL be exposed as `public.moderate_club_thread(thread uuid)` —
+`security definer`, re-checking the caller's authority in its own body — and SHALL NOT be a second
+arm on the DELETE policy.
 
-**The reason is a gap `034` recorded and declined, which is reachable here and was not there.**
-RLS filters a DELETE by what the caller may READ. An owner who has blocked a thread's author
-cannot see that thread, so a policy-arm delete keyed on its id matches zero rows — silently, since
-PostgREST reports no error when a delete matches nothing. `034` accepted that because *"the block
-itself already removes the messages from the blocker's view, which is the remedy a rider actually
-reaches for."* **That argument does not transfer to a thread.** A thread is a persistent titled
-object in the owner's club: blocking its author hides it from the owner while every other member
-keeps reading it. The block is not the remedy, and the moderation right must therefore not depend
-on the owner being able to see the row.
+**That authority SHALL be `private.is_club_admin_for(auth.uid(), <the thread's club>)` and nothing
+else.** It SHALL NOT be spelled a second time in this function's body. The helper's two disjuncts
+are `clubs.owner_id = candidate` and a `club_members` row with `role in ('owner','admin')`, so:
 
-The function SHALL take one thread id, SHALL delete exactly that thread, SHALL raise the same
-`insufficient_privilege` for "no such thread" and "not your club" from one code path so a caller
-learns nothing about a club they do not own (`043`'s shape), and SHALL be granted to
-`authenticated` only. It SHALL add exactly one
-`authenticated_security_definer_function_executable` advisor.
+- the **club owner** keeps the reach `082` gave them, through the **first** disjunct, which is the
+  same `clubs.owner_id` column `082` tested — the widening therefore cannot regress them;
+- an **owner holding no `club_members` row** — the `054`/PD-128 state, reachable today — keeps it
+  for the same reason, and a predicate written as `club_members.role in ('owner','admin')` alone
+  SHALL be treated as a defect rather than a simplification;
+- a **club admin**, a role nothing could write before `088`, gains it.
+
+**The reason the right is an RPC rather than a policy arm is unchanged and now covers a second
+role.** RLS filters a DELETE by what the caller may READ. An owner *or admin* who has blocked a
+thread's author cannot see that thread, so a policy-arm delete keyed on its id matches zero rows —
+silently, since PostgREST reports no error when a delete matches nothing. `034` accepted the
+equivalent for messages because *"the block itself already removes the messages from the blocker's
+view"*; that does not transfer to a thread, which is a persistent titled object every other member
+keeps reading.
+
+The function SHALL take one thread id, SHALL delete exactly that thread, SHALL be granted to
+`authenticated` only, and SHALL raise the same `insufficient_privilege` with the same message from
+**one raise site** for every refusal — "no such thread", "not your club", "you are a plain member"
+and "that club is one you cannot see" included. A session-less caller SHALL leave by that same
+door; there SHALL be no separate `requires a session` raise, because
+`is_club_admin_for(null, …)` is already false and a second exit tells the caller nothing they do
+not know.
+
+The widening SHALL add **no** security advisor. `authenticated_security_definer_function_executable`
+fires once per PUBLIC `security definer` function executable by `authenticated`, and this function
+already is one.
+
+The function SHALL be replaced with `create or replace`, which preserves its ACL. A
+drop-and-recreate SHALL be treated as a defect: a recreated function is born `EXECUTE` to `PUBLIC`,
+which includes `anon`, and decision #1 is then breached by a refactor with nothing red.
 
 #### Scenario: The author deletes their own thread
 - **WHEN** a thread's author deletes it
 - **THEN** the delete SHALL succeed and SHALL take every message in the thread with it
 
-#### Scenario: The club owner deletes a member's thread
-- **WHEN** the rider named in `clubs.owner_id` calls `moderate_club_thread` on a thread in
-  their club that another member authored
+#### Scenario: A club admin deletes a member's thread
+- **WHEN** a rider holding `club_members.role = 'admin'` for the club calls `moderate_club_thread`
+  on a thread another member authored
 - **THEN** the thread and all its messages SHALL be deleted
 
-#### Scenario: The club owner deletes a thread whose author they have blocked
-- **WHEN** the owner has blocked the thread's author and calls `moderate_club_thread`
+#### Scenario: The club owner still deletes a member's thread
+- **WHEN** the rider named in `clubs.owner_id` calls `moderate_club_thread` on a thread in their
+  club that another member authored
+- **THEN** the thread and all its messages SHALL be deleted
+
+#### Scenario: An owner holding no roster row still moderates
+- **WHEN** the rider named in `clubs.owner_id` holds **no** `club_members` row for that club and
+  calls `moderate_club_thread`
+- **THEN** it SHALL succeed
+- **AND** this SHALL be asserted explicitly, because it is the case a `club_members.role`-only
+  predicate refuses while every other assertion in this requirement still passes
+
+#### Scenario: An owner or admin deletes a thread whose author they have blocked
+- **WHEN** the caller has blocked the thread's author, or been blocked by them, and calls
+  `moderate_club_thread`
 - **THEN** the thread SHALL be deleted
-- **AND** this SHALL be asserted explicitly, because the equivalent through a DELETE policy arm
-  succeeds with zero rows affected and reports no error
+- **AND** the assertion SHALL check rows affected rather than the absence of an error, because the
+  equivalent through a DELETE policy arm succeeds having deleted nothing
 
 #### Scenario: A thread's author is never hidden from their own thread
 - **WHEN** the author of a thread deletes it while blocked by, or blocking, another club member
@@ -245,15 +281,34 @@ learns nothing about a club they do not own (`043`'s shape), and SHALL be grante
   which carries no block predicate, and the SELECT policy that attaches to the delete exempts the
   author through its own `author_id = auth.uid()` arm
 
-#### Scenario: A member cannot delete another member's thread
-- **WHEN** a club member who is neither the author nor the club owner deletes the row or calls the
-  function
+#### Scenario: A plain member cannot delete another member's thread
+- **WHEN** a club member who is neither the author, the owner, nor an admin deletes the row or
+  calls the function
 - **THEN** both SHALL be refused
 
-#### Scenario: A non-member cannot moderate
-- **WHEN** a rider who is not the club's owner calls `moderate_club_thread` on any thread
-- **THEN** it SHALL raise `insufficient_privilege`, identically to a thread id that does not
-  exist
+#### Scenario: An admin of another club cannot moderate here
+- **WHEN** a rider holding `role = 'admin'` for a **different** club calls `moderate_club_thread`
+  on this club's thread
+- **THEN** it SHALL raise `insufficient_privilege`
+
+#### Scenario: The author who is neither owner nor admin cannot use the moderation path
+- **WHEN** a thread's author, holding no owner or admin standing, calls `moderate_club_thread` on
+  their own thread
+- **THEN** it SHALL be refused
+- **AND** their own delete through the DELETE policy SHALL still succeed, so the narrower right is
+  the one that carries the ordinary case
+
+#### Scenario: Every refusal is indistinguishable from "no such thread"
+- **WHEN** the function is called with a uuid that names no thread, and separately with a real
+  thread in a club the caller neither owns nor administers
+- **THEN** both SHALL raise `insufficient_privilege`
+- **AND** the two messages SHALL be **equal**, asserted by string comparison rather than by reading
+  the function body
+
+#### Scenario: `anon` holds no execute on the moderation function
+- **WHEN** the function's privileges are read after the migration
+- **THEN** `has_function_privilege('anon', 'public.moderate_club_thread(uuid)', 'execute')` SHALL be
+  false and `('authenticated', …)` SHALL be true
 
 ### Requirement: A rider SHALL always be able to erase their own message, and a block SHALL NOT take that away
 
@@ -747,4 +802,290 @@ because plain Postgres has no Realtime.
 - **THEN** it SHALL appear immediately in a pending state, SHALL be reconciled against the server row
   by its client-generated id rather than by matching content, and SHALL show a failure if the write
   is refused
+
+### Requirement: A club member SHALL be able to report a thread, and the reportable set SHALL be exactly the readable set
+
+Any rider who can **read** a thread SHALL be able to report it. That set SHALL be established by
+the INSERT policy's `EXISTS` against `public.club_threads` resolving under the caller's own RLS,
+and the policy SHALL name **no** membership, club-visibility or block predicate of its own — it
+inherits all three from `081`.
+
+Read off `pg_policies` on DEV 2026-08-31, that set is: every rider holding a `club_members` row for
+the club, plus the rider named in `clubs.owner_id` through `054`'s arm, **minus** any rider in a
+block relationship with the thread's author.
+
+**"Any member of the club" and "anyone who can read the thread" are therefore the same set minus
+that last group**, and the specification is the second. A non-member of a **public** club is
+excluded — they can read the club row and not its threads.
+
+A rider SHALL NOT report on another rider's behalf: `reporter_id = auth.uid()` SHALL be a policy
+conjunct.
+
+A rider MAY report their own thread. It is inert, the menu SHALL NOT offer it, and the alternative —
+a second subquery re-reading the author identity in a policy whose virtue is naming nothing —
+SHALL NOT be added.
+
+#### Scenario: A member reports another member's thread
+- **WHEN** a club member reports a thread they can read
+- **THEN** exactly one row SHALL be written, with `reporter_id` equal to their own id
+
+#### Scenario: A non-member of a public club cannot report its thread
+- **WHEN** a signed-in rider who is not a member of a **public** club attempts to report one of its
+  threads
+- **THEN** the insert SHALL be refused
+- **AND** the refusal SHALL come from the `EXISTS`, which the non-member resolves to zero rows
+
+#### Scenario: A non-member of a private club cannot report its thread
+- **WHEN** a signed-in rider who is not a member of a private club attempts to report one of its
+  threads
+- **THEN** the insert SHALL be refused
+
+#### Scenario: Block-then-report is unreachable, by construction
+- **WHEN** a rider blocks a thread's author and then attempts to report that thread
+- **THEN** the insert SHALL be refused, because the thread reads zero rows under `081`'s block arm
+- **AND** this SHALL be recorded as a designed consequence rather than corrected: a `security
+  definer` reporting RPC would have to decide what to tell a caller about a thread they cannot see,
+  and a block exemption in the INSERT policy would let a rider probe for threads by blocked authors
+- **AND** the remedy SHALL be ordering in the client, which costs nothing here because the thread's
+  ⋯ menu carries no Block row
+
+#### Scenario: A rider cannot report the same thread twice
+- **WHEN** a rider reports a thread they have already reported
+- **THEN** the second write SHALL be refused by `unique (reporter_id, thread_id)`
+- **AND** the client SHALL treat it as a no-op rather than showing an error
+
+### Requirement: The thread's ⋯ menu SHALL draw exactly the rows the viewer's authority permits, and the empty cells SHALL be named
+
+Both affordances SHALL live on the thread detail screen's existing ⋯ menu. The threads **list**
+SHALL gain no per-row menu.
+
+A row SHALL be a display hint and never an authorization; a forged state SHALL reach the same
+database refusal.
+
+| Viewer | `Report thread` | `Delete thread` (author) | `Delete thread` (moderate) |
+|---|---|---|---|
+| Author, whatever their role | no | yes | no |
+| Club owner, not the author | yes | no | yes |
+| Club admin, not the author | yes | no | yes |
+| Plain member, not the author | yes | no | no |
+| Member blocked with the author | screen unreachable | — | — |
+| Non-member | screen unreachable | — | — |
+| Signed-out visitor | never reaches the route | — | — |
+
+The owner and the admin SHALL see `Report thread` **as well as** their delete, because the two rows
+have different readers: a delete is the club acting on itself and a report escalates to the platform
+operator.
+
+A rider who is neither the author nor able to moderate SHALL still be offered a menu, because the
+Report row is now theirs. The "a sheet with no rows is worse than no control" rule SHALL be
+re-derived rather than left as written, since the empty case is narrower than it was.
+
+The destructive rows SHALL confirm before acting, in the sheet form, because the confirmation has to
+name collateral — every message in the thread and every report about it. The Report row SHALL NOT
+confirm, SHALL show a banner, and SHALL NOT navigate: the thread is still readable afterwards, so a
+route change would misdescribe what happened.
+
+#### Scenario: A plain member sees Report and no Delete
+- **WHEN** a club member who did not author the thread and cannot moderate opens the ⋯ menu
+- **THEN** `Report thread` SHALL be present and no delete row SHALL be
+
+#### Scenario: The author sees Delete and no Report
+- **WHEN** the thread's author opens the ⋯ menu
+- **THEN** `Delete thread` SHALL be present and `Report thread` SHALL be **absent**
+
+#### Scenario: An admin sees both
+- **WHEN** a club admin who did not author the thread opens the ⋯ menu
+- **THEN** both rows SHALL be present
+
+#### Scenario: An owner with no roster row sees the moderation row
+- **WHEN** the rider named in `clubs.owner_id` holds no `club_members` row and opens the ⋯ menu
+- **THEN** the moderation row SHALL be present
+- **AND** the gate SHALL therefore be `viewer_is_owner || viewer_role === 'admin'`, never
+  `viewer_role === 'owner' || viewer_role === 'admin'`
+
+#### Scenario: Reporting leaves the rider where they were
+- **WHEN** a rider taps `Report thread`
+- **THEN** a confirmation banner SHALL appear
+- **AND** the screen SHALL NOT navigate and the thread SHALL remain readable
+
+### Requirement: Reporting SHALL invalidate no cache key, and the moderation delete SHALL invalidate the thread and its list
+
+A report changes nothing any client query returns — the reporter's own read of
+`club_thread_reports` is not a screen — so `reportClubThread` SHALL call `invalidate` with nothing
+and SHALL say so at its definition. "Every action invalidates something" is the reflex this exists
+to stop.
+
+The moderation delete SHALL keep the invalidation `moderateClubThread` performs today and SHALL
+gain none.
+
+#### Scenario: A report invalidates nothing
+- **WHEN** a rider reports a thread
+- **THEN** no cache key SHALL be invalidated and no screen SHALL refetch
+
+### Requirement: A thread MAY carry a marker naming the membership it introduces, and that marker SHALL be unwritable by any client
+
+`club_threads` gains two columns: a nullable marker naming the membership a thread introduces, and
+the introduction text itself. Both SHALL be readable by everybody who can read the thread and
+writable by **no client role at all** — no INSERT grant, no UPDATE grant, no policy. The only
+writer SHALL be the introduction function.
+
+This is `044`/`046`'s rule applied to two new columns: a column the server owns SHALL NOT be
+writable by a client that can insert the row. A client can still insert an ordinary thread with a
+title, exactly as before, and the two new columns are simply not in its grant.
+
+#### Scenario: A client cannot mark a thread as an introduction
+- **WHEN** a rider inserts a thread naming the marker column
+- **THEN** the write SHALL be refused for lack of a column grant
+- **AND** the refusal SHALL NOT depend on any policy predicate
+
+#### Scenario: A client cannot mark somebody else's thread
+- **WHEN** a rider attempts to update any thread's marker
+- **THEN** the write SHALL be refused, `club_threads` having no UPDATE grant and no UPDATE policy
+  for anyone
+
+#### Scenario: Reading the marker needs the same grant as reading the thread
+- **WHEN** a member reads a thread
+- **THEN** the marker and the introduction text SHALL be readable in the same query
+- **AND** a read naming them SHALL NOT fail for a rider who can read the thread's other columns
+
+### Requirement: An introduction SHALL be immutable, exactly as a title and a message body already are
+
+The introduction text SHALL NOT be editable by its author, by a club admin, by the club's owner, or
+by any function. A rider who wants a different introduction SHALL delete the thread and write
+another.
+
+This adds no new rule: `club_threads` has no UPDATE grant and no UPDATE policy for anyone, and this
+change adds neither.
+
+#### Scenario: Nobody can edit an introduction
+- **WHEN** any role attempts to update the introduction text
+- **THEN** the write SHALL be refused
+- **AND** no `security definer` function SHALL offer an edit
+
+### Requirement: The existing delete and moderate paths SHALL reach an introduction unchanged
+
+An introduction SHALL be deletable by its author under the existing thread DELETE policy, and by
+anyone who administers the club under the existing moderation function. Neither SHALL be widened,
+narrowed or special-cased for an introduction, and no new authority SHALL be introduced.
+
+Deleting an introduction's thread SHALL delete its comments by the existing cascade, exactly as for
+any other thread.
+
+#### Scenario: The author's delete works on their own introduction
+- **WHEN** the subject deletes their introduction's thread
+- **THEN** it SHALL be deleted, with its comments, by the existing policy and cascade
+
+#### Scenario: The owner's and admins' moderation works on an introduction
+- **WHEN** an owner or admin takes down an introduction's thread
+- **THEN** the existing moderation function SHALL delete it, with no new argument and no new check
+
+#### Scenario: An introduction is reportable exactly as any thread is
+- **WHEN** a member who can read an introduction reports it
+- **THEN** it SHALL be accepted by the existing report path
+- **AND** nobody inside the club SHALL be able to read that report
+
+### Requirement: A comment on an introduction SHALL be an ordinary message, and every message in an introduction's thread SHALL be a comment
+
+An introduction's text SHALL NOT be stored as a message. Every `club_messages` row in an
+introduction's thread is therefore a comment on it, which is what makes the count beside the join
+row exact without arithmetic.
+
+The message policies SHALL be unchanged: a member may post, a rider reads a message unless they and
+its author have blocked each other, nobody may edit one, and a rider erases their own through the
+existing function.
+
+#### Scenario: The count needs no adjustment
+- **WHEN** an introduction has been posted and nobody has replied
+- **THEN** its thread SHALL hold zero messages
+- **AND** its comment count SHALL be zero
+
+#### Scenario: A blocked pair still talk past each other
+- **WHEN** two riders who have blocked each other both comment on the same introduction
+- **THEN** each SHALL see their own comment and not the other's
+- **AND** neither SHALL be told that the other commented
+
+### Requirement: The Threads list SHALL be the list of a club's ordinary threads, and SHALL be defined by what it excludes
+
+A club's Threads list SHALL hold every thread `081` returns to the viewer **except** those carrying
+an introduction marker. The exclusion SHALL be applied in the query, not to the rows it returned.
+
+Two properties of that list depend on the filter being in the query, and both fail silently if it
+is not:
+
+- **The "is there another page" signal.** The list decides there is more to read by comparing the
+  page it received against the page size it asked for. A page shortened after the read reads as the
+  end of the list, and every thread past that point becomes unreachable.
+- **The timeline's threads horizon.** It is computed from the same read on the assumption that the
+  rows returned *are* the window that was read. A read that drops rows afterwards SHALL compute its
+  own horizon instead, and a read that filters in the query does not have to.
+
+#### Scenario: A full page stays a full page
+- **WHEN** a club holds more threads than one page and some of them are introductions
+- **THEN** the first page SHALL contain a full page of ordinary threads
+- **AND** the "load more" affordance SHALL be offered on exactly the condition it is today
+
+#### Scenario: The keyset cursor is unaffected
+- **WHEN** the rider loads a later page
+- **THEN** the cursor SHALL page over ordinary threads only
+- **AND** no page SHALL repeat or skip a row at a boundary
+
+### Requirement: The introduction marker SHALL remain unwritable by every client role, and that SHALL now be treated as a listing guarantee
+
+Until this change the marker only decorated a row. It now decides whether a thread is listed at all,
+so its unwritability is what stops a rider from choosing whether their own thread appears on a club's
+Threads list.
+
+The following SHALL hold, and SHALL be treated as load-bearing rather than tidy:
+
+- `club_threads`' INSERT grant SHALL NOT include the marker column.
+- `club_threads` SHALL have no UPDATE grant and no UPDATE policy for any client role.
+- The only writer of the marker SHALL be the introduction function, which reads its subject from the
+  authenticated session and never from an argument.
+
+A future change proposing a client grant on that column, or an UPDATE policy on `club_threads`, SHALL
+be read as changing what riders can hide from each other, not as a convenience.
+
+#### Scenario: A rider cannot hide their own thread from the list
+- **WHEN** a rider inserts a thread naming the marker column
+- **THEN** the write SHALL be refused for lack of a column grant
+
+#### Scenario: A rider cannot push somebody else's thread off the list
+- **WHEN** a rider attempts to update any thread's marker
+- **THEN** the write SHALL be refused, there being no UPDATE grant and no UPDATE policy
+
+#### Scenario: The only marker writer names nobody
+- **WHEN** the introduction function marks a thread
+- **THEN** the subject SHALL come from the authenticated session alone
+
+### Requirement: A club whose only threads are introductions SHALL present an empty list, and SHALL still offer the create
+
+Such a club's Threads list SHALL draw its ordinary empty state — the one that says there are no
+threads and offers to start one. It SHALL NOT draw a list, a spinner, an error, or a message
+implying the rider is not permitted to see something.
+
+The entrance to that list SHALL remain offered to members, because the list is creatable: an
+entrance to an empty screen that offers the create is not the unreachable-screen defect, and the
+create affordance SHALL be present in the empty state as it is today.
+
+The timeline's foot, which names the lists holding older activity, SHALL continue to gate its
+Threads link on that list holding something — so a club whose only threads are introductions SHALL
+NOT be offered a link to an empty list. The foot SHALL still name at least one destination, which
+the members list guarantees.
+
+#### Scenario: Only introductions means an empty Threads list
+- **WHEN** a member opens the Threads list of a club whose every thread is a current member's
+  introduction
+- **THEN** the empty state SHALL be drawn
+- **AND** the "start a thread" affordance SHALL be present
+
+#### Scenario: The foot does not point at an empty list
+- **WHEN** the timeline is cut and names where older activity lives
+- **THEN** the Threads link SHALL be omitted if the filtered list is empty
+- **AND** at least one destination SHALL still be named
+
+#### Scenario: Empty is not permission-denied
+- **WHEN** a member sees that empty state
+- **THEN** it SHALL read as "nothing here yet", never as a refusal
+- **AND** a non-member of a public club SHALL continue to see the join prompt instead, chosen from
+  the club's own viewer role and never from the row count
 

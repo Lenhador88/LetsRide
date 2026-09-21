@@ -7,7 +7,6 @@ recipients must be excluded before a row is written. Split out of `notifications
 because the next fan-out this app grows — ride reminders, "ride updated", the Inbox epic —
 inherits every rule here unchanged and must not rediscover them.
 ## Requirements
-
 ### Requirement: Fan-out SHALL be performed by a database trigger and by nothing else
 
 Every notification row SHALL be written by an `AFTER INSERT` (or `AFTER DELETE`) row-level trigger
@@ -156,15 +155,36 @@ their own ride tells themselves.
 ### Requirement: The recipient set SHALL be computed by direct query, never through a caller-relative helper
 
 Recipient membership SHALL be evaluated with an explicit predicate naming the candidate rider.
-`private.is_club_member` and `private.is_ride_crew` SHALL NOT be used inside a fan-out.
+`private.is_club_member(uuid)` and `private.is_ride_crew(uuid)` SHALL NOT be used inside a
+fan-out.
 
 **Both helpers read `auth.uid()` internally** — verified 2026-08-07 — so each answers *"is the
-caller a member"* and never *"is this candidate a member"*. A fan-out reaching for one computes the
-actor's own membership and applies that single answer to every candidate: the set is either
-everybody or nobody, and it looks correct in a one-member test. `private.is_blocked(a, b)`,
-`private.is_club_public(club)`, `private.can_read_ride(candidate, ride)` and
-`private.can_read_club(candidate, club)` take their subject as an argument and are the forms a
-fan-out may use.
+caller a member"* and never *"is this candidate a member"*. A fan-out reaching for one computes
+the actor's own membership and applies that single answer to every candidate: the set is either
+everybody or nobody, and it looks correct in a one-member test.
+
+**The permitted instrument is a candidate-relative predicate**, and naming only the prohibition is
+what left each fan-out to invent its own answer. A fan-out MAY use any predicate that takes its
+subject as an argument — `private.is_blocked(a, b)`, `private.is_club_public(club)`,
+`private.is_club_member_for(candidate, club)`, `private.can_read_ride(candidate, ride)` and
+`private.can_read_club(candidate, club)` — and the full rules for that shape, including that no
+client role may reach one, live in the `candidate-relative-visibility` capability.
+
+**A candidate-relative predicate SHALL NOT be a second copy of a caller-relative one.**
+`private.is_club_member(uuid)` SHALL be a one-line wrapper over
+`private.is_club_member_for(auth.uid(), uuid)`, so the predicate the ten calling policies use and
+the predicate the fan-outs use are **one body with two entry points**, and that sharing SHALL be
+**asserted** rather than intended. Two definitions of one concept aging apart is the defect this
+requirement exists to prevent, and building the fix out of two more of them would be
+self-defeating.
+
+**The assertion SHALL pin the wrapper's body by equality, and a `like` match SHALL NOT be accepted
+as covering it.** An arm added to the wrapper — `select private.is_club_member_for(auth.uid(), $1)
+or exists (…)` — leaves every policy's `qual` text unchanged, still satisfies a
+`like '%is_club_member_for%'` match, and makes the candidate-relative predicate silently
+**narrower** than the policy that delegates to it. That is this requirement's own failure mode one
+level down: a stronger claim than the evidence behind it. An earlier revision of this paragraph
+said the two entry points *"cannot drift apart"*, which no assertion then supported.
 
 **The rule binds a fan-out whose recipient is a single named rider exactly as hard, and that is the
 reading this requirement previously left open.** Where the recipient comes straight out of `NEW` —
@@ -191,17 +211,32 @@ candidate-relative form in the same migration, and the fan-out SHALL use the can
 - **AND** a fan-out that would have written a row before the arm and not after it, or the reverse,
   SHALL be treated as evidence the two copies have drifted
 
-#### Scenario: The owner union applies to `club_joined` and NOT to `ride_created_in_club`
+#### Scenario: The owner union applies to `club_joined` AND to `ride_created_in_club`, because readability is what decides
 - **WHEN** a club's `owner_id` holds no `club_members` row
-- **THEN** the `club_joined` recipient set SHALL be `clubs.owner_id` **∪** `club_members`, because
-  `clubs` SELECT carries an `owner_id = auth.uid()` arm and the row therefore resolves for them
-- **AND** the `ride_created_in_club` recipient set SHALL be `club_members` **alone**, because the
-  only arm of `rides` SELECT admitting a club's members is
-  `club_id IS NOT NULL AND private.is_club_member(club_id)`, and `private.is_club_member` queries
-  `club_members` with **no owner arm** — so a row written to an ownerless owner is one the SELECT
-  policy drops on every read, permanently
-- **AND** the asymmetry SHALL be recorded at both sites, because the two sets read as
-  interchangeable and are not: what differs is the **subject's** policy, not the club
+- **THEN** **both** recipient sets SHALL include `clubs.owner_id`, and the reason SHALL be that
+  each subject resolves for them: `clubs` SELECT carries an `owner_id = auth.uid()` arm, and since
+  `054` `private.is_club_member` carries an owner arm too, so `rides` SELECT's club arm admits
+  them
+- **AND** the union SHALL NOT be justified by symmetry between the two types — what decides is the
+  **subject's** policy, checked per type, and the two sets were correctly *asymmetric* until `054`
+- **AND** the inclusion SHALL be **measured** rather than derived from a claim about another
+  function's body: the recipient set SHALL be filtered by `private.can_read_ride(candidate, ride)`
+  **and** `private.can_read_club(candidate, club)`, one predicate per subject the row renders, so
+  that the answer follows both policies automatically the next time either changes
+- **AND** an earlier revision of this scenario required the opposite — `ride_created_in_club`
+  recipients being `club_members` **alone**, because `private.is_club_member` had *"NO owner
+  arm"*. `054` gave it one, `055`'s header flagged the consequence, and the suite already asserts
+  under the `036/054:` label that an ownerless owner **can** now see their own private club's
+  ride. The narrowing outlived its reason by three migrations while reading as a decision, which
+  is why this scenario now names a live predicate instead of a fact about a body
+
+#### Scenario: The stale justification is removed from the object as well as from the file
+- **WHEN** a fan-out's recipient set changes for a reason recorded in a `COMMENT ON FUNCTION`
+- **THEN** that comment SHALL be re-issued in the same migration
+- **AND** the reason SHALL be recorded: `private.notify_ride_created_in_club`'s comment asserted
+  *"private.is_club_member, which has no owner arm"* and `059` re-issued it verbatim three
+  migrations after that stopped being true, so a session reading the database rather than the
+  repository got the superseded answer with nothing to flag it
 
 #### Scenario: The ownerless-owner state is reachable in one request, not only by a failed pair
 - **WHEN** the reachability of an ownerless owner is assessed
@@ -211,26 +246,26 @@ candidate-relative form in the same migration, and the fan-out SHALL use the can
 - **AND** `createClub`'s two non-transactional inserts SHALL be recorded as a *second* route to the
   same state rather than as the only one, because a design that assumes the failure is rare
   under-weights a state a rider can reach deliberately
+- **AND** the fan-out SHALL remain correct whether or not `enforce-creator-membership` has landed,
+  because a predicate SHALL NOT depend on a data invariant a trigger enforces elsewhere
 
-#### Scenario: The narrowing is a consequence of a defect and SHALL NOT be defended as a preference
-- **WHEN** the `ride_created_in_club` recipient set is reviewed
-- **THEN** its reason SHALL be recorded as a pre-existing defect rather than as a decision that
-  owners do not want the notification: an ownerless owner **cannot see their own private club's
-  rides at all today**, and `rides` INSERT's own `with check` — `club_id IS NULL OR
-  private.is_club_member(club_id)` — refuses them a ride in their own club
-- **AND** a notification SHALL NOT be the one surface that pretends otherwise, because a row that
-  renders "created a ride in ‹club›" for a ride whose detail screen returns not-found is worse than
-  no row
-- **AND** when `enforce-creator-membership` lands, every owner SHALL hold a membership row, the two
-  sets SHALL coincide, and this narrowing SHALL become invisible rather than needing reversal
-- **AND** this change SHALL NOT depend on that change landing first, in either order
-
-#### Scenario: Club recipients are exactly that club's members
+#### Scenario: Club recipients are exactly that club's members and its owner
 - **WHEN** a ride is created in a club, or a rider joins a club
-- **THEN** no rider outside that club SHALL receive a row, including riders in other clubs and
-  riders who have left
+- **THEN** no rider outside that club's membership and `clubs.owner_id` SHALL receive a row,
+  including riders in other clubs and riders who have left
 - **AND** membership SHALL be read at the moment of fan-out, so a rider who left a moment earlier
   receives nothing
+
+#### Scenario: No row is written for a ride in the club carrying `clubs.is_default`
+- **WHEN** a ride is created in the club flagged `clubs.is_default`
+- **THEN** **zero** `ride_created_in_club` rows SHALL be written, for every rider **including that
+  club's owner**
+- **AND** the early return SHALL sit **ahead of** the candidate union rather than inside its
+  filter, because every rider in the app is a member of that club and any rider can create a ride
+  in it from the shipped Create-ride dropdown — so a row per rider, synchronously, inside that
+  rider's own INSERT, repeatable at will
+- **AND** widening the recipient set SHALL NOT be allowed to reach past that return, since adding
+  the owner to a set that is already every rider makes the broadcast worse rather than better
 
 #### Scenario: The `club_joined` recipient set is owner plus admins and nobody else
 - **WHEN** a rider joins a club
@@ -247,11 +282,50 @@ candidate-relative form in the same migration, and the fan-out SHALL use the can
 - **AND** omitting the assertion as untestable SHALL NOT be acceptable, because the arm ships the
   day invitations do
 
-#### Scenario: The `ride_joined` recipient is the organizer and nobody else
+#### Scenario: The `ride_joined` recipients are the organizer and every crew member who can read the ride
 - **WHEN** a rider RSVPs to a ride
-- **THEN** only `rides.organizer_id` SHALL be notified
-- **AND** other crew members SHALL NOT be, notwithstanding that the design fans this row out to all
-  attendees — widening it is a product decision recorded as an open question, not a default
+- **THEN** `rides.organizer_id` and every `ride_members` row with status in `{going, maybe}` SHALL
+  be candidates, and the candidate set SHALL then be filtered by
+  `private.can_read_ride(candidate, ride)`
+- **AND** the organizer SHALL survive that filter unconditionally — whatever `is_public`, whatever
+  `club_id`, and whether or not they hold a crew row — because `rides` SELECT leads with an
+  unconditional `organizer_id = auth.uid()` arm; **an organizer dropped by the filter is the most
+  visible regression this shape can produce** and SHALL be asserted directly
+- **AND** the status list SHALL be asserted against `ride_members_status_check`, because it is
+  total against today's constraint and stops being total the day a third status is added
+- **AND** two earlier revisions are superseded and both are recorded, because each reads as a
+  decision: `036` addressed *"the organizer and nobody else"*, calling the widening a product
+  question; `055` widened it to the whole crew and **accepted** a known gap in which a crew member
+  who cannot resolve the ride receives a permanently-unreadable row, pinned as 055.6 and 055.6b
+
+#### Scenario: A crew member who cannot resolve the ride receives nothing
+- **WHEN** a rider holds a `ride_members` row for a ride they cannot SELECT — having blocked the
+  organizer, or having left the ride's private club
+- **THEN** **no** row SHALL be written for them
+- **AND** the two routes SHALL be asserted **separately**, with no block present anywhere in the
+  second fixture, because a fan-out that only excluded riders blocked with the organizer closes
+  the first and misses the second entirely while reading as a complete repair
+- **AND** the two existing `KNOWN GAP` assertions SHALL be **flipped** rather than left beside new
+  ones, since a gap closed without moving the assertion that pinned it is a gap that gets
+  re-discovered
+- **AND** the repair SHALL NOT be a crew arm on `rides` SELECT — see
+  `database-enforced-integrity` §*Ride visibility SHALL be stated per role*, whose crew scenario
+  states why that widening collapses two other audiences
+
+#### Scenario: A `ride_created_in_club` candidate who cannot resolve the CLUB receives nothing
+- **WHEN** a candidate for `ride_created_in_club` — a `club_members` row or `clubs.owner_id` —
+  cannot SELECT the club named in `club_id`, whatever their reach to the ride
+- **THEN** **no** row SHALL be written for them, because the row renders the club's name as well as
+  the ride and the SELECT policy tests the two independently
+- **AND** the conjunct SHALL be present **even though it excludes nobody today**: every candidate
+  is a member or the owner, and both satisfy `clubs` SELECT as it stands, so the filter is
+  installed against the state that opens it rather than after
+- **AND** the state that opens it SHALL be named rather than left as a generality — `clubs` SELECT
+  gaining a block predicate, which `041` already records as reachable, after which a member blocked
+  with the **club owner** but not with the **ride organizer** passes the ride test and fails the
+  club one
+- **AND** because a recipient count cannot exercise a conjunct that excludes nobody, the club
+  predicate's arms — public, owner, member — SHALL be exercised **directly**
 
 #### Scenario: A ride with no club notifies nobody about its creation
 - **WHEN** a ride is created with `club_id` NULL
@@ -266,7 +340,8 @@ candidate-relative form in the same migration, and the fan-out SHALL use the can
 - **AND** the case of an organizer notified about a rider who cannot see the club SHALL therefore
   be unreachable through the client, which SHALL be recorded rather than defended against
 - **AND** the row SHALL survive that rider later leaving the club, because the organizer's own arm
-  of the `rides` policy keeps the subject resolvable for them
+  of the `rides` policy keeps the subject resolvable **for the organizer**, who is the recipient —
+  the departing rider is the *actor*, and nothing about their own reach is being asserted here
 
 ### Requirement: A fan-out SHALL NOT write a row that the read policy can never return to its recipient
 
@@ -274,12 +349,31 @@ For every type, the recipient set SHALL be a **subset** of the set to which the 
 SELECT policy will return that row. A row that the policy drops on every read from the instant it is
 written SHALL be treated as a defect in the fan-out, not as a row awaiting a policy change.
 
-**This is the rule that catches the class of bug, and this change shipped an instance of it in
-draft.** The recipient set and the resolvability conjunct are written in different places, by
-different reasoning, and a widening on one side is invisible from the other. The failure has no
-symptom: nothing raises, no count moves, no assertion fails, and the row accumulates until its
-subject is deleted. It is the write-side mirror of the read-side rule that a notification's
-correctness at write time says nothing about its correctness at read time.
+**This is the rule that catches the class of bug, and it has now been broken twice more, in
+opposite directions, after the change that wrote it.** The recipient set and the resolvability
+conjunct are written in different places, by different reasoning, and a change on one side is
+invisible from the other. The failure has no symptom: nothing raises, no count moves, no assertion
+fails, and the row accumulates until its subject is deleted.
+
+**Being a subset is not achieved by *reasoning about* the policy — it is achieved by *calling*
+it.** Where a subject's resolvability is anything more than an own-row arm, the recipient set
+SHALL be filtered by a candidate-relative predicate that restates that policy, rather than by a
+narrowing justified in prose. The two directions this rule has failed in are both prose failures:
+`ride_created_in_club` was narrowed for a reason that stopped being true (`054`), and `ride_joined`
+was widened past a policy that has no crew arm (`055`). A prose justification cannot go stale
+loudly; a predicate can be asserted.
+
+**One predicate per subject the row renders, and a type with two subjects SHALL NOT discharge
+either by reasoning from the other.** The `notifications` SELECT policy tests each subject as its
+own `EXISTS` conjunct, so a recipient set filtered on only one of them is asserting an implication
+the policy does not make — and `036` §3 forbids that implication by name: *"Ride-implies-club is a
+derivation from today's policy text and SHALL NOT be relied on."* An earlier revision of the table
+below discharged `ride_created_in_club`'s club half exactly that way, arguing in prose that every
+candidate satisfies `clubs` SELECT because they are a member or the owner. **That argument is true
+today and is not a filter.** The state that falsifies it is already named by `041`: `clubs` SELECT
+gaining a block predicate, after which a member blocked with the **club owner** but not with the
+**ride organizer** passes the ride test, fails the club test, and holds a permanently unreadable
+row — latent in exactly the way `036` §7.5 was latent when it was written.
 
 The mapping SHALL be stated per type and checked whenever **either** side changes:
 
@@ -287,9 +381,59 @@ The mapping SHALL be stated per type and checked whenever **either** side change
 |---|---|---|
 | `postcard_liked` | `postcards.author_id` | `postcards` SELECT `author_id = auth.uid()` |
 | `postcard_commented` | `postcards.author_id` | `postcards` SELECT `author_id = auth.uid()`, and `postcard_comments` SELECT, which inherits it by `EXISTS` |
-| `ride_joined` | `rides.organizer_id` | `rides` SELECT `organizer_id = auth.uid()` |
+| `ride_joined` | (`rides.organizer_id` ∪ crew with status in `{going, maybe}`) **filtered by `private.can_read_ride`** | `rides` SELECT — the organizer arm for the first, and whichever arm `can_read_ride` finds for the rest. **There is no crew arm**, which is why the filter is required and not merely tidy. `club_id` is NULL on this type, so the club conjunct is vacuous and `can_read_club` is deliberately NOT called |
 | `club_joined` | `clubs.owner_id` ∪ `club_members` | `clubs` SELECT `owner_id = auth.uid() OR private.is_club_member(id)` — both arms present, so the union is safe |
-| `ride_created_in_club` | `club_members` **only** | `rides` SELECT `club_id IS NOT NULL AND private.is_club_member(club_id)` — **no owner arm**, which is why the union is not safe here — **and** `clubs` SELECT, which the club-member arm satisfies |
+| `ride_created_in_club` | (`clubs.owner_id` ∪ `club_members`) **filtered by `private.can_read_ride` AND `private.can_read_club`**, and empty for the club carrying `clubs.is_default` | **Two conjuncts, tested independently.** `rides` SELECT, restated by `can_read_ride`; **and** `clubs` SELECT, restated by `can_read_club`. Neither is derived from the other |
+| `club_invited` | the invitee, one named rider read from `NEW` | **not** the ordinary `clubs` `EXISTS` for a private club — the type-scoped `club_invited` disjunct, whose predicate is the live invite itself |
+| `club_invite_declined` | the inviter, one named rider read from `NEW` | `clubs` SELECT, satisfied because the inviter is a member or the owner |
+| **`club_thread_replied`** | **`club_threads.author_id`** | **`club_threads` SELECT — and the arm that returns it is `private.is_club_member(club_id)`, NOT the author's own-row arm** |
+| `club_thread_waved` | **none since `101`** — the table and its fan-out are dropped; a row written before it is addressed to `club_threads.author_id` | the same as `club_thread_replied` |
+
+**There are two ways to satisfy this requirement and only one of them is right here.** The rule says
+a row the policy can never return is a defect *in the fan-out*, which reads as "do not write it". For
+`club_invited` that would delete the feature: the whole point is to reach somebody outside the club.
+The correct resolution is the **other** side — move the policy, narrowly and by type, so the row the
+fan-out writes is returnable — and it is legitimate **only** because the recipient can already read
+the subject by an existing path (`085`'s accessor). Where that is not true, the row must not be
+written.
+
+This distinction SHALL be stated wherever a fan-out addresses a recipient outside the subject's
+ordinary audience, because the two remedies are indistinguishable from the fan-out's own body.
+
+**The two new rows carry a trap that reads the opposite way round from `club_joined`'s, and it SHALL
+be recorded at both sites.** `club_threads` SELECT is
+`EXISTS(clubs) AND private.is_club_member(club_id) AND (author_id = auth.uid() OR NOT
+private.is_blocked(auth.uid(), author_id))`. The author's own-row test sits **inside the block
+conjunct**, not ahead of the membership one — so **authoring a thread is not sufficient to read it.**
+The recipient is a subset of the resolving set *only while they remain a member*, and the moment they
+leave, the row is evicted rather than deleted. That is the correct behaviour and it is the standing
+eviction ruling, but a reviewer reading "the recipient is the author, so the own-row arm resolves it"
+would be reasoning from `postcards`' policy shape, which is the opposite one.
+
+**Both thread fan-outs SHALL carry `private.is_club_member_for(t.author_id, t.club_id)`, and a
+widening to prior repliers SHALL carry it per candidate.** `club_members` DELETE is a bare
+`auth.uid() = user_id` with no owner carve-out, so an author who has left is reachable in one
+request — and until migration `100` both fan-outs wrote that rider a row their own SELECT policy
+could never return, which is the defect this capability's own *"a row the policy drops on every read
+from the instant it is written"* requirement names. It is NOT the eviction ruling above: that covers
+a row readable when written; this one never was.
+
+**An earlier revision of this paragraph also told a widening to "exclude a club owner holding no
+`club_members` row — the same ownerless-owner case that narrows `ride_created_in_club` to members
+alone", and BOTH halves of that were false.** Recorded rather than deleted, because it is the
+sentence a future widening would have followed:
+
+- The two instructions contradict each other. `private.is_club_member_for` **includes** the
+  ownerless owner — its body is `exists(club_members …) or exists(clubs where owner_id =
+  candidate)` — so one predicate cannot both be carried and exclude them.
+- `ride_created_in_club` does **not** narrow to members alone. Measured off `prosrc` on DEV:
+  `private.notify_ride_created_in_club` unions `clubs.owner_id`, and `060`'s own comment at the
+  site says why — *"`036` §7.5 withheld this arm because `is_club_member` had no owner arm; `054`
+  gave it one."*
+
+Including the ownerless owner is therefore correct here for the same reason it is correct there:
+`club_threads` SELECT resolves through `private.is_club_member`, which delegates to the same twin,
+so the recipient set is now **equal** to the set the policy returns to rather than a superset.
 
 #### Scenario: Every type's recipient set is checked against its resolving policy arm
 - **WHEN** a type is added, or a recipient set or a subject policy is changed
@@ -303,12 +447,85 @@ The mapping SHALL be stated per type and checked whenever **either** side change
   notification resolve for a subject whose own screen still refuses the rider — the row would render
   and its destination would not open
 
+#### Scenario: A row nobody can read is a defect even when it fails closed and is reversible
+- **WHEN** the two properties that made `055` accept its known gap are offered again — that the
+  failure is a notification never shown rather than a row shown to the wrong rider, and that
+  unblocking or rejoining makes the row readable
+- **THEN** they SHALL be accepted as bounding the **severity** and SHALL NOT be accepted as
+  closing the defect
+- **AND** the reason SHALL be recorded: the same two properties are true of every instance of this
+  class, so accepting them as a defence retires the requirement rather than applying it
+
+#### Scenario: The subset property is enforced by a predicate wherever the subject has more than an own-row arm
+- **WHEN** a recipient set addresses anyone other than the subject's own owner
+- **THEN** it SHALL be filtered by a candidate-relative predicate restating the subject's SELECT
+  policy, rather than by a narrowing argued in a comment
+- **AND** the restatement's staleness SHALL be bounded by an assertion pinning the policy's `qual`
+  text, labelled with the predicate's name, so a rewrite of the policy fails the suite with a
+  pointer rather than silently changing who gets notified
+- **AND** the direction of failure SHALL be recorded: a stale restatement writes rows the read
+  policy discards, or withholds rows it would have returned, and **neither can show anything to
+  anyone** — which is what makes this the safe side to carry the duplication on
+
+#### Scenario: A type with two subjects is filtered by two predicates, one per subject
+- **WHEN** a notification type sets more than one subject column — `ride_created_in_club` sets both
+  `ride_id` and `club_id`
+- **THEN** the recipient set SHALL be filtered by one candidate-relative predicate **per subject**,
+  conjoined, matching the independent `EXISTS` conjuncts the SELECT policy applies
+- **AND** neither subject's resolvability SHALL be inferred from the other's, however reliably the
+  implication holds against today's policy text
+- **AND** a filter that excludes nobody today SHALL still be installed, because the whole class of
+  defect this requirement names is latent until a policy changes — and the policy change that
+  opens this one, a block predicate on `clubs` SELECT, is already named as reachable by `041`
+- **AND** a recipient count SHALL NOT be accepted as exercising such a conjunct, since it excludes
+  nobody; the predicate's arms SHALL be exercised **directly**, because a conjunct nothing
+  exercises is one a later edit deletes silently
+
+#### Scenario: A subject a type never sets is NOT filtered, and the omission is asserted in both directions
+- **WHEN** a type leaves a subject column NULL — `ride_joined` sets `ride_id` and leaves `club_id`
+  NULL
+- **THEN** the corresponding predicate SHALL NOT be called, because the SELECT policy's conjunct
+  for that subject is vacuous for the type
+- **AND** the omission SHALL be pinned by assertion **in both directions** — that the fan-out that
+  needs the club predicate calls it, and that the fan-out that does not need it does not — because
+  a deliberate omission with no assertion behind it is indistinguishable from a missed one, which
+  is the confusion this whole requirement exists to end
+
 #### Scenario: The check is asserted, not only reviewed
 - **WHEN** the RLS suite exercises a fan-out
 - **THEN** each type SHALL assert that every recipient the fan-out wrote for can **read** the row
   back under their own session
 - **AND** an assertion that only counts rows written SHALL NOT be accepted as covering this, because
   the whole failure is a row that exists and is unreadable
+- **AND** where a recipient is newly added — the ownerless owner — the read-back SHALL be the
+  assertion that matters, not the row count
+
+#### Scenario: The invite fan-out and the policy arm move together
+- **WHEN** either the `club_invited` recipient set or the type-scoped policy disjunct changes
+- **THEN** the other SHALL be re-derived from the live policy text in the same migration
+- **AND** an assertion SHALL confirm the written row is returned to its recipient in the same
+  transaction, which is the self-consistency check that fails the day the two drift
+
+#### Scenario: A recipient who cannot read the subject by any path is not written to
+- **WHEN** a candidate recipient could not read the club through `clubs` SELECT **and** could not
+  reach it through `discoverable_private_clubs` — a rider blocked with the owner, for instance
+- **THEN** no row SHALL be written for them, and the fan-out SHALL exclude them by predicate rather
+  than relying on the read policy to hide it
+
+#### Scenario: The check is asserted for the two new types, not only reviewed
+
+- **WHEN** the RLS suite exercises the thread fan-outs
+- **THEN** it SHALL assert that the recipient can **read the row back** under their own session, not
+  merely that a row was written
+- **AND** it SHALL assert the eviction case too — the same rider, after leaving the club, reading
+  zero — because the whole failure this requirement names is a row that exists and is unreadable
+
+#### Scenario: A row is never written to an ownerless owner
+
+- **WHEN** a club's `owner_id` holds no `club_members` row and a thread in that club is replied to
+- **THEN** no row SHALL be written to that owner
+- **AND** this holds trivially today because the recipient is the thread's author, and SHALL be
+  asserted anyway, because it is the invariant a widening would break silently
 
 ### Requirement: A retraction SHALL delete exactly the row its matching fan-out would have written
 
@@ -327,6 +544,33 @@ wholesale.
 
 The scope is index-served for free: the uniqueness index leads `(user_id, type, actor_id,
 postcard_id, …)`, so the four-column predicate is a prefix of it.
+
+A retraction SHALL scope its delete by the **full** key the insert would have used — `user_id`,
+`type`, `actor_id` and the subject column together — and SHALL NOT match on any subset of it.
+
+**A fan-out MAY have no retraction at all, and where it does not, the absence SHALL be a stated
+decision with the degradation it implies.** `090` measured the cost of the obvious choice: with a
+retraction on withdrawal, a withdraw-and-re-send cycle deletes the row and writes it again, so
+`notifications_event_key` never collides and the recipient can be notified once per cycle, without
+limit — the harassment shape the index exists to prevent, reachable with two buttons. **The index is
+the only rate limit this app has, and it only works while nothing clears the row underneath it.**
+
+`club_invited` therefore ships with **no retraction**, and the two consequences `090` names apply
+unchanged: a withdrawn invite leaves its notification standing, and a re-send to a rider who already
+dismissed the first one is silent.
+
+Every retraction SHALL scope its delete by the **full** key the matching insert would have used —
+the recipient, the type, the actor and the subject together — and SHALL NOT match on any subset of
+it. `club_thread_waved`'s retraction, keyed on `user_id`, `type`, `actor_id` and `thread_id`, was
+dropped by `101` with the table it hung on.
+
+The scope is index-served for free: `(user_id, type, actor_id, …)` is a prefix of the rebuilt
+uniqueness index, whose column order is unchanged for its first seven columns.
+
+**A retraction SHALL NOT be added for every deletable parent.** Where the parent's DELETE is
+controlled by the **actor** and the notification's subject is not that parent row — a reply, whose
+subject is the thread — no retraction SHALL be created, because it would clear a row other surviving
+rows still justify and would make post-delete-post an unbounded notification generator.
 
 #### Scenario: One rider's unlike does not clear another rider's notification
 - **WHEN** riders A and B have both liked the same postcard, and A unlikes it
@@ -349,6 +593,31 @@ postcard_id, …)`, so the four-column predicate is a prefix of it.
   worst redundant and never wrong
 - **AND** the redundancy SHALL NOT be removed by adding a `pg_trigger_depth()` or `TG_OP` guard,
   because a guard that skips the cascade case is one refactor away from skipping the rider case
+
+#### Scenario: The absent retraction is recorded rather than omitted
+- **WHEN** the migration is reviewed
+- **THEN** it SHALL state that no `after delete` retraction exists for `club_invited`, why, and what
+  the standing row degrades to
+
+#### Scenario: A withdrawn invite's notification degrades rather than misleads
+- **WHEN** an invite is withdrawn and its recipient opens their notifications
+- **THEN** the row SHALL render as plain text with **no** Accept or Decline control, because the
+  controls read the live invite through `my_live_club_invites()` and not the notification
+- **AND** tapping it SHALL open the club where the rider can still read it and SHALL be inert where
+  they cannot, never a dead link
+
+#### Scenario: Re-sending does not re-notify
+- **WHEN** the same admin withdraws and re-sends an invite to the same rider for the same club
+- **THEN** `on conflict do nothing` against `notifications_event_key` SHALL absorb the second write,
+  `read_at` and `created_at` SHALL keep their original values, and the row SHALL not return to the
+  top of the list
+
+#### Scenario: A retraction that would fire on an actor-controlled delete of a non-subject parent is refused
+
+- **WHEN** a retraction on `club_messages` DELETE is considered
+- **THEN** it SHALL NOT be created
+- **AND** the reason SHALL be recorded at the site, because its absence is otherwise
+  indistinguishable from an oversight
 
 ### Requirement: An event SHALL produce at most one live notification per recipient, and repeating it SHALL NOT stack
 
@@ -575,4 +844,591 @@ is true and SHALL be left alone.**
   rename, and it is the absence of a twelfth that this requirement is about
 - **AND** `NotificationType` in `src/types/index.ts` SHALL be unchanged, so no exhaustive `switch`
   in `notificationCopy` or `NotificationsListItem` gains an arm
+
+### Requirement: A new caller-relative helper SHALL be paired with a subject-taking twin BEFORE any fan-out needs it
+
+The standing requirement *"The recipient set SHALL be computed by direct query, never through a
+caller-relative helper"* is stated against the helpers that existed when it was written. This change
+introduces a **new** one — `private.is_club_admin(target_club)` — whose description is *exactly* the
+recipient set of the request fan-out. That coincidence is what makes trap (c) attractive here:
+`where private.is_club_admin(new.club_id)` reads correctly, compiles, and computes the set relative
+to whoever happened to be inserting rather than to each candidate.
+
+So the rule SHALL be strengthened: **any caller-relative helper added by a change that also adds a
+fan-out SHALL be created together with its subject-taking twin, in the same migration**, one body
+behind both, and the fan-out SHALL use the twin.
+
+#### Scenario: Both forms exist in the same migration
+- **WHEN** `085` is applied
+- **THEN** `private.is_club_admin_for(uuid, uuid)` and `private.is_club_admin(uuid)` SHALL both
+  exist, the second delegating to the first with a body equal to the delegation exactly
+
+#### Scenario: The fan-out uses the subject-taking form
+- **WHEN** `private.notify_club_join_requested`'s body is examined
+- **THEN** it SHALL reference `private.is_club_admin_for` and SHALL NOT reference
+  `private.is_club_admin`
+- **AND** it SHALL contain no reference to `auth.uid()` anywhere
+
+#### Scenario: The caller-relative form is unreachable from a trigger by construction
+- **WHEN** the recipient set is computed
+- **THEN** it SHALL be a direct query over `public.clubs` and `public.club_members` with the
+  candidate substituted, matching `private.notify_club_joined`'s existing union, so that the two
+  fan-outs addressing the same audience cannot disagree about who that audience is
+
+#### Scenario: The two fan-outs' audiences are asserted to agree
+- **WHEN** a club has an owner, an admin, an ordinary member and a non-member
+- **THEN** the set receiving `club_join_requested` SHALL equal the set receiving `club_joined` for
+  the same club, minus the actor in each case
+- **AND** this SHALL be asserted as set equality rather than as two independent lists, because the
+  defect being guarded against is the two drifting
+
+### Requirement: An existing fan-out that acquires a `security definer` caller SHALL be re-exercised, and its `when` clause SHALL be re-checked
+
+`private.notify_club_joined` is `after insert on public.club_members for each row` with **no `when`
+clause**. This change makes it fire for the first time from inside a `security definer` function.
+
+Any change that gives an existing fan-out a new caller of a different security context SHALL:
+re-assert that the trigger has no `current_user` guard; assert that it still fires from the new
+caller; and hand-exercise the affected write path per `036`, because a raise inside a fan-out takes
+the calling transaction down with it.
+
+#### Scenario: The trigger has no `when` clause and none is added
+- **WHEN** the trigger definition is examined before and after
+- **THEN** it SHALL be unchanged and SHALL carry no `when (current_user = …)` clause
+- **AND** the migration SHALL comment that adding one would silently disable the fan-out for the
+  approval path, since `current_user` inside a definer function is the owner
+
+#### Scenario: It fires from inside the approval RPC
+- **WHEN** `approve_club_join_request` succeeds
+- **THEN** the club's owner and admins SHALL each hold a `club_joined` notification with the
+  approved rider as actor
+- **AND** this SHALL be asserted directly, because the property depends on a trigger nobody in this
+  change wrote
+
+#### Scenario: The approved rider is not notified of their own join
+- **WHEN** the same approval runs
+- **THEN** the requester SHALL hold no `club_joined` row, because `notify_club_joined` excludes the
+  actor
+- **AND** they SHALL hold exactly one `club_join_request_approved` row, so the approval produces one
+  notification for them and not two
+
+#### Scenario: The default-club early return is unaffected
+- **WHEN** `clubs.is_default` is true
+- **THEN** `notify_club_joined` SHALL still return early
+- **AND** no request path can reach that club anyway, because the discovery predicate excludes it —
+  both guards SHALL exist and neither SHALL be removed on the strength of the other
+
+### Requirement: A fan-out SHALL NOT write a row its recipient can never read, and where that forecloses the notification the fan-out SHALL be absent rather than silent
+
+Restated here from the `notifications` delta because it is a property of the fan-out, not of the
+table: `private.notify_club_join_requested` SHALL guard each recipient with
+`private.can_read_club(candidate, new.club_id)`, and the approval notification SHALL be written only
+after the membership row exists.
+
+Where no ordering and no guard can make a recipient able to read a row — the decline case — **no
+trigger SHALL be written for it**, and the migration SHALL say so in a comment at the point where a
+reader would expect the third fan-out to be.
+
+#### Scenario: Every written row is readable by its recipient at write time
+- **WHEN** either fan-out writes
+- **THEN** the recipient SHALL be able to select the row immediately afterwards under their own row
+  security
+
+#### Scenario: The absent third fan-out is commented, not merely missing
+- **WHEN** the migration is read
+- **THEN** the place a `notify_club_join_declined` would sit SHALL carry a comment naming `036` §3's
+  club conjunct and the standing `notifications` requirement it would violate
+- **AND** the absence SHALL be asserted: zero notifications after a decline
+
+#### Scenario: Blocking is applied at fan-out as well as at read
+- **WHEN** a requester is blocked with one of the club's admins
+- **THEN** that admin SHALL receive no `club_join_requested` row
+- **AND** the other admins SHALL, so the block is per-pair and not per-club
+
+### Requirement: A fan-out whose actor is its own recipient SHALL be permitted only where that is the honest attribution, and SHALL be stated as an exception
+
+The standing rule *"A rider SHALL NEVER be notified of their own action"* is expressed everywhere in
+this repo as `where candidates.recipient <> new.user_id`, and every existing fan-out carries it.
+`private.notify_club_join_request_declined` (`089`) is the **first and only** fan-out where
+recipient and actor are deliberately the same rider, and it SHALL be recorded as an exception rather
+than allowed to read as a missing exclusion.
+
+The event being recorded is *"the club answered YOUR request"*, and the rider is the subject of their
+own request. `actor_id` is NOT NULL and references `profiles`, so it must name somebody; every other
+candidate discloses more (see the `notifications` delta). The self-actor is the only value that is
+both honest and non-disclosing.
+
+**The exclusion SHALL NOT be copied into this fan-out**, and the reason SHALL be in the function's
+own comment, because the next reader's first instinct will be to add it and doing so would delete
+every row this fan-out writes.
+
+#### Scenario: The exclusion is absent, and its absence is asserted
+- **WHEN** `private.notify_club_join_request_declined`'s `prosrc` is read
+- **THEN** it SHALL contain no `recipient <> ` exclusion, and the assertion SHALL name the reason so
+  a later "tidy" fails a test rather than silently emptying the feature
+
+#### Scenario: Every other fan-out still excludes the actor
+- **WHEN** the other fan-outs are inspected
+- **THEN** each SHALL still exclude the actor, and each SHALL still be asserted separately — the
+  exception SHALL NOT be generalised
+
+### Requirement: A fan-out's recipient guard SHALL be the read policy's predicate, including when that predicate is a disjunction
+
+`085` learned this once: a row written to somebody whose own policy will never return it is invisible
+for ever and looks correct to every test that checks the row was inserted. The guard SHALL therefore
+be the **whole** of the read predicate, subject-taking, and SHALL NOT be one convenient half of it.
+
+For `club_join_request_declined` the read predicate is a disjunction, so the guard is:
+
+```sql
+private.can_read_club(new.user_id, new.club_id)
+or private.club_takes_join_requests_for(new.user_id, new.club_id)
+```
+
+Both arms SHALL be present. The first alone drops every decline for a private club, which is the
+entire feature. The second alone drops a decline for a club that has since flipped public or that
+the rider has since joined.
+
+Both SHALL be the **subject-taking** forms. `036` trap (c) is at its sharpest here for the second
+one, because the caller-relative wrapper `private.club_takes_join_requests(uuid)` is the name a
+policy uses two files away and would compute the answer for the **declining admin** rather than for
+the requester — who is always able to see the club, so the guard would pass for everyone and guard
+nothing.
+
+#### Scenario: Both arms are exercised
+- **WHEN** a decline is issued for a private club the rider may still request
+- **THEN** a row SHALL be written, through the second arm
+- **WHEN** a decline is issued for a club the rider is somehow a member of
+- **THEN** a row SHALL be written, through the first arm
+
+#### Scenario: A blocked requester gets no row at all
+- **WHEN** a `blocks` row exists in either direction between the requester and the club's owner and
+  a pending request is declined
+- **THEN** **zero** notification rows SHALL be written, because both arms are false
+
+#### Scenario: The guard uses the subject-taking twins
+- **WHEN** the fan-out's `prosrc` is read
+- **THEN** it SHALL mention `auth.uid()` **nowhere**, and SHALL call `can_read_club` and
+  `club_takes_join_requests_for` in their two-argument forms
+
+### Requirement: A retraction already hung on an event SHALL be reused rather than duplicated, and its scope SHALL be re-proved against every new type on the same event
+
+`087` hung `private.retract_club_join_requested` on `after update of status`, which is the **same
+event** `089`'s fan-out fires on. Two triggers on one event SHALL be permitted, and the new type
+SHALL be protected from the existing retraction by that retraction's `type` conjunct rather than by
+trigger ordering.
+
+`085` wrote that conjunct for exactly this hazard — *"the `type` conjunct is what stops an approval
+deleting the `club_join_request_approved` row it writes in the same transaction"* — and the same
+sentence now has a second instance. Relying on alphabetical trigger order instead would be a
+guarantee nothing states and nothing tests.
+
+**No new retraction trigger SHALL be added for the decline**: an admin clearing a declined row
+DELETEs it, and `085`'s delete-arm trigger already fires. Its scope SHALL be extended to remove the
+decline notification as well as the request notification, in one function, so a future writer of
+`status` inherits both halves automatically.
+
+#### Scenario: The decline notification survives the retraction that fires beside it
+- **WHEN** `decline_club_join_request` succeeds
+- **THEN** the admins' `club_join_requested` rows SHALL be gone **and** the requester's
+  `club_join_request_declined` row SHALL exist
+- **AND** the assertion SHALL be order-independent — it SHALL NOT be satisfied by the two triggers
+  happening to fire in a convenient sequence
+
+#### Scenario: Clearing a declined row takes its notification with it
+- **WHEN** an admin deletes a `declined` row
+- **THEN** the requester's `club_join_request_declined` row SHALL be gone
+- **AND** the rider SHALL be able to ask again, with no notification left claiming a refusal that no
+  longer exists
+
+#### Scenario: The retraction is scoped to its own event key
+- **WHEN** two riders hold declines from the same club and one is cleared
+- **THEN** only that rider's notification SHALL be removed, scoped by `user_id`, `type` and
+  `club_id` together
+
+### Requirement: The welcome fan-out SHALL address the joiner alone, and SHALL be computed by direct query
+
+`private.notify_club_waved()` SHALL write exactly one notification per wave, addressed to
+`new.subject_user_id` — the rider who joined — and to nobody else. The club's owner, its admins and
+its other members SHALL receive nothing.
+
+The recipient SHALL be read from the **row**, never from `auth.uid()` and never through a
+caller-relative helper. The standing rule applies unchanged: a helper like
+`private.is_club_member()` answers for the *caller*, and a fan-out's question is about the
+*subject*.
+
+The function SHALL be `security definer`, because no client role holds INSERT on `notifications`,
+and SHALL carry `set search_path = ''`. Its trigger SHALL carry **no** `when` clause: `036` §7.8
+records that copying `023`'s `when (current_user = 'authenticated')` would be correct on a
+participation gate and wrong here, because the fan-out must fire for every writer including the
+seed the RLS suite runs as.
+
+**There is no wave on a thread to notify about.** `098` briefly notified one; PD-372 removed the
+client path and `101` dropped `club_thread_waves` and its triggers, so the join wave is the only wave
+this fan-out, or any other, serves.
+
+#### Scenario: Exactly one recipient
+- **WHEN** a member waves another rider's join in a club with an owner, two admins and forty
+  members
+- **THEN** exactly one `notifications` row SHALL be written
+- **AND** its `user_id` SHALL be the joiner and its `actor_id` the waver, both read from NEW
+
+#### Scenario: The fan-out is exercised by hand before it reaches production
+- **WHEN** the migration is applied to either project
+- **THEN** the wave and un-wave paths SHALL be exercised by hand in a rolled-back transaction, as
+  `authenticated`, on that project
+- **AND** the resulting rows SHALL be **counted**, not assumed, per `036`'s gate
+
+### Requirement: A rider SHALL NOT be notified of their own wave, and SHALL NOT be able to wave themselves
+
+The fan-out SHALL exclude `new.user_id = new.subject_user_id`, and the INSERT policy SHALL refuse
+that row outright.
+
+**Both, and neither is redundant.** The WITH CHECK is the primary rule — a self-welcome expresses
+nothing — and stops the row existing. The fan-out exclusion is the standing requirement that a
+rider is never notified of their own action, and it holds if a future path writes the row by some
+other means. `036` §7.6 places the actor exclusion **after** the recipient union for exactly this
+reason.
+
+#### Scenario: The self-wave never exists
+- **WHEN** a rider attempts to wave their own join
+- **THEN** the INSERT SHALL be refused by the WITH CHECK
+- **AND** no notification SHALL be written, there being no row
+
+#### Scenario: The exclusion survives a new writer
+- **WHEN** any future path writes a `club_join_waves` row whose reactor is its subject
+- **THEN** the fan-out SHALL still write nothing
+- **AND** the exclusion SHALL be in the function body rather than relied upon from the policy
+
+### Requirement: Blocking SHALL be applied at fan-out as well as at read, and the redundancy SHALL be stated truthfully
+
+The fan-out SHALL exclude a recipient with whom the actor is blocked in either direction —
+`not private.is_blocked(new.user_id, new.subject_user_id)`.
+
+**This conjunct is redundant today and SHALL be written anyway, with the honest reason.** The
+INSERT policy's `EXISTS` against `club_members` already carries that table's symmetric block arm on
+`user_id`, so a rider blocked with the subject cannot create the wave at all. The reasons to write
+it regardless:
+
+1. The implication is a property of the **current** `club_members` SELECT policy, not of this
+   table. A widened arm there breaks it with nothing announcing the transition.
+2. The standing requirement is that blocking be applied twice, at fan-out and at read, and that the
+   second is not optional. A fan-out relying on a sibling table's policy is applying it once.
+3. It costs nothing measurable.
+
+It SHALL NOT be justified as *"the policy alone is a leak"*, because it is not. `081`'s header
+records what a false stated justification costs: the next session reads the reason, finds it does
+not hold, and removes the conjunct.
+
+#### Scenario: The redundancy is documented as redundancy
+- **WHEN** the fan-out is written
+- **THEN** its comment SHALL say that the conjunct is redundant today and why it stays
+- **AND** SHALL NOT claim the INSERT policy admits a blocked pair
+
+#### Scenario: The block still holds at read time
+- **WHEN** a block is created after the notification row exists
+- **THEN** the `notifications` read policy SHALL withhold the row from its recipient
+- **AND** the fan-out SHALL NOT be responsible for cleaning it up
+
+### Requirement: A wave retraction SHALL delete exactly the row its matching fan-out wrote
+
+`private.retract_club_waved()` SHALL fire `after delete on public.club_join_waves` and SHALL delete
+the notification scoped by **all four** of `user_id`, `type`, `actor_id` and `club_id`.
+
+A subset scope would let one rider's un-wave delete another rider's notification, which is `036`
+§7.2's recorded lesson and the reason that function names all four columns.
+
+It SHALL also fire on cascaded deletes — a leave, a thread deletion, an account deletion — and that
+is bounded and redundant rather than wrong. **No `pg_trigger_depth` guard SHALL be added**, per the
+standing note on `retract_postcard_liked`.
+
+**The wave/un-wave loop re-lighting a notification SHALL be accepted and named.** The unique index
+means a wave cannot *stack*; a retraction followed by a fresh wave writes a fresh row and re-lights
+it. `036` accepted that once, for likes, and this is the second acceptance. It is recorded here so
+that it is a decision rather than an inheritance, and so that a rate limit — which this app has
+nowhere — is a known future need rather than a surprise.
+
+#### Scenario: One rider's un-wave leaves another's notification alone
+- **WHEN** two riders have waved the same join and one un-waves
+- **THEN** exactly one notification row SHALL be deleted
+- **AND** the other rider's row SHALL survive, `actor_id` being in the scope
+
+#### Scenario: A cascaded delete retracts too
+- **WHEN** the join's `club_members` row is deleted, cascading its waves
+- **THEN** each retraction SHALL fire and remove its notification
+- **AND** the recipient SHALL not be left with a notification about a membership that no longer
+  exists
+
+#### Scenario: The loop is bounded by the uniqueness index
+- **WHEN** a rider waves and un-waves repeatedly
+- **THEN** at most one live notification SHALL exist for that `(recipient, type, actor, club)` at
+  any moment
+- **AND** the collapse SHALL come from `notifications_event_key` with `nulls not distinct`, which
+  SHALL be verified rather than assumed
+
+### Requirement: A fan-out SHALL NOT write a row its read policy can never return
+
+`club_waved` SHALL carry `club_id` as its only subject, so the `notifications` read policy's club
+arm decides its visibility. The recipient is a member of that club at the moment of writing — they
+just joined it — so the row is readable when written.
+
+**Where it later becomes unreadable, it SHALL drop rather than be cleaned up.** If the recipient
+leaves a **private** club, `clubs` SELECT (`is_public OR owner_id = auth.uid() OR
+is_club_member(id)`) stops admitting them and the notification disappears from their list. That is
+the standing behaviour — a notification dies with its subject's visibility — and SHALL NOT be
+compensated for by a second retraction trigger.
+
+#### Scenario: The row is readable at the moment it is written
+- **WHEN** the fan-out writes a `club_waved` row
+- **THEN** its recipient SHALL be able to read it immediately
+- **AND** the `notifications` policy SHALL be the thing that says so, not the fan-out
+
+#### Scenario: Leaving a private club drops the notification
+- **WHEN** the recipient leaves a private club in which they were welcomed
+- **THEN** the notification SHALL no longer be returned to them
+- **AND** no trigger SHALL be added to delete it, the read policy already answering
+
+### Requirement: A fan-out whose writer is a `security definer` RPC SHALL carry no `current_user` guard, and its subject SHALL be read from the row
+
+Both fan-outs this change adds SHALL be `after insert`/`after update` triggers with **no `when
+(current_user = …)` clause**, and both SHALL read every rider from `NEW` rather than from
+`auth.uid()`.
+
+This is trap (a) and trap (b) restated for a change whose writers are RPCs: `decline_club_invite` is
+`security definer`, so `current_user` inside it is the **owner** and a copied gate clause would
+disable the decline fan-out entirely and silently; and `auth.uid()` is NULL in the RLS suite, in
+psql and in a seed, so a guard written against it filters out every recipient exactly where it is
+asserted.
+
+Where a fan-out needs to know something about **somebody else** — whether the recipient can read the
+club — it SHALL use the subject-taking `_for` helper, never the caller-relative wrapper. That is trap
+(c), and it is at its sharpest here because the natural thing to type,
+`private.has_live_club_invite(club_id)`, would compute the **actor's** answer and apply it to the
+recipient.
+
+#### Scenario: No gate clause on either fan-out
+- **WHEN** `pg_get_triggerdef` is read for both
+- **THEN** neither SHALL carry a `WHEN (CURRENT_USER = …)` clause
+
+#### Scenario: No `auth.uid()` in either body
+- **WHEN** `prosrc` is read for both fan-out functions
+- **THEN** neither SHALL contain `auth.uid()`
+
+#### Scenario: The decline fan-out fires from an RPC
+- **WHEN** the invitee calls `decline_club_invite`
+- **THEN** exactly one `club_invite_declined` row SHALL be written, addressed to the inviter, with
+  the invitee as actor
+- **AND** the count SHALL be asserted rather than assumed
+
+### Requirement: The two thread fan-outs SHALL satisfy every standing fan-out rule, and each SHALL be checked rather than assumed inherited
+
+`private.notify_club_thread_replied` SHALL satisfy all ten of this capability's standing
+requirements, and each of the ten SHALL be checked against it individually rather than declared
+inherited. `098` shipped two more beside it — `private.notify_club_thread_waved` and
+`private.retract_club_thread_waved` — and `101` dropped both with `club_thread_waves`.
+
+Compliance SHALL NOT be argued from the capability's own purpose statement — *"the next fan-out this
+app grows … inherits every rule here unchanged and must not rediscover them"* is a statement about
+the rules, not a promise that any particular new fan-out obeys them.
+
+| # | Standing requirement | How the reply fan-out satisfies it |
+|---|---|---|
+| 1 | Performed by a trigger and by nothing else | One `AFTER` row-level trigger on `club_messages`. No action, no RPC and no Edge Function writes a notification |
+| 2 | `security definer`, `search_path = ''`, EXECUTE revoked, in `private`, no `current_user` branch | All of them, and no `WHEN` clause on the trigger |
+| 3 | The actor read from the row, never `auth.uid()` | `new.author_id`; `auth.uid()` appears nowhere |
+| 4 | The actor is never notified of their own action | `<> thread.author_id`, evaluated after the recipient is resolved |
+| 5 | The recipient computed by direct query, never a caller-relative helper | One `join` to `club_threads`. `private.is_club_member` and `private.is_ride_crew` appear nowhere |
+| 6 | Never write a row the read policy cannot return | The recipient is the thread's author and the conjunct is the thread — see the mapping below |
+| 7 | A retraction deletes exactly the row its fan-out would have written | No retraction: a reply notification is not retracted when its message is deleted. The wave retraction that used this rule went with `101` |
+| 8 | At most one live notification per recipient per event; repeats do not stack | `notifications_event_key`, rebuilt with `thread_id`, absorbed by `on conflict do nothing` |
+| 9 | A failure is not silently swallowed | No `exception when others` block anywhere; a raise aborts the rider's own write |
+| 10 | Bounded, and not assumed small | **One row per event**, and that is the bound rather than an expectation |
+
+#### Scenario: Each of the ten is asserted, not just reviewed
+
+- **WHEN** the RLS suite exercises the thread fan-out
+- **THEN** it SHALL carry at least one assertion per row of the table above
+- **AND** an assertion that only counts rows written SHALL NOT be accepted as covering rows 6 or 7
+
+### Requirement: A thread fan-out SHALL run in the same security context as every other, and SHALL add no security advisor
+
+`private.notify_club_thread_replied()` SHALL be `SECURITY DEFINER`, owned by the table owner, with
+`SET search_path = ''`, every reference schema-qualified, and `EXECUTE` revoked from `public`,
+`anon`, `authenticated` and `service_role`. It SHALL live in the `private` schema and SHALL NOT
+branch on `current_user`. (The wave pair `098` shipped beside it was dropped by `101`.)
+
+The definer context is necessary rather than stylistic: `authenticated` holds **no INSERT grant** on
+`notifications`, so an invoker-rights trigger is refused outright, and the row is addressed to
+somebody other than its writer.
+
+**Its trigger SHALL carry no `WHEN` clause.** Copying `023`'s `WHEN (CURRENT_USER =
+'authenticated')` is correct on the participation gate and wrong here: a fan-out must fire for every
+writer, including a seed, a `security definer` RPC, `psql` and above all the writes the RLS suite
+itself makes. A notification that silently does not happen for a privileged write is a gap with
+nothing to detect it.
+
+**Because it lives in `private`, the security-advisor count SHALL NOT move.** PostgREST
+publishes only `public`, so `authenticated_security_definer_function_executable` cannot fire for
+them. `085` adding eight `private` functions and zero advisors is the measured precedent; the count
+moves by the number of **public** functions only.
+
+#### Scenario: No client role can call the reply fan-out
+
+- **WHEN** `authenticated`, `anon` or `service_role` is checked against the function
+- **THEN** `has_function_privilege(…)` SHALL be false for each
+- **AND** the assertion SHALL name the role rather than attempting the call, because the suite runs
+  as the table owner for whom the barrier does not exist — `031`'s lesson
+
+#### Scenario: The advisor count is unchanged after apply
+
+- **WHEN** the security advisors are read against each project after applying the migration
+- **THEN** the count and the name set SHALL be unchanged
+- **AND** a new `authenticated_security_definer_function_executable` WARN SHALL mean a function
+  landed in `public` or a `revoke` did not, and SHALL be treated as a failed apply
+- **AND** the count SHALL be read off `get_advisors` rather than off any sentence in any document
+
+#### Scenario: No branch on `current_user` exists in the reply fan-out
+
+- **WHEN** the fan-out code is reviewed
+- **THEN** no `if current_user <> …` guard and no `WHEN (CURRENT_USER = …)` trigger clause SHALL
+  appear
+- **AND** the reason SHALL be recorded at the site, because the participation gate on the very same
+  table carries that clause and is correct to
+
+#### Scenario: `auth.uid()` appears nowhere in the reply fan-out
+
+- **WHEN** the code is reviewed
+- **THEN** `auth.uid()` SHALL NOT appear
+- **AND** the actor SHALL be `new.author_id`, pinned to `auth.uid()` by `club_messages`' INSERT
+  policy, so reading the row is the same value in every context and correct where there is no JWT at
+  all
+
+### Requirement: The thread fan-outs SHALL NOT use a caller-relative membership helper
+
+Recipient resolution SHALL be a direct join from the inserted row to `public.club_threads`.
+`private.is_club_member` and `private.is_ride_crew` SHALL NOT appear in the reply fan-out.
+
+**Both read `auth.uid()` internally**, so each answers *"is the caller a member"* and never *"is this
+candidate a member"*. A fan-out reaching for one computes the actor's own membership and applies that
+single answer to every candidate — the set is either everybody or nobody, and it looks correct in a
+one-member test. Where a candidate's membership genuinely must be evaluated, the subject-taking twin
+`private.is_club_member_for(candidate, club)` is the only correct form; `private.is_blocked(a, b)` and
+`private.can_read_club(candidate, club)` are the other two that take their subject as an argument.
+
+#### Scenario: The single-recipient form STILL needs a membership test
+
+- **WHEN** the recipient is `club_threads.author_id` for the thread the parent row belongs to
+- **THEN** the fan-out SHALL still carry `private.is_club_member_for(t.author_id, t.club_id)`
+- **AND** the tempting reasoning — *"the join is the whole recipient set, so no membership predicate
+  is needed"* — SHALL be recorded as REFUTED rather than removed, because it is what this scenario
+  said until migration `100` and it is what a reader re-derives in five seconds
+- **AND** the refutation is that authorship is not membership at the moment the fan-out fires:
+  `club_threads` INSERT required membership when the THREAD was created, and the fan-out runs when
+  the REPLY is written. Nothing deletes a thread when its author leaves the club, so
+  `A starts a thread → A leaves → B replies` writes A a row `club_threads` SELECT can never return
+- **AND** a widening to prior repliers SHALL carry the same predicate per candidate
+
+### Requirement: Blocking SHALL be written into both thread fan-outs even where the parent policy already implies it
+
+The reply fan-out SHALL carry `not private.is_blocked(actor, recipient)` before writing.
+
+**Stated honestly: the conjunct is redundant today.** `club_messages` INSERT carries an `EXISTS`
+against `club_threads` evaluated under the caller's own row security, and `club_threads` SELECT withholds a thread from anyone blocked with its author —
+so a rider blocked with the thread's author cannot write the parent row at all, and this line can
+never be what refuses one. It is **not** true that the policy alone is a leak.
+
+It is written anyway for three reasons: the implication is a property of the **current**
+`club_threads` SELECT policy rather than of these tables, and a widened arm there would break it with
+nothing announcing the transition; the standing requirement is that blocking is applied **twice**, at
+fan-out and at read, and a fan-out leaning on a sibling policy applies it once; and it costs nothing
+measurable. This is `092`'s reasoning at `notify_club_waved`, transferred rather than re-derived.
+
+#### Scenario: A block existing before the action produces no row at all
+
+- **WHEN** a block exists in either direction between a would-be replier and the thread's author, and the parent write is made as the table owner so the policy cannot refuse it
+- **THEN** zero notification rows SHALL be written
+- **AND** the assertion SHALL be made as the owner precisely because a client cannot reach this
+  state, so a client-level assertion would pass vacuously
+
+#### Scenario: A block created after the row hides it
+
+- **WHEN** a `club_thread_replied` or `club_thread_waved` row exists and a block is then created in
+  either direction
+- **THEN** the recipient's next read SHALL NOT return it, and the unread count SHALL fall by the same
+  number
+- **AND** this SHALL be asserted with the two riders exchanged, because the row is directional and the
+  effect symmetric
+
+#### Scenario: Unblocking restores the row rather than resurrecting a deleted one
+
+- **WHEN** the block is removed
+- **THEN** the notification SHALL be returned again with its original `created_at` and read state
+- **AND** nothing SHALL have deleted it in the meantime
+
+### Requirement: A thread fan-out SHALL write at most one row per event, and its bound SHALL be stated
+
+The thread fan-out SHALL be a single `INSERT … SELECT` writing **at most one row**, inside the
+writer's own transaction. It SHALL NOT iterate, and it SHALL NOT scale with club size.
+
+The bound, stated rather than discovered:
+
+- **One message writes at most one notification row.** A 500-member club and a 3-member club cost the
+  same. This is the tightest bound of any fan-out in this schema.
+- **At most one live row per `(thread author, actor, thread)`**, because `actor_id` and `thread_id`
+  are both in the collapse key. A thread with 40 distinct repliers accumulates at most 40 rows over
+  its life, all addressed to one rider.
+
+**The number to watch is not club size but the recipient count**, and it is 1 by design. Answering
+`proposal.md` Q1 `yes` changes it to *(distinct prior repliers)* per message — PD-368's exception
+taken a second time, on a chat surface — and that is the point at which this requirement needs
+rewriting rather than extending.
+
+#### Scenario: The fan-out is one statement, not a loop
+
+- **WHEN** the thread fan-out runs
+- **THEN** it SHALL be a single `INSERT … SELECT`
+- **AND** it SHALL NOT iterate per recipient
+
+#### Scenario: The recipient lookup is index-served
+
+- **WHEN** the recipient is resolved
+- **THEN** it SHALL be a primary-key lookup on `club_threads` by the parent row's `thread_id`
+- **AND** it SHALL NOT be a scan
+
+#### Scenario: A busy thread does not become a busy notification list
+
+- **WHEN** one rider posts many messages in one thread
+- **THEN** the recipient SHALL hold exactly one row for that rider and that thread
+- **AND** the collapse SHALL come from the index rather than from any application-level throttle,
+  because nothing in this app rate-limits anything
+
+### Requirement: A thread fan-out failure SHALL take the rider's write down with it
+
+The reply fan-out SHALL NOT catch and discard an exception. A raise SHALL abort the
+transaction containing it.
+
+The cost is stated rather than hidden: **from the moment `098` applies, a bug in the reply fan-out takes
+down every reply in every club simultaneously**, because it runs inside the rider's own
+transaction. That is why this migration is additive in schema and **not inert**, and why
+`036`'s hand-exercise gate applies: both write paths SHALL be exercised by hand on DEV, in a
+rolled-back transaction, as `authenticated`, with rows counted rather than assumed, before PROD.
+
+#### Scenario: The uniqueness collapse is not an error
+
+- **WHEN** a repeat would violate `notifications_event_key`
+- **THEN** it SHALL be absorbed by `on conflict do nothing` rather than raised
+- **AND** it SHALL NOT be handled by an `exception when unique_violation` block, which would also
+  hide a real fault
+
+#### Scenario: A refused parent write leaves nothing behind
+
+- **WHEN** a reply is refused by RLS, by a CHECK or by the participation gate
+- **THEN** zero notification rows SHALL exist afterwards, because an `AFTER` trigger never runs
+
+#### Scenario: The blast radius is named before the migration applies
+
+- **WHEN** `098` is applied to a project
+- **THEN** the two affected write paths SHALL have been exercised on DEV first
+- **AND** the migration header SHALL name them, because a purely-additive reading of this file is
+  wrong and is the reading a reviewer will default to
 

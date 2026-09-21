@@ -66,34 +66,99 @@ adopts them as written rather than reopening them.
 
 ### Requirement: Club membership role SHALL NOT be self-assignable
 
-The database SHALL refuse any `club_members` row whose `role` is `owner` or `admin`, except the
-row a club's own `owner_id` creates for themselves.
+The database SHALL refuse any `club_members` row whose `role` is `owner` or `admin` from `authenticated`, without exception:
+`authenticated` may insert `role = 'member'` and nothing else, and **no client SHALL be able to
+claim `owner` or `admin` by any verb, on any table.** The owner's row SHALL be written by the
+database itself when the club is created — `103`'s `AFTER INSERT` trigger — and SHALL NOT be
+writable by the client at all.
 
-**This is a live defect, not a risk the migration introduces.** `club_members` INSERT is
-`auth.uid() = user_id AND (club is public OR club owner is caller)`. It constrains *who* the
-row is for and says nothing about `role`; the only rule on `role` is the enum CHECK. `joinClub`
-omits the column and relies on the `'member'` default — which is a convention in our code, not
-a rule in the database, and PostgREST does not read our code. Any rider can already join any
-public club as `admin` today. The migration is where this is fixed, not where it begins.
+**Every writer of a role other than `member` is a `security definer` function that takes no role
+argument, so none of them writes as `authenticated` and the narrowing above does not bind them:**
 
-The roster screen renders the value — `/clubs/detail/members` labels `owner` and `admin` and
-draws an owner ring — so a forged role is visible to every member of the club.
+- **`admin`** — `public.promote_club_member(target_club, rider)` writes the literal `'admin'` and
+  `public.demote_club_admin(target_club, rider)` writes the literal `'member'` (`088`); neither
+  accepts a role parameter, so — as with `085`'s `private.join_club_from_request` — there is no
+  input by which a caller could attempt a value the design does not offer. Each is gated inside its
+  own body — promotion on `private.is_club_admin_for(auth.uid(), target_club)`, the owner or an
+  admin; demotion on the owner, or the admin stepping down — because RLS does not apply inside a
+  definer function and that check is therefore the entire access control.
+  `club-membership-administration` states the authority in full.
+- **`owner`, by ownership transfer** — two transfers set `role = 'owner'` on the rider they are
+  simultaneously making `clubs.owner_id`: account deletion's `private.transfer_owned_clubs`
+  (`032`/`107`), reached only through `public.transfer_owned_clubs_for_deletion`, whose EXECUTE is
+  granted to `service_role` alone (`031`); and `public.leave_owned_club` (`095`), published to
+  `authenticated` but taking a club and no rider id. Both run as the owner and bypass RLS.
+
+`019` enforced the client half through the INSERT policy's WITH CHECK plus the **absence of any
+UPDATE policy**, and `036` §7.6 rests on the second half. Both survive: `088` adds no UPDATE policy
+and revokes `048`'s dead per-column UPDATE grant with nothing re-granted, so the absence is an
+absence of privilege as well as of policy.
+
+**What changed and why.** `019` admitted one exception: the rider named in `clubs.owner_id` could
+insert their own `role = 'owner'` row, because `createClub` wrote it as a second round trip and
+without that arm club creation stopped working. Creator membership is now established by the
+database in the same statement as the club, so nothing in the application ever sends `role`
+`'owner'` again and the arm's only remaining use would be to duplicate a row that already exists.
+`104` removes it, leaving `authenticated` able to insert `role = 'member'` and nothing else —
+strictly narrower than `019`, and the last self-assignable non-member role closed.
+
+The rest of `019` is unchanged and restated because a requirement is replaced whole: `club_members`
+INSERT is still `auth.uid() = user_id` plus the club being public or owned by the caller, and there
+is still no UPDATE policy. The roster screen renders the value — `/clubs/detail/members` labels
+`owner` and `admin` and draws an owner ring — so a forged role would be visible to every member of
+the club.
+
+**Ordering is load-bearing.** The arm had to be removed only after the deployed client stopped
+sending `role: 'owner'`. Removing it earlier makes every club creation fail against a client that
+still sends it, and whether a `WITH CHECK` is evaluated for a row an `on conflict do nothing`
+discards is unmeasured — so the removal is its own migration (`104`), applied after the code
+deploy, on the pattern `021`'s split established.
 
 #### Scenario: A non-member joining a public club cannot arrive as owner or admin
 - **WHEN** a signed-in rider who is not a member inserts a `club_members` row for a public club
   with `role` set to `owner` or `admin`
 - **THEN** the database SHALL reject the write
 
-#### Scenario: The creator's own owner row is still permitted
-- **WHEN** the rider named in `clubs.owner_id` inserts their own membership row with
+#### Scenario: Not even the club's own owner may insert an owner row
+- **WHEN** the rider named in `clubs.owner_id` inserts a `club_members` row for their own club with
   `role = 'owner'`
-- **THEN** the write SHALL succeed
+- **THEN** the write SHALL be refused once the arm is removed
+- **AND** this SHALL NOT break club creation, because the row already exists by the time any client
+  statement could attempt it
 
 #### Scenario: Nobody can promote an existing member
 - **WHEN** any rider — including the club owner — attempts to UPDATE `club_members.role`
 - **THEN** the write SHALL be refused, because no UPDATE policy on `club_members` exists
 - **AND** this SHALL remain true until the invitations feature ships its own policy, so that
   the absence is a recorded gap rather than an accident
+
+#### Scenario: No client role can write `admin` by any verb
+- **WHEN** a rider attempts to insert a `club_members` row with `role = 'admin'`, or to update an
+  existing row to `'admin'`, on a public club, a private club, and a club they own
+- **THEN** every attempt SHALL be refused
+- **AND** the UPDATE half SHALL be refused **twice over** — by the absent grant and by the absent
+  policy — and both SHALL be asserted, because removing either alone would look like a passing test
+
+#### Scenario: The RPCs take no role argument
+- **WHEN** the two functions' signatures are read from `pg_proc`
+- **THEN** neither SHALL accept a `text` role parameter, and each SHALL write its value as a literal
+  in `prosrc`
+
+#### Scenario: Only the owner or an admin can make an admin
+- **WHEN** a rider who is neither the club's owner nor one of its admins calls `promote_club_member`
+- **THEN** it SHALL raise `insufficient_privilege`
+- **AND** an admin's promotion SHALL succeed — `club-membership-administration`'s *Promotion SHALL be
+  open to admins* is the decision, and it records the counter-argument
+
+#### Scenario: The owner's roster row is unreachable by either RPC
+- **WHEN** either RPC targets `clubs.owner_id`
+- **THEN** it SHALL raise, whether or not that rider holds a roster row and whatever role it carries
+
+#### Scenario: A rider who demoted themselves through Explore is repaired
+- **WHEN** a club owner holds a `club_members` row with `role = 'member'` for their own club,
+  which was reachable by tapping `Join club` on their own orphan club in Explore until `103`
+- **THEN** the migration SHALL correct the role to `owner`
+- **AND** it SHALL be an UPDATE, since an insert would find the existing row and do nothing
 
 ### Requirement: A rider SHALL NOT be able to make other riders' clients fetch a URL they control
 
@@ -152,26 +217,54 @@ projection in application code, which is a convention the database does not enfo
 
 ### Requirement: Country codes SHALL be a known country
 
-`profile_countries.country_code` SHALL be an assigned ISO 3166-1 alpha-2 code, not merely two
-uppercase letters.
+Every column in this schema holding an ISO 3166-1 alpha-2 country code SHALL be constrained to an
+**assigned** code, not merely to two uppercase letters, and that constraint SHALL live in the
+database rather than in a Zod schema.
 
-`profile_countries.country_code` has a CHECK of `^[A-Z]{2}$` only. Membership of the ISO
-3166-1 list lives in `COUNTRY_CODES` and is checked by Zod alone, so `ZZ` stores successfully
-today and renders as a blank flag beside its own code forever.
+There are two such columns after this change: `profile_countries.country_code` (`014`/`020` — the
+travel log) and `profiles.home_country` (`113` — the rider's home market). **They are different
+facts and neither is derivable from the other**: `014`'s own comment calls its table *"Countries a
+rider says they have ridden in"*, so a rider who has ridden in France and lives in the Netherlands
+is correctly described by both and by neither alone. Overloading one to mean the other corrupts
+both meanings and is very hard to unpick later.
 
-#### Scenario: An unassigned code is refused
-- **WHEN** a rider adds `ZZ`, `XX` or any other well-formed but unassigned code
-- **THEN** the database SHALL reject the write
+The rule generalises from `020`'s reasoning rather than repeating its wording: membership of the
+ISO 3166-1 list lived in `COUNTRY_CODES` and was checked by Zod alone, so `ZZ` stored successfully
+and rendered as a blank flag beside its own code for ever. Once the client owns the mutation path,
+`COUNTRY_CODES.includes(value)` is advice.
+
+#### Scenario: An unassigned code is refused, on either column
+- **WHEN** a rider writes `ZZ`, `XX` or any other well-formed but unassigned code, to
+  `profile_countries.country_code` or to `profiles.home_country`, by any route including a direct
+  PostgREST call that never ran the client's validation
+- **THEN** the database SHALL reject the write with `check_violation`
+
+#### Scenario: A malformed value is refused, and by a different constraint
+- **WHEN** a rider writes `` (empty), `nl`, `NLD`, `' NL '`, `1`, or a 249-character string
+- **THEN** the database SHALL reject it
+- **AND** the refusal SHALL come from the **shape** constraint rather than the membership one, so
+  a client that eventually wants to tell *"not a code"* from *"not a country"* has two error
+  identities to do it with — `020`'s stated reason for keeping `014`'s check after adding its own
 
 #### Scenario: The picker's list stays the client's
-- **WHEN** the constraint is added
-- **THEN** it SHALL NOT introduce a `countries` reference table, since nothing joins against
-  one and `014` deliberately declined to create it
+- **WHEN** either constraint is added or regenerated
+- **THEN** it SHALL NOT introduce a `countries` reference table, since nothing joins against one
+  and `014` deliberately declined to create it
+- **AND** the SQL literal SHALL be generated from `src/lib/countries.ts` by script rather than
+  transcribed, because this is now the **third** hand-kept pairing of that list and nothing
+  reconciles the copies automatically
+
+#### Scenario: A CHECK SHALL NOT delegate the list to a function
+- **WHEN** a future change is tempted to replace both literals with a shared
+  `private.is_assigned_country_code(text)`
+- **THEN** it SHALL NOT, because Postgres does not re-validate a CHECK when the function behind it
+  changes — a list edited in one place would leave already-stored rows violating a constraint that
+  reports itself as valid
 
 ### Requirement: Onboarding completion SHALL gate participation, not only navigation
 
-A rider whose `profiles.onboarding_completed_at` is NULL MUST NOT be able to create content or
-join anything, and the refusal SHALL come from the database rather than from a redirect.
+A rider whose `profiles.onboarding_completed_at` is NULL MUST NOT be able to create content or join
+anything, and the refusal SHALL come from the database rather than from a redirect.
 
 Decision #5 states onboarding is required and not skippable. This requirement is **met**:
 `023`'s `enforce_participation_gate` is the enforcement, applied 2026-08-05, and the route
@@ -202,6 +295,13 @@ can see carries the gate.** Per-viewer tables that produce nothing anyone else c
 `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`, `feed_reads`, and every
 `storage.objects` policy, which check the path prefix only.
 
+Both tables `093` adds carry it — `club_invites`, because inviting is participation, and
+`club_invite_links`, because minting a bearer token into a club is participation — so the count
+moves by **+2**, and the delta SHALL be asserted together with the two table names, never the
+absolute. **17 on DEV and 17 on PROD, measured 2026-08-31**, before the concurrent changes holding
+`092`, `094` and `095` land. An absolute after-count is therefore meaningless in isolation, which is
+exactly why the rule is stated as a delta plus two names.
+
 **A table no rider can insert into at all is a third case and needs no gate**, because the gate
 constrains *who may write* and there is nobody to constrain. `notifications` is the first of these:
 `authenticated` holds no INSERT grant and the table carries no INSERT policy, so its only writer is
@@ -222,6 +322,14 @@ one-way stamp the client cannot forge, still refused without a username, still r
 consent — and one conjunct narrower. `profiles.location` survives as an ordinary rider-editable
 column with `018`'s length CHECK; what stops existing is the claim that a rider must fill it in
 before they may participate.
+
+**A `security definer` writer SHALL restate the gate in its own body and SHALL NOT be given a
+compensating trigger.** `private.join_club_from_invite` writes a `club_members` row as the owner, and
+the gate trigger on `club_members` carries `when (current_user = 'authenticated')`, which can never
+be true inside it. It therefore calls `private.may_participate_for(rider)` — the **subject-taking**
+form, never `private.may_participate()`, which is caller-relative and on the claim path would answer
+for the wrong rider entirely. Adding a trigger to compensate would raise the gate count while gating
+nothing, which is what `078.9` asserts the absence of.
 
 #### Scenario: An un-onboarded rider cannot create content
 - **WHEN** a rider whose `onboarding_completed_at` is NULL inserts into any table carrying
@@ -276,6 +384,27 @@ before they may participate.
 - **AND** their read of the thread SHALL be unaffected, because the gate is on writes only
 - **AND** this is the case in which the gate on `ride_messages` stops being defence in depth,
   which is why the trigger ships before the case exists
+
+#### Scenario: An un-onboarded rider cannot invite or mint
+- **WHEN** a rider whose `onboarding_completed_at` or `terms_accepted_at` is NULL inserts into
+  `club_invites` or `club_invite_links`
+- **THEN** the write SHALL be refused with `check_violation` by the gate
+
+#### Scenario: An un-onboarded rider cannot be admitted by anybody else's action
+- **WHEN** an onboarded admin's invite is accepted by an un-onboarded rider, or such a rider claims a
+  live token
+- **THEN** no `club_members` row SHALL be written, and the refusal SHALL come from
+  `private.may_participate_for` inside the writer rather than from a trigger
+
+#### Scenario: The gate is not reachable through the read path either
+- **WHEN** an un-onboarded rider calls `club_invite_link_preview` or `my_live_club_invites`
+- **THEN** both SHALL return zero rows, because a `security definer` read has no policy beneath it
+  and a check absent from the body is absent everywhere
+
+#### Scenario: The count is asserted as a delta with names
+- **WHEN** the suite checks the gate after `093`
+- **THEN** it SHALL assert the trigger is present **by table name** on both new tables **and** that
+  the flat count rose by exactly two, because a count alone cannot tell a new gate from a moved one
 
 ### Requirement: Consent evidence SHALL exist before a rider participates
 
@@ -346,6 +475,27 @@ Every role that can reach a ride SHALL have its access stated, so each line maps
 assertion. The policy exists and has never been written down role by role, which is what
 allowed the private-club case above to go unnoticed.
 
+**A club's owner is one of those roles and was omitted.** The original six scenarios named
+organizer, club member, non-member with a public ride, non-member with a private club's ride,
+blocked rider and signed-out visitor — five of which `openspec/config.yaml` requires, with
+**owner and admin absent**. `private.is_club_member` reads `club_members` only, so an owner
+holding no membership row fell through every scenario here and lost their own private club's
+rides in both directions. The scenarios below close that, and are stated in terms of
+`clubs.owner_id` rather than of any membership row so they remain true whether or not the row
+exists.
+
+**A ride's crew is NOT one of those roles, and that omission cost a second defect.** Nothing here
+said so, and *"a rider on this ride's crew"* reads as a role that can obviously see the ride.
+It cannot: `rides` SELECT resolves through organizer, public, or club member, and **neither
+`ride_members` nor `private.is_ride_crew` appears in its `qual`** — transcribed from `055`'s
+migration header and from `supabase/tests/rls_test.sql` §055.7, and **confirmed against DEV
+(`fpmrimzxadewsaiwpsel`) on 2026-08-17**, where the policy text is verbatim as `055` recorded it.
+A `ride_members` row survives every event that takes the ride away —
+blocking removes nobody from a roster, and leaving a club reaches nothing on `ride_members` — so
+*"holds a crew row"* and *"can see the ride"* are **independent**. A fan-out addressing the crew
+therefore addressed riders the read policy discards, permanently and with nothing to raise. The
+negative scenario below states that so it is a contract rather than an observation.
+
 **This change adds no arm.** `public.rides` SELECT and `private.can_read_ride` are untouched, and
 an assertion pins both — a failing pin here means the change is wrong, not that the pin is stale.
 
@@ -374,13 +524,46 @@ same migration and in the same position.
 - **WHEN** a member of the ride's club reads it
 - **THEN** it SHALL be returned
 
+#### Scenario: Club owner holding no membership row
+- **WHEN** the rider named by `clubs.owner_id` reads a ride in that club while holding no
+  `club_members` row for it
+- **THEN** it SHALL be returned, on the same terms as for a member, regardless of the club's
+  `is_public`
+- **AND** that rider SHALL be able to create a ride in that club
+- **AND** neither SHALL depend on the owner-membership row existing
+
+#### Scenario: Club admin
+- **WHEN** a rider holding `club_members.role = 'admin'` reads a ride in that club
+- **THEN** it SHALL be returned because they hold a membership row, and for no other reason
+- **AND** no admin-specific arm SHALL exist in any ride policy, since `admin` has no
+  representation outside `club_members`
+
+#### Scenario: Crew member with no other route to the ride
+- **WHEN** a rider holding a `ride_members` row reads that ride while satisfying none of the
+  organizer, public or club-member arms — because they blocked the organizer, or because they
+  left the ride's private club
+- **THEN** zero rows SHALL be returned, and crew membership SHALL NOT be a route to a ride
+- **AND** `rides` SELECT SHALL carry **no** `ride_members` arm and **no** `private.is_ride_crew`
+  arm, which SHALL be asserted as an absence rather than assumed from the policy reading
+  correctly today
+- **AND** the reason SHALL be recorded: two audiences narrower than the crew — `034`'s
+  `ride_messages` SELECT/INSERT and `041`'s postcard ride-tag `WITH CHECK` — are expressed as an
+  **intersection** of an RLS-filtered `EXISTS` against `rides` with `private.is_ride_crew`, so a
+  crew arm here would make the `EXISTS` implied by the crew conjunct and collapse both to crew
+  membership alone, restoring the ex-club-member chat leak `034` shipped in draft and fixed
+- **AND** anything needing to know whether a **specific other** rider can see a ride SHALL ask a
+  candidate-relative predicate instead, per the `candidate-relative-visibility` capability, rather
+  than widening this policy
+
 #### Scenario: Non-member, public ride with no club
 - **WHEN** any signed-in rider reads a ride with `club_id` NULL and `is_public = true`
 - **THEN** it SHALL be returned, since decision #1 makes "public" mean "any signed-in rider"
 
 #### Scenario: Non-member, private club's ride
 - **WHEN** a signed-in rider who is not a member of the ride's private club reads it
-- **THEN** zero rows SHALL be returned, and its crew SHALL be unreachable through `ride_members`
+- **THEN** zero rows SHALL be returned, and its crew SHALL be unreachable through
+  `ride_members`
+- **AND** this SHALL hold for a rider who owns some *other* club
 
 #### Scenario: Invited rider, not yet crew
 - **WHEN** a rider holding a `pending` or `accepted` invite reads a ride that is neither public
@@ -398,17 +581,34 @@ same migration and in the same position.
 - **THEN** they SHALL read the ride by the invite arm above and by no new mechanism, being
   indistinguishable in the policy from an accepted in-app invitee
 
+#### Scenario: Former member who does not own the club
+- **WHEN** a rider deletes their `club_members` row for a private club they do not own and then
+  reads a ride in it
+- **THEN** zero rows SHALL be returned immediately, because reach is keyed on the current row or
+  on `clubs.owner_id` and never on membership history
+- **AND** this SHALL hold even while they still hold a `ride_members` row for that ride
+
 #### Scenario: Blocked rider
 - **WHEN** a rider blocked by the organizer reads the ride, by any route including a club they
   both belong to, an invite, **or a live token**
 - **THEN** zero rows SHALL be returned
 - **AND** the token route SHALL be refused by a check in the RPC's own body, since no policy runs
   beneath a `security definer` function
+- **AND** this SHALL hold even while they still hold a `ride_members` row for that ride
+
+#### Scenario: Blocked rider who owns the club
+- **WHEN** the club's owner reads a ride in their own club whose organizer they have blocked, or
+  who has blocked them
+- **THEN** zero rows SHALL be returned
+- **AND** ownership SHALL NOT override a block in either direction, blocking being symmetric even
+  though the row is directional
 
 #### Scenario: Signed-out visitor
 - **WHEN** a request arrives with no session
 - **THEN** zero rows SHALL be returned, because `anon` holds no grant on `rides`, and no EXECUTE
   on either new RPC
+- **AND** the owner arm SHALL NOT change this, since it resolves through `auth.uid()`, which is
+  NULL with no session
 
 #### Scenario: Invited rider who accepted and later left the crew
 - **WHEN** an accepted invitee deletes their `ride_members` row and reads the ride
@@ -419,6 +619,23 @@ same migration and in the same position.
 #### Scenario: Invited rider who declined
 - **WHEN** a rider who declined an invite reads the ride
 - **THEN** zero rows SHALL be returned, unless another arm admits them
+
+#### Scenario: The policy text itself is pinned, because a fan-out now restates it
+- **WHEN** `rides` SELECT is reviewed, refactored or replaced
+- **THEN** its full `qual` text SHALL be pinned by an assertion whose label names
+  `private.can_read_ride`, so a rewrite fails the suite with a pointer at the function that
+  restates it rather than silently turning a fan-out's recipient set into a wrong answer
+- **AND** the pin SHALL be understood as deliberately brittle: it fails on a cosmetic reformat as
+  well as on a semantic change, which costs one session five minutes and is the cheaper of the two
+  errors
+- **AND** `clubs` SELECT SHALL carry the **twin** pin, labelled with `private.can_read_club`,
+  because `ride_created_in_club` restates both policies and one pin covers only one of them
+- **AND** neither pin SHALL be read as covering the helper bodies its policy text delegates to —
+  an arm added to `private.is_club_member` leaves both `qual` texts byte-identical, so that
+  function carries its own pin, by equality
+- **AND** the two structural pins that already exist — that the policy leads with an unconditional
+  organizer arm, and that it has no crew arm — SHALL remain, because neither catches a rewrite of
+  the middle of the policy
 
 ### Requirement: Blocking SHALL remain enforced in RLS and SHALL survive the client owning the queries
 
@@ -460,20 +677,42 @@ organiser is a person.
 ### Requirement: Storage object ownership SHALL remain database-enforced
 
 A rider MUST NOT be able to upload outside their own folder, nor reference an object in another
-rider's folder from a row they author.
+rider's folder from a row they author, nor **read** an object whose owning row they cannot read.
 
 Every upload surface binds its path to the uploader in SQL: `postcards` through the INSERT
-policy's `image_path like 'postcards/' || auth.uid() || '/%'`, and `profiles` and `clubs`
-through CHECK constraints on the row. Fifteen `storage.objects` policies exist across five
-folders, none granted to anything but `authenticated`, and none of them UPDATE.
+policy's `image_path like 'postcards/' || auth.uid() || '/%'`, and `profiles`, `clubs` and `rides`
+through CHECK constraints on the row. **Six** folders now exist in the `media` bucket — `avatars`,
+`covers`, `club-avatars`, `club-covers`, `postcards` and `ride-maps` — none granted to anything but
+`authenticated`, and none of them UPDATE. Re-derive the policy count rather than reading it here,
+because it has been stated as a number once already and a folder added without its three policies
+looks exactly like this sentence being right:
+
+```sql
+select cmd, count(*) from pg_policies
+ where schemaname = 'storage' and tablename = 'objects' group by cmd order by cmd;
+```
+
+**The read half is the addition, and it is the half that fails silently.** Measured 2026-08-09:
+this repo's INSERT and DELETE policies check the folder prefix and the caller's uid **only**, while
+every SELECT policy carries an `EXISTS` against the parent row evaluated under the caller's own
+RLS. Both shapes are correct in their own position, and they are one line apart in a migration — a
+write policy pasted into a read position grants every signed-in rider every object in the folder,
+and reviews as a consistent-looking pair.
+
+**Read the SELECT policies as a disjunction, not a conjunction.** Five of the six are
+`own-folder OR EXISTS(parent)`; only `postcards` is the bare `EXISTS`. The own-folder arm is
+permitted where the folder's uid identifies the same rider the owning row is about, and forbidden
+where it identifies a mere uploader — `stored-media-visibility` owns that rule and the reasoning.
+Describing the shape as "folder pin **plus** an `EXISTS`" is the error to avoid: it reads as a
+conjunction and hides the arm entirely.
 
 #### Scenario: A rider cannot claim another rider's object
 - **WHEN** a rider inserts a `postcards` row whose `image_path` sits in another rider's folder
 - **THEN** the write SHALL be rejected by the INSERT policy
 
 #### Scenario: A rider cannot upload outside their own folder
-- **WHEN** a rider uploads to `avatars/<another uid>/…`, `covers/`, `club-avatars/` or
-  `club-covers/` outside their own folder
+- **WHEN** a rider uploads to `avatars/<another uid>/…`, `covers/`, `club-avatars/`,
+  `club-covers/` or `ride-maps/` outside their own folder
 - **THEN** Storage SHALL refuse the upload
 
 #### Scenario: No capacity rule is claimed for `ride_members`
@@ -483,6 +722,28 @@ folders, none granted to anything but `authenticated`, and none of them UPDATE.
   capacity affordance anywhere, so the rule could only reach a rider as an unexplained refusal
 - **AND** nothing SHALL claim otherwise: `RIDE_CREW_LIMIT` bounds what the crew rail *renders*
   and is not a database rule
+
+#### Scenario: A rider cannot read another rider's object whose owning row is invisible to them
+- **WHEN** a rider fetches an object **outside their own folder** while the row naming it is not
+  visible to them under that row's own SELECT policy
+- **THEN** the fetch SHALL be refused
+- **AND** the refusal SHALL come from an `EXISTS` against the owning row rather than from the path,
+  which is constructed from ids the rider can already see and is therefore not a secret
+- **AND** the own-folder arm SHALL NOT be treated as an exception to this, because it admits only
+  the rider whose uid the folder names — a rider reaching their own bytes has learned nothing
+
+#### Scenario: A row cannot widen an object's audience by naming it
+- **WHEN** a rider sets a path column on a row they author to an object in another rider's folder
+- **THEN** the write SHALL be refused by a CHECK pinning the path to the row's own owner column
+- **AND** the SELECT policy SHALL independently require the object's owner segment to match that
+  column, so the two controls fail independently rather than in series
+
+#### Scenario: A ride's map tile is visible to exactly the ride's audience
+- **WHEN** a rider fetches an object under `ride-maps/`
+- **THEN** it SHALL be permitted if and only if the `rides` row naming it is visible to them
+- **AND** the policy SHALL NOT narrow it to the crew, because the tile depicts `meeting_point`,
+  which the same screens render as text to everyone who can see the ride
+- **AND** `private.is_ride_crew` SHALL NOT appear in any `storage.objects` policy
 
 ### Requirement: A child table whose audience is NARROWER than its parent's SHALL enforce that by composition, never by a privileged helper alone
 
@@ -642,13 +903,24 @@ write-once stamp a grant cannot express — `012`'s `profiles.terms_accepted_at`
 ### Requirement: A table with no designed edit SHALL carry no UPDATE grant
 
 Where editing a row has not been designed, the table SHALL have no UPDATE policy **and** no
-UPDATE grant to `authenticated`.
+UPDATE grant to `authenticated`. **The absence is the enforcement**: with RLS on, a command with no
+policy is refused for every row.
 
 The grant is the second, independent layer — the one that still holds if a future policy is
 written too permissively. `009` applied this to `postcard_likes` and `blocks`, `011` to
 `postcard_comments`, `postcard_hides` and `postcard_reports`, and each stated the same reason: a
 table with no mutable column has nothing to grant UPDATE for. It is stated here as a rule rather
 than repeated a sixth time in a migration comment.
+
+Both tables `093` adds are in that class, and each has one column a client would otherwise be
+able to write to its own advantage:
+
+- **`club_invites`** — `status` and `responded_at` are written by `accept_club_invite` and
+  `decline_club_invite` alone. A grant here would let an invitee answer on the inviter's behalf, or
+  an inviter mark their own invite accepted.
+- **`club_invite_links`** — `revoked_at` is written by `revoke_club_invite_link` alone. A grant on
+  that column would let a client **un-revoke** by writing NULL back, which is worse than the edit it
+  appears to allow.
 
 **Editing is a design problem, not a permission one.** It means deciding whether "edited" is
 disclosed, from when, and what the record of a conversation means once it can be rewritten. None
@@ -685,6 +957,18 @@ nothing about a link that is not theirs.
 - **THEN** the migration SHALL say so explicitly
 - **AND** the day editing is designed, adding the grant SHALL be understood as a deliberate
   widening rather than a one-line fix
+
+#### Scenario: Neither table takes an UPDATE
+- **WHEN** `has_table_privilege` is asked for `authenticated` and for `anon`, for UPDATE, on both
+  tables
+- **THEN** all four answers SHALL be false, asserted per grantee — a table-wide count reads 2 against
+  a correct database, because `postgres` and `service_role` hold everything by Supabase default
+- **AND** `pg_policies` SHALL show no UPDATE policy on either
+
+#### Scenario: The CRUD set is deliberately incomplete
+- **WHEN** a later change adds an UPDATE policy to either table
+- **THEN** it SHALL state which RPC it replaces and why, because completing the set is how the
+  un-revoke and the answer-your-own-invite paths arrive
 
 ### Requirement: A username SHALL NOT be removable once set
 
@@ -2271,4 +2555,1908 @@ asserting only the second cannot tell a filter from a widening.
   `postcards` SELECT policy
 - **AND** this SHALL be asserted as an equality between the accessor's result and the reader's own
   filtered read, not as a spot check
+
+### Requirement: A column whose value comes from a third party SHALL carry the evidence that admitted it
+
+Where a column's value is obtained from an external provider rather than authored by a rider, the
+row SHALL also carry the quality signal that justified storing it, and a CHECK SHALL make the two
+inseparable. A value SHALL NOT be storable without its evidence.
+
+`rides.latitude` is a **guess** produced by geocoding free text. A coordinate with no record of how
+confident the geocoder was is indistinguishable from a coordinate somebody typed, and the rule that
+would have rejected it lives in a function that a client can decline to call.
+
+#### Scenario: The coordinate and its confidence stand or fall together
+- **WHEN** a coordinate is written to a ride
+- **THEN** a CHECK SHALL require a confidence value at or above the stated floor to be present in
+  the same row
+- **AND** the CHECK SHALL equally require that a row with no coordinate carries no confidence, so
+  the two cannot drift apart
+
+#### Scenario: The derived artifact requires the value it was derived from
+- **WHEN** a tile path is written to a ride
+- **THEN** the CHECK SHALL require a coordinate to be present
+- **AND** the converse SHALL NOT be required, because a successful geocode followed by a failed
+  render or upload is a real end state that must remain writable
+
+#### Scenario: What the database cannot check is stated rather than implied
+- **WHEN** the constraint is documented
+- **THEN** it SHALL state that the provider's match granularity is **not** checked by the database,
+  because the row does not carry it
+- **AND** the rule SHALL NOT be described as database-enforced on that axis
+- **AND** a rider writing a value that disagrees with their own free-text field SHALL be recorded
+  as within their authority, since they author that field
+
+#### Scenario: A stale derivative is cleared by the database, not by the writer
+- **WHEN** the source field a stored value was derived from changes
+- **THEN** a trigger SHALL clear the derived value and every artifact of it in the same statement
+- **AND** the clearing SHALL win over values supplied by that same statement, so it SHALL be a
+  `BEFORE` trigger rather than a follow-up write a client could race
+
+#### Scenario: The clearing trigger is scoped to the field it watches
+- **WHEN** the trigger is written
+- **THEN** it SHALL be scoped with `WHEN (old.<field> IS DISTINCT FROM new.<field>)`
+- **AND** the reason SHALL be recorded against the bulk updates that already run on the table —
+  `propagate_club_privacy_to_rides` rewrites `is_public` across every ride in a club, and an
+  unscoped trigger would clear every one of their derivatives at that moment
+
+### Requirement: A `security definer` function reached by a client SHALL re-check authorization internally
+
+`public.delete_owned_club` is the first function in this repo that a **client** calls with
+elevated rights. Every existing `security definer` function is either own-row by construction
+(`accept_terms`, `complete_onboarding`, `my_onboarding_state`), narrow by construction
+(`moderate_comment` deletes one comment on a postcard the caller authored), a policy helper
+(`private.is_*`), or `service_role`-only (`private.transfer_owned_clubs`). This one takes an
+arbitrary id from the client and destroys rows.
+
+Therefore any `security definer` function granted to `authenticated` SHALL:
+
+- **Re-state the authorization predicate its caller's RLS would have applied.** `security
+  definer` runs with the owner's rights, so the `clubs` DELETE policy does not protect the rows
+  the function touches. The ownership test is the function's own job and its absence is not
+  visible in any policy listing.
+- **Pin `SET search_path`**, so a client-controlled `search_path` cannot redirect a table
+  reference inside a definer-rights body.
+- **Be asserted by naming the role**, `has_function_privilege('authenticated', …, 'EXECUTE')`,
+  rather than by calling it. The RLS suite runs as the table owner, for whom the `EXECUTE`
+  barrier does not exist — `031` shipped a function nothing could call because the suite could
+  call it fine.
+- **Be asserted for refusal by a non-owner**, not only for success by an owner. A definer
+  function that has lost its ownership check passes every positive test.
+- **Be recorded in `CLAUDE.md`'s security-advisor table.** It raises
+  `authenticated_security_definer_function_executable`, taking the count from six to seven and
+  the total from eight to nine. An advisor absent from that table reads as a regression; a
+  deliberate one that was never added there reads as a regression for ever.
+
+#### Scenario: The ownership check is removed from the function body
+
+- **WHEN** `delete_owned_club` is altered so it no longer compares `owner_id` to `auth.uid()`
+- **THEN** the RLS suite SHALL fail on the non-owner refusal assertion
+
+### Requirement: A cascade whose blast radius crosses an ownership boundary SHALL be disclosed at the point of action
+
+`postcards.club_id → clubs` is `ON DELETE CASCADE`, so deleting a club destroys postcards authored
+by riders who are not the actor. The cascade itself is settled (`009`, for a club deleted by its
+owner) and is not reopened. What this requirement adds is that **the database's blast radius SHALL
+be surfaced to whoever triggers it**, with live counts read under the actor's own RLS, before the
+irreversible step.
+
+This generalises past the club case on purpose: the next `ON DELETE CASCADE` that crosses from one
+rider's row to another rider's content inherits it.
+
+#### Scenario: A destructive action's counts cannot be read
+
+- **WHEN** the counts behind a cross-ownership cascade cannot be fetched
+- **THEN** the destructive action SHALL be refused rather than offered with a blank or zero count
+
+### Requirement: A trigger that rewrites rows a client did not name SHALL be disclosed before the write
+
+`propagate_club_privacy_to_rides` fires on a club's `is_public` update and rewrites `rides` rows
+the client never mentioned, one-directionally. A rider toggling one switch cannot infer that from
+any screen.
+
+Any trigger that mutates rows outside the client's own statement SHALL be surfaced in the UI that
+triggers it, including whether the effect reverses. Silent fan-out that is *additive* — the `036`
+notification triggers — is exempt; this requirement is about fan-out that **destroys or
+downgrades** existing state.
+
+#### Scenario: A club is made private
+
+- **WHEN** the owner submits `is_public = false`
+- **THEN** the screen SHALL have stated beforehand that the club's public rides become private and
+  are not restored by making the club public again
+
+### Requirement: A timestamp compared against a server-generated one SHALL be generated by the same clock
+
+Where a stored timestamp is compared against a column the database generates, that timestamp SHALL
+also be generated by the database. A client-supplied value SHALL NOT be placed on either side of
+such a comparison.
+
+**This is narrower than "the server owns this column" and it catches a case that rule does not.** A
+read watermark is not obviously server-owned — the rider is the authority on what they have read, so
+letting the client say "I read up to here" reads as correct. It stops being correct the moment the
+other operand is a server timestamp: the comparison then spans two clocks that nothing keeps in
+step, and a phone running minutes fast marks as read everything that arrives in that window while a
+slow one re-shows what the rider already saw. **Nothing fails, nothing logs, and the wrong answer is
+per-device**, so it cannot be reproduced from another handset.
+
+`034` already made the server own `ride_messages.created_at` so that a device clock never orders a
+conversation. This requirement is the other half of that ruling: an ordering guarantee on one side
+of a comparison is worth nothing if the other side is a guess.
+
+**The already-shipped instance is named rather than left to be rediscovered.**
+`feed_reads.last_seen_at` is written by `markClubSeen` and `markFeedSeen` as
+`new Date().toISOString()` and is compared inside `club_unread_counts()` against
+`postcards.created_at` and `rides.created_at`. That is this defect, live, on a shipped path. It is
+recorded here and deliberately not fixed by this change, which touches a different table.
+
+#### Scenario: The stored value is the database's, whatever the client sent
+- **WHEN** a client writes a timestamp that will be compared against a server-generated column
+- **THEN** the stored value SHALL be server time
+- **AND** the enforcement SHALL be a trigger or a withheld column grant, never the client sending
+  the right thing
+
+#### Scenario: An upsert is covered on both arms
+- **WHEN** the value arrives through an upsert
+- **THEN** the imposition SHALL fire on INSERT **and** on UPDATE
+- **AND** a `BEFORE INSERT` trigger alone SHALL NOT be accepted, because the second visit to the
+  same row takes the UPDATE arm and would keep the client's value
+
+#### Scenario: A DEFAULT is not the enforcement
+- **WHEN** the column carries `default now()`
+- **THEN** that SHALL NOT be treated as satisfying this requirement
+- **AND** the reason SHALL be stated: a DEFAULT applies only when the column is omitted, and an
+  upsert's UPDATE arm must name it
+
+#### Scenario: The comparison is identified before the column is designed
+- **WHEN** a new table stores a timestamp
+- **THEN** the migration SHALL state what that timestamp is compared against, if anything
+- **AND** where the answer is "a column the server generates", this requirement SHALL apply
+
+### Requirement: A shared metered resource SHALL be rationed by the database, and never by the client of the metered service
+
+Where a third party meters a quota that every rider draws on, the ceiling SHALL be a policy in
+Postgres, evaluated under the calling rider's own role, and SHALL NOT live in the code that calls the
+vendor.
+
+Three properties force this and none of them is a preference:
+
+- **The caller cannot count.** Edge Functions are stateless and multi-instance, so an in-memory
+  counter counts one instance's traffic and a rider issuing concurrent requests bypasses it entirely.
+- **The caller holds no service-role key**, by decision #8 and by the account-deletion precedent, so
+  it cannot be given a privileged side channel in which to keep score without giving it the thing
+  the architecture exists to withhold.
+- **Nothing type-checks or gates an Edge Function.** `tsconfig.json` excludes them, deploying is an
+  owner action with no CI path, and `031` is the standing lesson that an assumption about what a
+  non-client role can reach goes unnoticed because the RLS suite runs as the table owner. A ceiling
+  living only in a function is a ceiling one unreviewed deploy can remove.
+
+The count SHALL be recorded **before** the metered call, and SHALL count *attempts*, never successes.
+A counter that rises on success alone misses the retry loop, which is the only traffic pattern that
+can exhaust a quota.
+
+The ceiling SHALL be enforced at two scopes — per subject and per application — because a per-subject
+ceiling alone permits a hundred honest subjects to exhaust the same quota, and an application-wide
+ceiling alone lets one subject spend everyone's share.
+
+The counting function SHALL be `security definer`, SHALL live outside the schema PostgREST routes to,
+and SHALL NOT be executable by any client role: a subject-taking counter that a rider can call is an
+oracle for another rider's activity.
+
+#### Scenario: The ceiling refuses at the boundary, under the rider's own role
+- **WHEN** a subject at their ceiling attempts another metered operation
+- **THEN** the row recording the attempt SHALL be refused by the INSERT policy
+- **AND** the refusal SHALL happen before the vendor is contacted
+- **AND** the same refusal SHALL occur whether the request arrives through the application, through
+  PostgREST directly, or concurrently from several devices
+
+#### Scenario: A subject cannot forge their own headroom
+- **WHEN** a rider writes to the metering table by hand
+- **THEN** the subject column SHALL be forced to `auth.uid()` by the policy
+- **AND** the timestamp SHALL be server-owned, with no INSERT or UPDATE grant on it for any client role
+- **AND** the table SHALL carry no UPDATE and no DELETE grant for any client role, so recorded spend
+  cannot be erased
+
+#### Scenario: The metered table is gated like every other participation surface
+- **WHEN** an account that has not accepted the terms attempts a metered operation
+- **THEN** the write SHALL be refused by the same participation gate that guards every other content
+  table
+- **AND** the count of tables carrying that gate SHALL be re-derived rather than read from prose, since
+  a table added without one is indistinguishable from the list being right
+
+#### Scenario: The ceiling is asserted by grantee, not by table
+- **WHEN** the RLS suite covers the metering table
+- **THEN** every grant assertion SHALL name its grantee, because `postgres` and `service_role` hold
+  everything by Supabase default and a table-wide count reads a false pass
+- **AND** at least one assertion SHALL prove the refusal is not vacuous by admitting a write below the
+  ceiling and refusing the one that crosses it
+
+### Requirement: An opaque third-party identifier SHALL be stored as provenance, namespaced, and never as a join key
+
+A column holding an identifier issued by an outside system SHALL be documented, constrained and read
+as *evidence of where a value came from*. It SHALL NOT be joined on, resolved, or relied upon to
+still mean anything.
+
+The identifier SHALL carry its source. An unnamespaced id is indistinguishable from the next
+provider's, and the day a provider changes, every stored row silently claims to have come from the
+new one.
+
+There SHALL be no foreign key. A reference table that is loaded wholesale, or that can be retired
+entirely, cannot carry one without either blocking every reload or destroying every referencing row
+on one.
+
+The column's length bound SHALL be set from a measured identifier. A bound that admits the previous
+provider's format and refuses the next one turns every write into a constraint violation the rider
+can neither see nor shorten.
+
+#### Scenario: A dangling identifier is the designed state
+- **WHEN** the system that issued a stored identifier is retired
+- **THEN** rows carrying it SHALL be unchanged, unrewritten and unbackfilled
+- **AND** every screen reading those rows SHALL render from the values stored beside the identifier
+- **AND** nothing SHALL attempt to resolve it
+
+#### Scenario: Provenance survives a provider change
+- **WHEN** two providers have issued identifiers into the same column
+- **THEN** a reader SHALL be able to tell which provider issued any given one from the row alone
+- **AND** any CHECK or trigger keyed on "this value was chosen rather than derived" SHALL continue to
+  hold for both
+
+#### Scenario: The bound is raised before the first write that needs it
+- **WHEN** a new provider's identifier is longer than the constraint admits
+- **THEN** the constraint SHALL be widened in a migration that lands before the code that writes one
+- **AND** the widened bound SHALL be recorded with the measurement that produced it, not with an
+  estimate
+
+### Requirement: A requirement the database does not carry SHALL be scoped to the gate that introduced it, and SHALL NOT be readable as an invariant
+
+Where a change makes a value mandatory at one entry point without a CHECK, a trigger or a policy
+behind it, the change SHALL state that the value remains permanently optional everywhere else, SHALL
+scope the refusal to that one entry point, and SHALL NOT permit any read, type or query to begin
+assuming the value is present.
+
+`clubs.location_name`, `location_place_id`, `latitude` and `longitude` are the case. Creating a club
+without them is refused by the client; **the database refuses nothing**, and that is the design
+rather than a gap.
+
+**`CLAUDE.md`'s rule that no new integrity rule may live only in a Zod schema is not being broken,
+and the reason is that this is not an integrity rule.** An integrity rule says what a value *may be*
+and must therefore live where the client cannot reach it. This says what one screen *insists on
+collecting*. The database's statement about a club's location is unchanged — it may be absent, for
+ever — and `066`'s coupling CHECK, which requires the four to arrive together or all stay null,
+remains the only thing Postgres says about them.
+
+Two consequences, and the second is the dangerous one:
+
+- **A client that skips the gate creates a locationless club and is refused by nothing.** Accepted:
+  the column has always permitted it, every reader already tolerates it, and no policy, count or
+  visibility decision depends on it. **Not** because such a club resembles the ones that exist —
+  measured 2026-09-08, DEV 15/15 and PROD 2/2 carry a location, so today it would resemble none of
+  them.
+- **A later reader must not turn "a club must say where it is based" into a non-null assumption.**
+  A non-null type, a `!`, or a distance sort that reads absence as zero breaks the moment any row
+  carries NULL — an owner clearing the field on edit, or a club created before this gate — and
+  breaks silently. **The count of such rows today is zero, and that is exactly why this is written
+  down**: a reader who checks the database finds every row populated and concludes the assumption is
+  safe.
+
+#### Scenario: The gate is scoped to creation
+- **WHEN** a club is created through the app with no location
+- **THEN** the create action SHALL refuse it with a field message naming the field, before any write
+- **AND** a club is **edited** with no location — because it never had one — the edit SHALL succeed,
+  and all four columns SHALL be written as NULL exactly as they are today
+- **AND** the two SHALL be expressed as two schemas sharing one body, never as one schema with a
+  conditional, because a conditional is how the edit path silently acquires the gate
+
+#### Scenario: The database refuses nothing, and this is asserted rather than assumed
+- **WHEN** a signed-in rider inserts a `clubs` row with all four location columns NULL, by any route
+  that is not the create form
+- **THEN** the insert SHALL succeed, `066`'s `clubs_location_coupling` SHALL be satisfied, and no
+  CHECK, trigger or policy SHALL refuse it
+- **AND** this change SHALL add no migration, no `NOT NULL` and no backfill
+- **AND** the RLS suite SHALL gain no new assertion, because no policy or constraint moved — stated
+  so a reviewer does not read the absence as an omission
+
+#### Scenario: Every read keeps its null branch
+- **WHEN** any surface reads a club's location — `/clubs/explore`, `ExploreClubsStrip`, a club detail
+  page, a distance sort
+- **THEN** it SHALL tolerate NULL permanently, SHALL NOT hide or filter out a club that carries none,
+  and SHALL NOT treat an absent coordinate as `0`
+- **AND** the existing guard in `src/lib/data/clubs.ts` —
+  `if (!near || item.latitude === null || item.longitude === null) return item` — SHALL remain, and
+  no type SHALL be narrowed to non-null on the strength of this change
+
+#### Scenario: Every role's reach is unchanged
+- **WHEN** this change ships
+- **THEN** any signed-in, onboarded rider SHALL still be able to create a club and become its owner,
+  and an un-onboarded rider SHALL still be refused by `023`'s participation gate rather than by this
+  form
+- **AND** a club **admin**, **member** and **non-member** SHALL still be unable to set or change that
+  club's location; only the owner may, through the edit path, under the policy that already governs it
+- **AND** a **blocked** rider SHALL be unaffected in both directions, because blocking governs
+  visibility and membership and this change touches neither
+- **AND** a signed-out visitor SHALL reach none of it: `/clubs/new` is not a public path and `anon`
+  holds no grant on `clubs`
+
+### Requirement: A function that widens a table's reach SHALL name every column it returns, and that list SHALL be the whole disclosure
+
+Where a `security definer` function exists in order to let a rider read something their own row
+security refuses, its return list SHALL be enumerated column by column in the migration, and the
+rule SHALL be that the enumeration **is** the security statement — not a summary of it.
+
+Such a function SHALL NOT return `select *`, SHALL NOT return a composite of the underlying row
+type, and SHALL NOT return a column added to the underlying table later without a migration that
+says so.
+
+This is `062`'s discipline generalised. There, the narrow return was *ids only*, because the rows
+themselves were readable and only the correlation needed widening. Here the row is **not** readable,
+so the function must return values — which makes the column list the entire boundary and makes
+`select *` a permanent, silent widening.
+
+#### Scenario: The accessor's return list is enumerated and pinned
+- **WHEN** `public.discoverable_private_clubs` is created
+- **THEN** its `returns table (…)` SHALL name exactly seven columns
+- **AND** the suite SHALL pin that list, so that a column added to `public.clubs` cannot reach a
+  non-member by being added to this function without a review
+
+#### Scenario: A composite return type is refused
+- **WHEN** the function's signature is reviewed
+- **THEN** it SHALL NOT be `returns setof public.clubs`, and the migration SHALL state why: that
+  form makes every future `alter table public.clubs add column` a widening with no diff to notice
+  it in
+
+#### Scenario: Two shapes of the same widening share one body
+- **WHEN** both the list of discoverable clubs and a single club's preview are needed
+- **THEN** they SHALL be one function with an optional filter argument, not two functions
+- **AND** the reason SHALL be `060`'s: two copies of one visibility rule drift, and the copy that
+  drifts is the one nobody read
+
+### Requirement: A membership row written for a rider other than its subject SHALL be written by exactly one function, and that function SHALL restate the gate
+
+`public.club_members` has had exactly two writers: the rider themselves under the INSERT policy
+(`auth.uid() = user_id`), and `complete_onboarding` (`058`). This change adds a third, which is the
+first that writes a membership row **on one rider's behalf at another rider's instruction**.
+
+Every such writer SHALL be a single named function; SHALL hardcode `role = 'member'` rather than
+reading a role from its input; SHALL restate the participation gate for the **subject** of the row,
+because `enforce_participation_gate` carries `when (current_user = 'authenticated')` and cannot
+fire for a definer writer; and SHALL NOT be compensated for by adding a second gate trigger.
+
+The `club_members` INSERT policy SHALL NOT be widened to accommodate it. A definer function is not
+subject to RLS, so widening the policy would grant the client something the client does not need.
+
+#### Scenario: The INSERT policy is byte-for-byte unchanged
+- **WHEN** the migration is applied
+- **THEN** `club_members`' INSERT policy qual SHALL be identical to its pre-migration text
+- **AND** this SHALL be asserted by equality, because "we did not need to change it" and "we
+  changed it and it still works" are indistinguishable from a green suite otherwise
+
+#### Scenario: The role is a literal
+- **WHEN** the approval function's body is examined
+- **THEN** `'member'` SHALL appear as a literal and the function SHALL take no role argument
+- **AND** `019`'s rule that `admin` is insertable by nobody SHALL remain true after this change,
+  asserted by attempting an `admin` insert through every path including the new RPC
+
+#### Scenario: The gate cannot be bypassed by the new path
+- **WHEN** an un-onboarded rider is approved
+- **THEN** the write SHALL fail
+- **AND** the count of `enforce_participation_gate` triggers on `club_members` SHALL be unchanged,
+  asserted separately
+
+### Requirement: A private club's NAME SHALL be discoverable while its CONTENT SHALL NOT, and the boundary SHALL be enumerated
+
+The standing requirement *"A private club's ride SHALL NOT be publicly visible"* states one half of
+this boundary. This change moves the other half and the two SHALL be stated together, because
+stating only the ride half is how the club half gets assumed.
+
+After this change, for a signed-in rider who is neither a member nor the owner of a private club
+and is not blocked with its owner:
+
+| Resource | Reachable? |
+|---|---|
+| the club's `name`, `location_name`, coordinates, `members_count`, `avatar_path` | **yes**, through the accessor only |
+| the club's `description`, `cover_image_path`, `owner_id`, `created_at`, `is_default` | no |
+| the club's avatar or cover **bytes** in `storage.objects` | no |
+| any `club_members` row for it | no |
+| any `rides` row for it | no |
+| any `postcards` row scoped to it | no |
+| any `club_threads` or `club_messages` row for it | no |
+| any `feed_reads` or `club_thread_reads` row for it | no |
+| the `clubs` row itself, by any query | no |
+| any notification naming it | no |
+
+#### Scenario: Every negative row is asserted separately
+- **WHEN** the suite covers this table
+- **THEN** each `no` SHALL be its own assertion with its own label, because a single combined
+  assertion cannot say which predicate did the work and a later change that breaks one of them
+  would still pass
+
+#### Scenario: The positives are asserted as positives
+- **WHEN** the suite covers the `yes` row
+- **THEN** the accessor SHALL be asserted to **return** the club for a non-member
+- **AND** a suite that only proves the negatives cannot tell an intended reach from one nobody
+  noticed
+
+#### Scenario: The blocked rider is excluded from both columns
+- **WHEN** the reader is blocked with the club's owner in either direction
+- **THEN** every row in the table above SHALL be **no**, including the first
+
+### Requirement: A privileged operation on a shipped table SHALL restate the authority the table's policies would have carried
+
+`security definer` runs with RLS bypassed — measured on Postgres 16 for `021` §3 and relied on
+again — so a definer function that writes `club_members` inherits **none** of `008`'s, `019`'s or
+`048`'s protections. Each of the three new RPCs SHALL therefore restate, in its own body:
+
+- **who the caller must be**, read from `clubs.owner_id` and `club_members.role` rather than from
+  any caller-relative helper's convenience;
+- **who the target may be**, including the explicit `rider <> clubs.owner_id` conjunct that a
+  role-only predicate does not supply for `054`'s ownerless owner;
+- **that the caller is not the target.**
+
+Each SHALL have exactly one raise site, and each SHALL be `set search_path = ''` with
+`#variable_conflict error` — `043`'s shape, and `043`'s stated reason for the pragma: the guarantee
+becomes local to the function rather than depending on a cluster GUC an operator can set to
+`use_column`.
+
+#### Scenario: The definer marking and the search path survived the apply
+- **WHEN** `prosecdef` and `proconfig` are read for all three functions
+- **THEN** each SHALL be `t` and `{search_path=""}`
+- **AND** each SHALL be asserted individually rather than counted, because a function created
+  without `security definer` is otherwise a code review rather than a red test
+
+#### Scenario: Reachability is asserted by naming the role
+- **WHEN** the three functions' grants are checked
+- **THEN** `has_function_privilege('authenticated', …)` SHALL be true and
+  `has_function_privilege('anon', …)` SHALL be false for each
+- **AND** PUBLIC's default EXECUTE grant SHALL be gone for each
+- **AND** none SHALL be asserted by attempting the call, because the suite runs as the table owner
+  for whom no barrier exists — `031`'s lesson
+
+### Requirement: A private club's avatar object SHALL be readable by exactly the audience that can already read its name, and its cover SHALL NOT
+
+`016`'s `"Club avatars are readable with the club"` policy SHALL gain a third disjunct admitting a
+rider for whom `private.club_takes_join_requests(c.id)` is true. `"Club covers are readable with the
+club"` SHALL be untouched: an avatar is the club's identity and a cover is its content.
+
+**The disjunct SHALL use the ONE-argument caller-relative wrapper.** The two-argument
+`private.club_takes_join_requests_for(uuid, uuid)` is revoked from `authenticated` by `085`, a
+`storage.objects` policy is evaluated as the querying role, and the two-argument form would raise
+`42501` on every club-avatar read for every rider — a worse failure than the initials it replaces,
+and invisible to any test that only inspects the policy text.
+
+The `(storage.foldername(name))[2] = c.owner_id::text` binding SHALL be carried into the new
+disjunct verbatim. It is `010` §2's line and `016`'s second of two independent locks: without it,
+attaching another rider's object path to a club you own makes that object readable to the club's
+audience.
+
+The accepted cost SHALL be stated rather than implied: **every private club's avatar image becomes
+readable to every signed-in rider not blocked with that club's owner** — the same audience
+`public.discoverable_private_clubs` already gives the club's name, town and member count to.
+
+#### Scenario: A discoverer reads the avatar and not the cover
+- **WHEN** a rider who may request to join a private club reads `storage.objects` for that club's
+  `avatar_path` and for its `cover_image_path`
+- **THEN** the avatar SHALL return one row and the cover SHALL return **zero**
+- **AND** `085.6`'s cover half SHALL be reproduced unchanged, so the assertion that a non-member
+  reads no cover survives this change verbatim
+
+#### Scenario: A blocked rider reads neither
+- **WHEN** a `blocks` row exists in either direction with the club's owner
+- **THEN** `private.club_takes_join_requests` SHALL be false and the avatar SHALL return zero rows
+
+#### Scenario: The policy is callable by the role that evaluates it
+- **WHEN** the new disjunct is read from `pg_policies`
+- **THEN** it SHALL name the one-argument form, and
+  `has_function_privilege('authenticated','private.club_takes_join_requests(uuid)','execute')` SHALL
+  be true
+- **AND** the two-argument form SHALL remain revoked from `authenticated`, asserted separately
+
+#### Scenario: A member's and an owner's reads are unchanged
+- **WHEN** the club's own members and owner read both objects
+- **THEN** both SHALL resolve exactly as they do today, through the two disjuncts `016` already
+  carries
+
+### Requirement: A reaction table SHALL inherit its subject's audience through a parent `EXISTS`, and SHALL restate nothing
+
+Where a table holds a rider's reaction to a row in another table, its SELECT and INSERT policies
+SHALL consist of exactly two conjuncts:
+
+1. an `EXISTS` against the parent row, evaluated under the caller's own row security; and
+2. a symmetric block arm on the **reactor**, with an own-row escape hatch —
+   `user_id = auth.uid() or not private.is_blocked(auth.uid(), user_id)`.
+
+It SHALL restate no membership predicate, no club-visibility predicate, no role test and no block
+arm on the parent's own author. The parent's policy already answers all of them, and the `EXISTS`
+runs under the caller's session, so the reaction's audience tracks the subject's exactly.
+
+This is `009`'s `postcard_likes` shape stated as a general rule because this change is the second
+and third instance of it, and the reason it works is easy to lose: *"the EXISTS subquery is
+evaluated under the querying rider's own RLS, so like visibility tracks postcard visibility exactly
+rather than restating it… Restating it would be two predicates that have to be kept in step, and
+the one that drifts is the one nobody reads."*
+
+**The INSERT policy SHALL use the same `EXISTS` as SELECT**, so "cannot react to what you cannot
+see" is one predicate rather than two that can diverge.
+
+#### Scenario: A reaction policy names no audience of its own
+- **WHEN** a reaction table is added
+- **THEN** its policies SHALL name only its own key columns, the parent `EXISTS`, and the reactor
+  block arm
+- **AND** a policy change on the parent SHALL move the reaction's audience with no edit anywhere
+
+#### Scenario: The parent's own block arm is not copied
+- **WHEN** the parent's SELECT policy carries a block arm on its author
+- **THEN** the reaction's policy SHALL NOT repeat it
+- **AND** a reaction by an unblocked rider on a row by a blocked one SHALL be unreachable because
+  the parent row is, not because the reaction restated the rule
+
+### Requirement: A reaction count SHALL be computed under RLS, SHALL NOT be stored, and SHALL NOT be used as a shared fact
+
+A count of reactions SHALL be an aggregate over the rows the caller's own policies return. It SHALL
+NOT be denormalised into a column on the parent or anywhere else.
+
+**The count is therefore per-viewer, and what that forbids SHALL be stated wherever it is
+defined.** Because two riders may legitimately see different totals for one row, a reaction count
+SHALL NOT order, rank or sort any list; SHALL NOT provide a cursor or page boundary; and SHALL NOT
+feed a threshold, badge or label that implies a shared judgement.
+
+`009` refused a `like_count` column for the disclosure half of this and it was right. The coherence
+half is the part no screen makes visible: a rider blocked by everyone still reads their own count
+as `1`, and the obvious repair — a global count — discloses that a hidden rider exists and acted,
+which decision #2 forbids.
+
+#### Scenario: No denormalised count column is added
+- **WHEN** a reaction table is added
+- **THEN** no column holding a count of its rows SHALL be added to any table
+- **AND** no trigger SHALL maintain one
+
+#### Scenario: A per-viewer number never becomes an ordering
+- **WHEN** any list containing reactable rows is ordered
+- **THEN** the ordering key SHALL be a value every viewer computes identically
+- **AND** a reaction count SHALL NOT appear in an `order by`, a keyset cursor or a page boundary,
+  because a per-viewer sort key makes pagination differ per rider
+
+### Requirement: A row whose subject is a MEMBERSHIP SHALL key to the membership, not to the rider
+
+Where a derived or reaction row is about a rider's presence **in a container** — a club membership,
+a ride crew place — its foreign key SHALL address the membership row, so that leaving cascades it
+away.
+
+Keying such a row to `profiles` alone produces a row that outlives the thing it describes, is
+unreachable from any screen, survives an account deletion of neither party, and **reappears if the
+rider rejoins** — asserting a fact about a membership that did not exist when the row was written.
+
+`club_members`' primary key is `(club_id, user_id)`, so a two-column foreign key with
+`ON DELETE CASCADE` is available and SHALL be used. The reactor's own key to `profiles` is separate
+and SHALL remain, so deleting the reactor's account removes their rows independently.
+
+**Both foreign keys into `profiles` SHALL have an index Postgres can use**, per the standing rule.
+A composite primary key leading with another column does not serve one.
+
+#### Scenario: Leaving cascades the rows about the membership
+- **WHEN** a rider leaves a club
+- **THEN** every row keyed to that membership SHALL be deleted by cascade
+- **AND** no client code SHALL be responsible for the cleanup
+
+#### Scenario: A rejoin does not resurrect them
+- **WHEN** that rider rejoins
+- **THEN** the new membership SHALL carry none of the old rows
+- **AND** nothing SHALL assert a fact about the previous membership
+
+#### Scenario: Every profile foreign key leads an index
+- **WHEN** a table referencing `public.profiles` is added
+- **THEN** an index leading with that column SHALL be added in the same migration
+- **AND** the assertion SHALL read the catalog rather than time a deletion
+
+### Requirement: A new content table SHALL carry the participation gate, or SHALL state why it does not
+
+Any table holding rider-authored content visible to another rider SHALL carry a `BEFORE INSERT`
+`enforce_participation_gate` trigger with `when (current_user = 'authenticated')`.
+
+The `when` clause SHALL be present and SHALL NOT be moved into the function body: inside a
+`security definer` body `current_user` is the owner, so a body guard is true on every call and the
+gate never fires (`023` §2, measured).
+
+The gate count SHALL be **measured** after the migration rather than asserted from prose, and the
+suite SHALL additionally assert the trigger's presence **by table name** — a flat count cannot
+distinguish a new table's gate from a moved one, which is the error `078`'s own task list made in
+the other direction.
+
+#### Scenario: A reaction table is gated
+- **WHEN** a table holding a rider's reaction visible to others is added
+- **THEN** it SHALL carry the gate trigger
+- **AND** an account with `terms_accepted_at` NULL SHALL be refused the write by the database
+
+#### Scenario: The count is re-derived
+- **WHEN** the migration is applied
+- **THEN** `select count(*) from pg_trigger where tgname = 'enforce_participation_gate' and not
+  tgisinternal` SHALL be run against both projects
+- **AND** the number SHALL be recorded with that command beside it, never alone
+
+### Requirement: A DELETE policy on an own-row table SHALL be reachable, and the SELECT policy is what decides
+
+A table whose rows a rider may delete SHALL be checked for the interaction `081` measured: RLS
+applies the **SELECT** policy to a `DELETE` whose `WHERE` names a column, so a row the caller owns
+but cannot read survives its own delete with PostgREST reporting success.
+
+For an own-row table this SHALL be made unreachable by the SELECT policy's own-row disjunct —
+`user_id = auth.uid()` — rather than by relaxing the DELETE policy, which changes nothing because
+SELECT is applied first.
+
+The own-row disjunct SHALL therefore be asserted as **load-bearing for the delete path**, so that
+removing it is caught rather than mistaken for a tightening.
+
+#### Scenario: An own row is deletable however the caller is blocked
+- **WHEN** a rider deletes their own row on a table whose parent has since become invisible to them
+- **THEN** the row SHALL be deleted
+- **AND** the delete SHALL NOT report a silent success against zero matched rows
+
+#### Scenario: Removing the own-row read arm breaks the delete
+- **WHEN** the SELECT policy's `user_id = auth.uid()` disjunct is removed
+- **THEN** an assertion SHALL fail
+- **AND** the failure SHALL name the delete path, because the change looks like a tightening and
+  its cost is invisible from the DELETE policy alone
+
+### Requirement: A grant one rider can cause for another SHALL be re-derived at every use, never trusted from creation
+
+Where a rider's action creates something that will later admit **another** rider — an invite, a
+capability token — the authority behind it SHALL be evaluated again at the moment of use, against the
+current state of the club and of the rider who created it. A policy check at creation SHALL NOT be
+treated as evidence of authority at redemption.
+
+**This is a new class of rule in this schema, and it exists because every other grant here is a fact
+that is still true when it is read.** Ownership, membership and a block are all evaluated at read
+time by construction. An invite is the first artefact that carries a *past* decision forward, and a
+past decision by a rider who has since left, been demoted, or whose club has changed shape is not a
+decision the club is still making.
+
+`private.may_invite_to_club_for(candidate, club)` SHALL therefore be called by:
+
+- the INSERT policy, through its caller-relative wrapper;
+- `private.join_club_from_invite`, for the **inviter** or the link's **minter**, before the
+  membership row is written;
+- `private.club_invite_is_answerable_for` and `private.club_invite_link_reachable_by`, so a dead
+  grant disappears from the surface rather than presenting a control that always fails.
+
+`091`'s `expires_at` is the same rule in its narrow form — the ride's departure is re-read at every
+use rather than trusted from the stored column — and this requirement generalises it from a
+timestamp to an authority.
+
+#### Scenario: An outstanding invite dies with its inviter's authority
+- **WHEN** the inviter leaves the club or is demoted from `admin`, and the invitee then accepts
+- **THEN** no membership row SHALL be written, and the refusal SHALL be the surface's single
+  indistinguishable message
+
+#### Scenario: A pointer does not become a grant when the club changes shape
+- **WHEN** an ordinary member invites a rider to a **public** club and the club is then made private
+- **THEN** the accept SHALL be refused, because `may_invite_to_club_for` is false for a member of a
+  private club
+- **AND** the same invite sent by an **admin** SHALL still be accepted
+
+#### Scenario: The check is in the writer, not only in the policy
+- **WHEN** `private.join_club_from_invite`'s body is read
+- **THEN** it SHALL contain the authority test, the participation test and both block tests, because
+  a `security definer` writer bypasses the policies and the trigger that would otherwise carry them
+
+#### Scenario: A single raise site survives the extra checks
+- **WHEN** any of those tests fails
+- **THEN** the function SHALL return `false` rather than raising, so its caller keeps one observable
+  failure and a block is not disclosed by a second error string or a different SQLSTATE
+
+### Requirement: A widened authority SHALL reuse the existing predicate rather than restate it
+
+When an existing `security definer` function's authority is widened to a role another function
+already admits, it SHALL delegate to the **same predicate helper** and SHALL NOT write a second
+expression that happens to mean the same thing.
+
+For club authority that helper is `private.is_club_admin_for(candidate uuid, target_club uuid)`
+(`085`), which `088`'s three manage-riders RPCs and `085`'s approval RPC already call. A body
+writing `clubs.owner_id = auth.uid() or exists (club_members … role in ('owner','admin'))` inline
+SHALL be treated as a defect even though it evaluates identically today: two spellings of one rule
+drift, and the drift is silent because both look correct in isolation.
+
+Adding the helper **beside** the predicate it replaces — `c.owner_id = v_uid or
+private.is_club_admin_for(…)` — SHALL likewise be treated as a defect. The helper's first disjunct
+is that predicate.
+
+A `security definer` function MAY call a `private` helper no client role holds EXECUTE on, because
+it runs as the owner. A grant added to "make it work" SHALL be treated as a defect: the caller is
+wrong, not the ACL.
+
+#### Scenario: The widened function names one predicate
+- **WHEN** the moderation function's body is read after the change
+- **THEN** it SHALL contain exactly one authority expression, and that expression SHALL be a call to
+  `private.is_club_admin_for`
+
+#### Scenario: The helper's body is pinned by equality
+- **WHEN** the helper is relied on for the owner arm
+- **THEN** its body SHALL be compared by **equality**, never by `like`, because a mention of the
+  name in a comment satisfies a pattern match
+
+### Requirement: Ownership SHALL be tested at `clubs.owner_id`, and a role-only predicate SHALL be treated as a regression
+
+`clubs.owner_id` is the column that establishes ownership. `club_members.role = 'owner'` is a roster
+row kept in step with it, and a club owner holding **no** roster row was a reachable state (`054`,
+PD-128) until `103` wrote the owner's row in the same statement as the club and repaired every club
+that lacked one. The owner arm SHALL stay regardless, because a predicate SHALL NOT depend on an
+invariant a trigger enforces elsewhere.
+
+Any predicate deciding an owner's authority SHALL therefore include the `clubs.owner_id` arm —
+directly, or through a helper whose first disjunct is that arm. A predicate written as
+`club_members.role in ('owner','admin')` alone SHALL be treated as a **regression**, not a
+simplification, because it would silently remove the owner's right the day that invariant breaks.
+
+**The client carries the identical trap.** A viewer gate written as `viewer_role === 'owner' ||
+viewer_role === 'admin'` SHALL be treated as the same defect as the SQL one; the correct gate reads
+the ownership boolean and the role separately.
+
+#### Scenario: An ownerless owner keeps every right they hold today
+- **WHEN** an owner with no `club_members` row exercises an authority the change widened
+- **THEN** it SHALL succeed
+- **AND** this SHALL be asserted explicitly, because every other assertion in the change passes
+  against the predicate that refuses it
+
+### Requirement: A function SHALL be widened with `create or replace`, because a recreated function is born granted to PUBLIC
+
+Where the signature is unchanged, an existing function SHALL be modified with `create or replace`,
+which preserves its ACL and its OID.
+
+A `drop function` followed by `create function` SHALL be treated as a defect unless the signature
+forces it, and where it is forced, the `revoke all … from public, anon` and the `grant execute … to
+authenticated` SHALL be re-issued in the same file (`082` §7 is the worked example).
+
+The reason is that a newly created function is born with `EXECUTE` to `PUBLIC`, which includes
+`anon` — so decision #1 is breached by a routine refactor, with nothing red anywhere.
+
+#### Scenario: The privilege set survives the widening
+- **WHEN** the function's privileges are read after the migration
+- **THEN** `anon` SHALL hold no EXECUTE and `authenticated` SHALL hold EXECUTE
+- **AND** the assertion SHALL exist even though the migration did not intend to touch the ACL,
+  because that is precisely the case where a mistake is silent
+
+### Requirement: A new table's revoke SHALL name `service_role` at creation
+
+`revoke all … from anon, authenticated` SHALL NOT be considered complete for a table holding
+personal data. Supabase's project default grants `service_role` SELECT, INSERT, UPDATE, DELETE,
+TRUNCATE, REFERENCES and TRIGGER on a new `public` table, and `service_role` bypasses RLS.
+
+`076` §3b measured exactly this on `postcard_reports`, sixty-five migrations after that table was
+created, and described it as *"a standing leak: the only thing between that key and every reporter's
+identity was that nothing had asked."* A table created after `076` SHALL name `service_role` in its
+revoke from the first line.
+
+Revoking it SHALL NOT break account deletion: a referential cascade runs as the constraint's system
+trigger and does not consult privileges. That SHALL be **measured** in a rolled-back transaction
+rather than reasoned, because the failure mode is account deletion breaking and nothing in CI would
+notice.
+
+#### Scenario: A new report table is unreachable by the service-role key
+- **WHEN** `service_role` selects from the new table
+- **THEN** it SHALL be refused
+- **AND** the deletion cascade that removes a rider's rows SHALL still run
+
+### Requirement: A new gated table SHALL carry the participation gate, and the count SHALL be claimed as a delta
+
+Every new table admitting a client INSERT of rider-authored content SHALL carry
+`enforce_participation_gate` as a `before insert … for each row when (current_user =
+'authenticated')` trigger (`023`).
+
+The `when` clause SHALL be written. It is what stops the gate firing for the table owner, and it is
+also why a `security definer` writer must restate the rule in its own body — `current_user` inside a
+definer function is the owner.
+
+**The trigger count SHALL be claimed as a delta against a measurement taken immediately before the
+migration applies, never as an absolute number written by hand.** It is 17 on DEV as of 2026-08-31
+and concurrent changes move it before this one lands. The measurement is:
+
+```sql
+select count(*) from pg_trigger where tgname='enforce_participation_gate' and not tgisinternal;
+```
+
+The assertion SHALL check the gate **by table name** as well as by count, because a count alone
+cannot tell a new gate from a moved one.
+
+The `comment on function public.enforce_participation_gate()` SHALL be composed from the **live**
+comment read at apply time rather than from a copy in an older migration file, because concurrent
+changes rewrite the same string and the last writer wins.
+
+#### Scenario: The gate is present and bites
+- **WHEN** a rider whose `terms_accepted_at` is NULL inserts into the new table
+- **THEN** the write SHALL be refused with `23514`
+- **AND** the trigger SHALL be asserted present by table name, and the flat count asserted as the
+  pre-migration measurement plus one
+
+### Requirement: An additive migration widening a live function SHALL still take the hand-exercise gate
+
+`036`'s gate is usually read as being about triggers hung on shipped write paths. It SHALL also
+apply when a migration **replaces a function riders already call**: from the moment it applies,
+every existing call runs new code inside a rider's own transaction, and a raise there takes that
+rider's write down with it.
+
+The exercise SHALL be by hand, on DEV, in a rolled-back transaction, as `authenticated`, covering
+the previously-permitted caller as well as the newly-permitted one — a widening that accidentally
+narrows is invisible to a test that only checks the new case.
+
+The migration SHALL apply **before** the bundle that calls it serves, both halves being additive,
+and the ordering argument SHALL be stated as which side fails safe rather than as a fixed rule.
+
+#### Scenario: The previously-permitted caller is exercised too
+- **WHEN** a function's authority is widened
+- **THEN** the role that could already call it SHALL be exercised by hand alongside the new role
+- **AND** the check SHALL be a real call in a rolled-back transaction, not a reading of the body
+
+### Requirement: A foreign key whose SET NULL would null a NOT NULL column SHALL name its column list
+
+A composite foreign key declared `ON DELETE SET NULL` nulls **every** referencing column. Where any
+of them is `NOT NULL`, the referenced delete fails at runtime with a not-null violation — and the
+constraint is accepted at DDL time, so the migration is green, the assertions pass, and the failure
+arrives the first time a rider performs the ordinary action the key was hung off.
+
+Any such foreign key SHALL therefore declare the column list — `ON DELETE SET NULL (<column>)` —
+and the assertion beside it SHALL delete a referenced row that is **actually referenced**, because
+a delete of an unreferenced row succeeds under both spellings and proves nothing.
+
+#### Scenario: The bare form is refused by the test, not by the DDL
+- **WHEN** a composite `ON DELETE SET NULL` key is declared over a column list including a
+  `NOT NULL` column, without a column list
+- **THEN** the DDL SHALL be accepted
+- **AND** deleting a referenced parent row SHALL fail with a not-null violation
+- **AND** an assertion SHALL exist that performs exactly that delete
+
+#### Scenario: The scoped form leaves the row standing
+- **WHEN** the key names its column list and a referenced parent row is deleted
+- **THEN** the delete SHALL succeed
+- **AND** the child row SHALL survive with only the named column nulled
+
+### Requirement: A CHECK spanning a column that a foreign key nulls SHALL be one-directional
+
+A foreign key's `SET NULL` action is an UPDATE, so every CHECK on the child row is re-evaluated
+with that column already nulled. A CHECK asserting that two columns are *both set or both null* is
+therefore violated by the very action the key exists to perform, and refuses the parent delete —
+the same failure as the requirement above, one SQLSTATE further on and from a different constraint.
+
+A pairing CHECK across such a column SHALL be written in the direction that survives the nulling:
+it may require that a **set** marker implies its companion, and SHALL NOT require that a set
+companion implies the marker.
+
+#### Scenario: A biconditional pairing refuses the parent delete
+- **WHEN** two columns are constrained to be both set or both null and one is nulled by a foreign
+  key action
+- **THEN** the parent delete SHALL fail with a check-constraint violation
+
+#### Scenario: The surviving direction still forbids the half-state that matters
+- **WHEN** the pairing is written as "a set marker implies its companion is set"
+- **THEN** the parent delete SHALL succeed
+- **AND** a write setting the marker without its companion SHALL still be refused
+
+### Requirement: `club_members` SHALL carry no UPDATE policy, and adding one SHALL be treated as a role-escalation change
+
+`authenticated` holds a column-level `UPDATE (club_id, role, user_id)` grant on `club_members` and
+the table carries **no UPDATE policy**, which is the only reason that grant is inert. Row security
+with no matching policy refuses every UPDATE; the grant is a survival from before the role column
+had a designed writer.
+
+Consequently, **adding any UPDATE policy to `club_members` re-arms that grant**, and the obvious
+own-row policy lets an ordinary member set their own `role` to `admin` — measured on DEV, in a
+rolled-back transaction. That defeats the standing requirement that a club membership role SHALL
+NOT be self-assignable, and it defeats it silently: the policy that causes it reads correct, names
+no role, and is two lines long.
+
+No feature SHALL add an UPDATE policy to `club_members` in order to give a client a writable column
+there. A column a client must write SHALL go on a table whose UPDATE surface is already designed,
+or be written by a `security definer` function that needs no policy at all. An assertion SHALL pin
+the policy count so a later change cannot add one quietly.
+
+#### Scenario: The UPDATE policy count is zero and asserted
+- **WHEN** the policies on `club_members` are enumerated
+- **THEN** exactly zero SHALL be for UPDATE
+- **AND** an assertion SHALL fail if that number changes
+
+#### Scenario: A member cannot promote themselves
+- **WHEN** an ordinary member attempts to update their own membership row's role
+- **THEN** the write SHALL be refused, by the absence of a policy rather than by any predicate
+
+### Requirement: A `security definer` writer SHALL restate the participation gate, and a trigger SHALL NOT be counted as covering it
+
+Every `enforce_participation_gate` trigger carries `when (current_user = 'authenticated')`, and
+`current_user` inside a `security definer` body is the function's owner. A content write performed
+inside such a function is therefore **ungated by the trigger on its own table**, whatever the
+trigger count says.
+
+Such a function SHALL test the calling rider's consent stamp itself, against the subject taken from
+the session. Adding a trigger instead SHALL NOT be treated as a remedy: it would raise the coverage
+count while gating nothing, which is the precise failure an existing assertion already exists to
+prevent elsewhere.
+
+Where a change adds no table, its participation-gate trigger count SHALL be claimed as **unchanged**
+rather than incremented, and the gate's coverage SHALL be claimed against the function.
+
+#### Scenario: The function refuses an un-onboarded caller
+- **WHEN** a rider whose consent stamp is NULL calls the writing function
+- **THEN** it SHALL refuse
+- **AND** the refusal SHALL come from the function body, the trigger being unable to fire
+
+#### Scenario: No trigger is added to launder the count
+- **WHEN** this change is applied
+- **THEN** the participation-gate trigger count SHALL be unchanged
+- **AND** no trigger SHALL be added to a table solely to make coverage read complete
+
+### Requirement: A new content column SHALL carry its bounds as a CHECK, matching the sibling column it may be compared with
+
+Rider-authored text added to an existing table SHALL carry a non-blank and a maximum-length CHECK
+in the same migration that adds the column. A schema in the client MAY mirror the bound for the
+message and the live counter and SHALL NOT be the only place it exists.
+
+Where the new text sits beside an existing rider-authored column that readers will compare it with,
+the bound SHALL be the same one, so that neither can be longer than the other for reasons nobody
+decided.
+
+#### Scenario: The bound is enforced without the client
+- **WHEN** a write bypassing the client supplies whitespace only, or more than the maximum
+- **THEN** the database SHALL refuse it with a check-constraint violation
+
+#### Scenario: The bound matches its sibling
+- **WHEN** the new column's maximum is compared with the message body's
+- **THEN** they SHALL be equal, and the equality SHALL be stated where the column is defined
+
+### Requirement: The shape of a notification's subject SHALL be a CHECK, and SHALL constrain every subject column for every type
+
+`notifications_subject_shape` SHALL name **every** subject column in **every** arm — after this
+change, sixteen arms each fixing five columns — with an `ELSE false` fallthrough.
+
+**A CHECK that names only the columns a type uses is not a shape.** Adding `thread_id` and leaving
+the fourteen existing arms untouched would let a `postcard_liked` row legally carry a `thread_id`,
+placing it in a different equivalence class under the uniqueness index, breaking its own retraction's
+four-column scope, and making it resolvable or not according to a thread nothing about it renders —
+with nothing refusing it. The rule generalises: **a new subject column obliges every existing arm.**
+
+This is the standing rule that no integrity rule may live only in client code, applied to a table no
+client may write at all: the constraint is not defending against a rider, it is defending against the
+next fan-out.
+
+#### Scenario: Adding a subject column obliges every existing arm
+
+- **WHEN** a migration adds a subject column to `notifications`
+- **THEN** every existing arm of `notifications_subject_shape` SHALL be re-stated to require the new
+  column NULL
+- **AND** the constraint SHALL be dropped and re-added whole rather than patched, so that reading the
+  file shows the complete shape
+
+#### Scenario: The type list and the shape cannot silently disagree
+
+- **WHEN** a type is added to `notifications_type_check` and forgotten in
+  `notifications_subject_shape`
+- **THEN** the insert SHALL be refused by the `ELSE false` arm
+- **AND** the failure SHALL be loud at the first write of that type rather than silent for ever
+
+### Requirement: A notification's uniqueness SHALL be `NULLS NOT DISTINCT` over every subject column
+
+`notifications_event_key` SHALL cover the recipient, the type, the actor and **every** subject
+column, with `NULLS NOT DISTINCT`. A subject column added without extending the key SHALL be treated
+as a defect.
+
+**A subject column outside the key collapses rows that name different things.** With `thread_id`
+absent and `club_id` standing in, one rider's replies across every thread of one club collapse to a
+single notification — the recipient is told once and never again, with no error, no log line and no
+failing assertion. `NULLS NOT DISTINCT` is what makes the key fire at all, since most rows leave most
+subject columns NULL; a plain UNIQUE treats two NULLs as different and the constraint would never
+catch anything. That is `015`'s `feed_reads` lesson exactly.
+
+#### Scenario: The key covers every subject column
+
+- **WHEN** the index is derived after apply
+- **THEN** the columns of `notifications_event_key` SHALL be exactly the recipient, the type, the
+  actor and every subject column on the table
+- **AND** this SHALL be derived from `pg_index` against `information_schema.columns` rather than read
+  off a migration file
+
+#### Scenario: Appending to the key preserves every existing collapse
+
+- **WHEN** a column that is NULL on every existing row is appended to the key
+- **THEN** no existing equivalence class SHALL split, because `NULLS NOT DISTINCT` compares those
+  NULLs equal
+- **AND** the rebuild SHALL therefore be provable from the data rather than argued from intent
+- **AND** a failure of the `create unique index` SHALL be read as a pre-existing duplicate and
+  investigated, never worked around by weakening the index
+
+### Requirement: A trigger that must fire for every writer SHALL carry no `WHEN` clause, and one that must skip privileged writers SHALL keep its
+
+`public.club_messages` SHALL keep its `enforce_participation_gate BEFORE INSERT … WHEN
+(CURRENT_USER = 'authenticated')` trigger unchanged, and the fan-out trigger `098` adds to the same
+table SHALL carry **no** `WHEN` clause. (`098` added three triggers across two tables; `101` dropped
+`club_thread_waves`, and the two wave triggers with it.)
+
+**Two triggers on one table with opposite clauses is the point, not an inconsistency.** The gate is a
+rule about the client and must skip a privileged write; a fan-out is a rule about the data and must
+fire for every writer, including the seed the RLS suite runs as. Copying either onto the other is a
+silent defect in opposite directions: a gated fan-out never fires for a privileged write, and an
+ungated participation gate refuses a `security definer` RPC.
+
+**The participation-gate trigger count SHALL NOT move.** This change creates no table, and the
+parent table already carries the gate — measured at **22** on both projects on 2026-09-01. The count
+SHALL be asserted rather than left inferred, following the precedent of asserting a count that stays
+still.
+
+#### Scenario: The gate still refuses an unconsented rider on the parent table
+
+- **WHEN** a rider with `terms_accepted_at` NULL attempts to post a club message
+- **THEN** it SHALL be refused with `23514`
+- **AND** zero notification rows SHALL exist afterwards, because an `AFTER` trigger never runs on a
+  refused write
+
+#### Scenario: The gate count is unchanged
+
+- **WHEN** `select count(*) from pg_trigger where tgname = 'enforce_participation_gate' and not
+  tgisinternal` is run after apply
+- **THEN** it SHALL return the same number it returned before
+- **AND** the assertion SHALL be present in the suite, because a table added later without a gate
+  looks exactly like this count being right
+
+#### Scenario: The fan-out fires for a write the gate skips
+
+- **WHEN** a club message is inserted as the table owner, so the gate's `WHEN` clause is false
+- **THEN** the gate SHALL not run and the fan-out SHALL still write its row
+- **AND** this SHALL be asserted, because it is the exact case a copied `WHEN` clause would break and
+  the case every assertion in the suite depends on
+
+### Requirement: A club SHALL always hold an owner-membership row
+
+For every row in `public.clubs` there SHALL exist a row in `public.club_members` with the same
+`club_id`, `user_id = clubs.owner_id` and `role = 'owner'`. The rule SHALL be enforced by the
+database, and the state in which it does not hold SHALL have no representation reachable by any
+writer.
+
+**This is a live defect, not a risk the change introduces.** `createClub` issues two inserts with
+no transaction because PostgREST has no multi-statement transaction. Until 2026-08-06 both inserts
+and a compensating delete ran inside one server request; they run in the browser now, so closing
+the tab between them leaves the club without its membership row. Nothing anywhere — no CHECK, no
+trigger, no constraint — currently asserts that this cannot be.
+
+The state is not cosmetic. `private.is_club_member` has no owner arm, so an orphan club's owner is
+a non-member for every purpose the schema recognises: `017` refuses them a ride in their own club,
+`009` refuses them a postcard to it, `getYourClubs` omits it and `getExploreClubs` shows a public
+one back to them with a `Join club` button that records them as `role = 'member'` — permanently,
+because `club_members` has no UPDATE policy.
+
+#### Scenario: Creating a club establishes the owner's membership in the same statement
+- **WHEN** any signed-in rider inserts a row into `clubs`, by any route including a hand-rolled
+  PostgREST request
+- **THEN** the matching `club_members` row with `role = 'owner'` SHALL exist when the statement
+  returns
+- **AND** the client SHALL NOT be required to issue a second write for the invariant to hold
+
+#### Scenario: A failed membership write takes the club with it
+- **WHEN** the membership write raises for any reason — the participation gate, a constraint, a
+  deadlock
+- **THEN** the `clubs` row SHALL NOT exist afterwards, because both are one statement
+- **AND** no compensating delete in application code SHALL be relied on for this
+
+#### Scenario: The owner cannot leave their own club
+- **WHEN** the rider named in `clubs.owner_id` deletes their own `club_members` row, whether
+  through `leaveClub` or directly against PostgREST
+- **THEN** the database SHALL reject the delete with a check violation
+- **AND** the refusal SHALL NOT depend on the UI hiding the control, which is what holds this
+  today
+- **AND** there SHALL be exactly two exceptions, both of them elevated paths rather than client
+  writes: the **voluntary-leave transfer**, which reassigns `clubs.owner_id` in the same statement,
+  and the **club's own deletion**, whose cascade the guard permits because the parent row is
+  already gone
+
+> **The enforcement of this scenario ships in `095`, not here — `an-owner-leaves-their-club`
+> (PD-194) carries the club-side `BEFORE DELETE` guard and the two exceptions above, and this
+> change keeps the two seeding triggers, the backfill and the ride-side guard.** `design.md` §D3
+> records why the split is safe in both orders and why neither change blocks the other; that
+> change's §D8 records why it is a split rather than a supersession. The requirement stated here is
+> unchanged and is still this change's to state — what moved is which migration enforces it.
+
+#### Scenario: Deleting the club still works
+- **WHEN** the owner deletes the club itself
+- **THEN** the cascade to `club_members` SHALL succeed, because the guard SHALL permit a delete
+  whose parent `clubs` row no longer exists
+- **AND** the `clubs` DELETE policy SHALL be unchanged
+
+#### Scenario: A privileged transfer is still possible
+- **WHEN** a role other than `authenticated` reassigns `clubs.owner_id` and deletes the departing
+  owner's membership row
+- **THEN** the delete SHALL succeed, because the guard binds `authenticated` only
+- **AND** this SHALL remain true so that account deletion can transfer a club rather than cascade
+  it, destroying other riders' postcards — and so that a voluntary owner-leave, should one be
+  built (PD-194), needs no change to this rule
+
+#### Scenario: Existing orphans are repaired rather than left
+- **WHEN** the rule is applied to a database that already contains clubs with no owner-membership
+  row, or whose owner holds a row with the wrong `role`
+- **THEN** the missing rows SHALL be inserted and the wrong roles SHALL be corrected
+- **AND** `joined_at` SHALL be taken from `clubs.created_at` rather than the migration's clock, so
+  that a tenure-ordered read of the roster is not reordered by the repair
+- **AND** this SHALL NOT be read as reversing the no-backfill ruling on consent: an owner-membership
+  row is derived from `clubs.owner_id`, which is already stored, whereas a consent timestamp
+  records an act only the rider can perform
+
+### Requirement: A ride's organizer SHALL hold a crew row
+
+For every row in `public.rides` there SHALL exist a row in `public.ride_members` with the same
+`ride_id` and `user_id = rides.organizer_id`. The invariant is the row's **presence**; its `status`
+MAY be `going` or `maybe`.
+
+`createRide` has the same two-insert shape and the same window as `createClub`. The consequence is
+different and more visible: `toRideListItem` draws the organizer "on the ride by construction"
+whether or not the row exists, while `getRideCrew` reads `ride_members` alone — so the ride card
+and `/rides/detail/crew` disagree about the same ride, and `RideAttendanceBar` is hidden from the
+organizer, leaving them no route back onto their own crew.
+
+#### Scenario: Creating a ride puts the organizer on the crew
+- **WHEN** any signed-in rider inserts a row into `rides`, by any route
+- **THEN** the matching `ride_members` row with `status = 'going'` SHALL exist when the statement
+  returns
+
+#### Scenario: The organizer cannot leave their own crew
+- **WHEN** the rider named in `rides.organizer_id` deletes their own `ride_members` row, including
+  through `setRideAttendance(rideId, null)`
+- **THEN** the database SHALL reject the delete with a check violation
+
+#### Scenario: The organizer may still say maybe
+- **WHEN** the organizer updates their own `ride_members.status` to `maybe`
+- **THEN** the write SHALL succeed, because the invariant is presence rather than status
+- **AND** the existing `ride_members` UPDATE policy SHALL be unchanged
+
+#### Scenario: Deleting the ride still works
+- **WHEN** the organizer deletes the ride
+- **THEN** the cascade to `ride_members` SHALL succeed, by the same parent-is-gone rule the club
+  guard uses
+
+#### Scenario: The two read paths agree by construction
+- **WHEN** any rider who can see a ride reads its card and its crew roster
+- **THEN** the organizer SHALL appear in both
+- **AND** no read function SHALL synthesise an organizer row it did not read, so that the rule
+  lives in one place
+
+### Requirement: Creator membership SHALL be established without a callable elevated function
+
+The mechanism that establishes creator membership SHALL take no caller-supplied argument, SHALL
+NOT be executable by `authenticated`, `anon` or `public`, and SHALL derive every value it writes
+from the row being inserted.
+
+An RPC would bind only the callers that choose it, leaving `insert into clubs` reachable with the
+publishable key that already ships in the bundle; it would restate five columns and their
+constraints in a signature that must be kept in step with the table; and an elevated function
+`authenticated` can execute adds a security-advisor finding for nothing a trigger does not give.
+
+#### Scenario: There is no id to pass, so someone else's id cannot be passed
+- **WHEN** any rider attempts to cause an owner-membership row for a rider other than themselves
+- **THEN** there SHALL be no interface that accepts a rider id
+- **AND** the values written SHALL come from `NEW.owner_id` / `NEW.organizer_id` on a row the
+  `clubs` / `rides` INSERT policy already restricted to `auth.uid()`
+
+#### Scenario: Nobody can call it directly
+- **WHEN** `authenticated` or `anon` attempts to execute the function that performs the write
+- **THEN** execution SHALL be refused, and the function SHALL NOT be published by PostgREST
+
+#### Scenario: It adds no executable elevated surface
+- **WHEN** the security advisors are read after the migration applies
+- **THEN** no new `authenticated_security_definer_function_executable` finding SHALL appear
+- **AND** the known findings SHALL be unchanged in number and identity
+
+#### Scenario: The participation gate is enforced once, not twice
+- **WHEN** a rider whose `onboarding_completed_at` or `terms_accepted_at` is NULL attempts to
+  create a club or a ride
+- **THEN** the write SHALL be refused on the `clubs` / `rides` insert by `023`'s gate
+- **AND** no `club_members` or `ride_members` row SHALL exist for them afterwards
+- **AND** the gate not firing a second time inside the elevated function SHALL be asserted rather
+  than assumed, because a definer function runs as its owner and the gate's `WHEN` clause is
+  evaluated in that context
+
+### Requirement: The creator-membership invariant SHALL be asserted against the table, never against a query result
+
+Any check that the invariant holds SHALL run with row-level security bypassed, or as the club's own
+owner. No screen, read function or test SHALL infer the invariant from a count returned under
+another rider's session.
+
+`club_members` SELECT carries a block predicate in both directions. A club whose only member is its
+owner therefore returns `members_count = 0` to a rider the owner has blocked — which is byte-for-byte
+what an orphan looks like from the client. The same is true of `getClub`'s
+`members_count:club_members(count)` embed, which runs under RLS.
+
+#### Scenario: A blocked rider sees a healthy club as memberless
+- **WHEN** rider A owns a club whose only member is A, A blocks B, and B reads that club's roster
+  and member count
+- **THEN** B SHALL see zero rows and a count of zero, unchanged from today
+- **AND** this SHALL NOT be treated as a violation of the invariant, nor surfaced to B as an error
+  state
+
+#### Scenario: The assertion runs with the policy out of the way
+- **WHEN** the RLS suite asserts that no club lacks its owner-membership row
+- **THEN** the assertion SHALL run with RLS bypassed rather than under the ambient
+  `authenticated` role
+- **AND** an assertion written under `authenticated` SHALL be treated as a defect, because it
+  passes on a database full of orphans owned by riders the runner is blocked from
+
+#### Scenario: No orphan-detection affordance is built
+- **WHEN** any screen is tempted to warn a rider that a club looks memberless
+- **THEN** it SHALL NOT, because a count that can distinguish "orphan" from "blocked" is a
+  block-visibility leak
+
+### Requirement: Every role's access to a creator-membership row SHALL be stated
+
+Every role that can reach a creator-membership row SHALL have its access stated, and the row SHALL
+inherit the existing `club_members` / `ride_members` SELECT policies unchanged.
+
+It is an ordinary roster row. Stated role by role so each line maps onto an assertion, and so the
+absence of a change to the visibility layer is a checked claim rather than an assumption.
+
+#### Scenario: Owner
+- **WHEN** a club's owner reads their own membership row
+- **THEN** it SHALL be returned, unconditionally, by the `user_id = auth.uid()` arm
+
+#### Scenario: Admin
+- **WHEN** a rider holding `role = 'admin'` in the club reads the owner's row
+- **THEN** it SHALL be returned if the club is visible to them, and they SHALL NOT be able to
+  delete it, because `club_members` DELETE is `auth.uid() = user_id` and carries no admin arm
+- **AND** no `admin` row exists on this database today, since nothing writes the value and there is
+  no UPDATE policy — the rule is stated so it is not invented later
+
+#### Scenario: Member
+- **WHEN** a member of the club reads the roster
+- **THEN** the owner's row SHALL be returned, and the member SHALL NOT be able to delete it
+
+#### Scenario: Non-member
+- **WHEN** a signed-in rider who is not a member reads the roster
+- **THEN** the owner's row SHALL be returned for a public club and zero rows for a private one,
+  unchanged from `008` and `009`
+- **AND** they SHALL NOT be able to insert, alter or delete it
+
+#### Scenario: Blocked rider
+- **WHEN** a rider blocked by the owner, in either direction, reads the roster
+- **THEN** the owner's row SHALL NOT be returned, unchanged from `009`
+- **AND** the club itself SHALL still be returned, because `clubs` deliberately carries no block
+  predicate
+
+**The six scenarios above are `club_members` only, and this change seeds `ride_members` too.**
+The ride half is stated below rather than assumed to be symmetric, because it is not: the two
+tables reach the same outcome by different mechanisms, and an implementer who generalises from
+the club rules will write the wrong assertion.
+
+Measured from `pg_policy` on 2026-08-06, `ride_members` SELECT is:
+
+```
+EXISTS (SELECT 1 FROM rides r WHERE r.id = ride_members.ride_id)
+AND (user_id = auth.uid() OR NOT private.is_blocked(auth.uid(), user_id))
+```
+
+So **two** block predicates bear on the organizer's own crew row: its own, on the roster
+member (`user_id`, which for this row *is* the organizer), and the transitive one inside
+`rides` SELECT (`NOT private.is_blocked(auth.uid(), organizer_id)`). Either alone would hide it.
+That redundancy is the current state, not a requirement — the assertions below must pin the
+outcome, so that removing one predicate later fails a test rather than passing silently.
+
+#### Scenario: Organizer — their own crew row
+- **WHEN** the rider named in `rides.organizer_id` reads `ride_members` for their own ride
+- **THEN** their `going` row SHALL be returned, on a public ride and on a private-club ride alike
+- **AND** they SHALL NOT be able to delete it, by the `BEFORE DELETE` guard this change adds
+- **AND** they SHALL still be able to change its `status` to `maybe`, because the invariant is
+  presence on the crew, not a particular status
+
+#### Scenario: Club admin and club member — a private club's ride
+- **WHEN** a rider holding `role = 'admin'` or `role = 'member'` in the ride's club reads the roster
+- **THEN** the organizer's crew row SHALL be returned, because `rides` SELECT admits them through
+  `private.is_club_member(club_id)`
+- **AND** neither SHALL be able to insert, alter or delete it
+
+#### Scenario: Non-member — public ride versus private-club ride
+- **WHEN** a signed-in rider who is not in the ride's club reads the roster
+- **THEN** the organizer's crew row SHALL be returned for a public ride whose club is NULL or
+  public, and **zero rows** for a ride whose `club_id` names a private club
+- **AND** the refusal SHALL come from `rides` SELECT via the `EXISTS`, not from any predicate on
+  `ride_members` itself — so a future change that widens `rides` widens this too, deliberately
+
+#### Scenario: Blocked rider — both predicates, asserted separately
+- **WHEN** a rider blocked by the organizer, in either direction, reads the roster
+- **THEN** the organizer's crew row SHALL NOT be returned
+- **AND** this SHALL be asserted **twice**: once proving `ride_members`' own
+  `NOT private.is_blocked(auth.uid(), user_id)` arm hides it, and once proving the ride itself is
+  invisible so the `EXISTS` hides it — because a single assertion cannot distinguish which
+  predicate did the work, and a later edit could remove one while the test stays green
+
+#### Scenario: No SELECT policy is edited
+- **WHEN** this change is applied
+- **THEN** the policy set for `clubs`, `club_members`, `rides` and `ride_members` SHALL differ from
+  today by exactly one INSERT policy on `club_members` and nothing else
+
+### Requirement: A right that a DELETE policy cannot deliver SHALL be delivered by a `security definer` RPC, not recorded as a known gap
+
+When a table's intended delete rights include a case where the deleter cannot READ the row —
+because a block, a departed membership or a parent going out of view removes it from their SELECT
+policy — the delete SHALL be implemented as a `security definer` function rather than as a policy
+with the gap written down beside it.
+
+Postgres applies the SELECT policy to any statement whose `WHERE` clause reads a column, measured on
+17.6 and recorded in `082`. A DELETE filtered by `USING` therefore **succeeds against zero rows** and
+reports success, so the rider is told their message is gone and it is not. This repo has recorded the
+same defect three times — `011` §1b for comments, `034`'s organizer arm for ride messages, and
+`102`'s residual `DELETE 0` for a rider who left a crew — and each time the remedy named was an RPC
+that was not built.
+
+**A recorded gap is not a mitigation.** It is invisible to the RLS suite, which runs as the table
+owner for whom no policy applies, and invisible to the rider, who sees a success.
+
+#### Scenario: A new table with a delete right ships the RPC in the same migration
+- **WHEN** a migration creates a table whose rows a rider may remove
+- **THEN** it SHALL determine whether any intended deleter can be unable to read the row
+- **AND** where one can, the table SHALL carry **no DELETE policy and no DELETE grant**, and the
+  right SHALL be a `security definer` function scoped inside its own body
+- **AND** the absence of the grant SHALL be the enforcement, so a later policy written too
+  permissively cannot open a second path
+
+#### Scenario: The RPC's scope is asserted, and not by calling it
+- **WHEN** such a function is added
+- **THEN** an assertion SHALL name the role — `has_function_privilege('authenticated', …)` and the
+  same for `anon` — rather than exercising the function
+- **AND** the reason SHALL be `029`'s: the suite runs as the table owner, for whom neither the grant
+  barrier nor RLS exists, so a passing call proves nothing about a client role
+
+#### Scenario: The function discloses nothing about rows outside its scope
+- **WHEN** the function is called with an id the caller has no right to
+- **THEN** it SHALL remove nothing
+- **AND** it SHALL NOT distinguish "that id does not exist" from "that id is not yours", because the
+  function bypasses RLS and is therefore the only thing standing between the caller and the whole
+  table
+
+### Requirement: Dropping a table a shipped bundle reads SHALL be sequenced against the bundle being SERVING, not against the merge
+
+A migration that drops a table, a column or a function which any shipped client reads SHALL apply
+only after the replacing client is confirmed **serving** — a `READY` deployment on the merge sha with
+a null alias error — and the confirmation SHALL be a distinct, evidenced step rather than an
+inference from the merge.
+
+This repo applied a destructive file **102 seconds** after a merge, out from under a Preview still
+calling the function it dropped. A merge is not a deploy: Vercel builds after it, and an
+already-loaded browser tab keeps its pre-merge JS until it is reloaded regardless.
+
+#### Scenario: The confirmation is a command with an output, not a judgement
+- **WHEN** a destructive migration is about to apply
+- **THEN** the deployment state for the merge sha SHALL be read and recorded
+- **AND** "the PR merged" SHALL NOT satisfy this, and neither SHALL "CI is green"
+
+#### Scenario: The additive and destructive halves are separate files
+- **WHEN** one change both creates a replacement object and drops the object it replaces
+- **THEN** they SHALL be two migration files with two numbers
+- **AND** the reason SHALL be that one must apply before the deploy and the other after, which a
+  single file cannot do
+- **AND** the two SHALL be applied in filename order with the deploy between them, and that ordering
+  SHALL be recorded per-file in `docs/reference/migrations.md` §Applied state
+
+#### Scenario: A dropped name is not reused by its replacement
+- **WHEN** a replacement table serves the same purpose as the dropped one
+- **THEN** it SHALL take a different name
+- **AND** the reason SHALL be both mechanical and diagnostic: the additive migration must create it
+  while the old table still exists, and an old bundle meeting a same-named table with a different
+  column set receives malformed rows instead of a clean `PGRST205`
+
+#### Scenario: A dropped table's rows are counted before they are destroyed
+- **WHEN** a destructive migration removes rider-authored rows
+- **THEN** the count SHALL be measured on each project and recorded in the change
+- **AND** a decision to archive or not archive SHALL be stated explicitly, including when the count
+  is zero
+
+### Requirement: A recorded bar SHALL be state that every contradicting path clears, and SHALL be distinguished from a recorded refusal that is history
+
+Two kinds of row look identical and behave in opposite ways, and this schema now holds both. Which
+one a table is SHALL be decided when it is created and stated at the table, because the failure in
+each direction is silent.
+
+**A BAR is state.** It says *this actor may not do this thing right now*. It SHALL be keyed on the
+pair it constrains, SHALL be idempotent to write, and **SHALL be deleted by every path that
+contradicts it** — a bar that outlives the condition it describes is a permanent refusal nobody
+decided on, held in a row nobody can read.
+
+**A REFUSAL is history.** It says *this was declined*, and it SHALL survive later events, because
+the record of a decision is the point of it. A `declined` join request is the worked example: it
+must **not** be cleared when the rider later joins by another route, because it is the club's
+record of having said no once.
+
+The consequences, each testable:
+
+- A bar SHALL name no actor unless something reads the actor. An actor column with no reader is an
+  audit trail that arrived without a decision, on the most sensitive fact in the row.
+- A bar SHALL be readable by no client role unless a designed surface reads it. Refusing to grant it
+  is cheaper than deciding, for every role, what seeing it would mean.
+- A bar SHALL cascade from every entity it names, so that deleting either end erases it without a
+  sweep or a scheduled job.
+- A bar SHALL have a stated retention window at creation, expressed as the events that end it rather
+  than as a duration, when nothing decays it on a clock.
+- **The path that clears a bar SHALL observe the resulting state, not the route that produced it.**
+  Clearing it inside each admission path leaves the next admission path to remember, and the one
+  that forgets fails silently and permanently.
+
+#### Scenario: A bar is cleared by every route that contradicts it
+- **WHEN** an actor barred from a resource is subsequently granted that resource by any route,
+  including one added later
+- **THEN** the bar SHALL be gone
+- **AND** the clearing SHALL be driven by the granted state itself, so a new route inherits it
+  without being edited
+
+#### Scenario: A refusal is not cleared by a later grant
+- **WHEN** a rider whose join request was `declined` later joins the same club through another route
+- **THEN** the declined row SHALL survive, because only the club may clear its own refusal
+
+#### Scenario: A bar holds no actor and no client grant
+- **WHEN** a bar table is read from the catalogue
+- **THEN** it SHALL carry no column identifying who imposed it, unless a designed surface reads that
+  column
+- **AND** neither `anon` nor `authenticated` SHALL hold any grant on it, with the assertion scoped to
+  those grantees rather than counting table-wide
+
+#### Scenario: Both ends cascade
+- **WHEN** either entity a bar names is deleted
+- **THEN** the bar SHALL be gone, with no cleanup step added to any deletion path
+
+#### Scenario: The kind is stated where the table is created
+- **WHEN** a table holding a bar or a refusal is added
+- **THEN** its migration SHALL state which of the two it is and what ends it
+- **AND** a bar with no stated end SHALL be treated as a defect, because it is a permanent refusal
+  that no one agreed to
+
+### Requirement: A home country SHALL be required at completion, and SHALL be tolerated as NULL for ever
+
+`profiles.home_country` SHALL be **nullable** at the database level, and
+`public.complete_onboarding` SHALL refuse to stamp `onboarding_completed_at` for a rider whose
+stored `home_country` is NULL.
+
+The country SHALL arrive as an ordinary column UPDATE on the rider's own row rather than as a new
+RPC parameter, and `complete_onboarding`'s signature SHALL NOT change: adding a parameter creates
+a PostgREST overload (`PGRST203`) on the one call every signup makes, and avoiding that means
+dropping and recreating the function together with `021`'s and `025`'s grants. The value is
+constrained against **every** writer by CHECK, so nothing is lost by not routing it through the
+function.
+
+A live table admits no NOT NULL here — every existing rider has no country, measured 2026-09-07 at
+25 profiles on DEV and 5 on PROD, all of them NULL by construction. Nullable is therefore the only
+available shape and is **not a weakening**: the requirement is a rule about *completion*, and
+completion is stamped in exactly one place.
+
+**The refusal SHALL live in the function body, not only in a trigger.** Inside a `security definer`
+function `current_user` is the owner, and `enforce_onboarding_completion` opens with
+`if current_user <> 'authenticated' then return new` — so a guard written only onto the trigger
+never evaluates for the RPC that is the only way to complete onboarding. `075`'s header is the
+worked example, `003` and `012` are the precedents, and a change that relaxed or tightened only the
+trigger would pass `tsc`, pass this repo's RLS suite (which runs as the table owner, for whom
+neither barrier exists) and ship nothing.
+
+#### Scenario: A completion with no country is refused
+- **WHEN** a rider whose `profiles.home_country` is NULL calls `complete_onboarding`
+- **THEN** the call SHALL raise `check_violation`
+- **AND** `onboarding_completed_at` SHALL remain NULL
+- **AND** the rider SHALL remain unable to create content or join anything, because `023`'s
+  participation gate reads that stamp
+
+#### Scenario: An already-onboarded rider re-running the function is not refused
+- **WHEN** a rider who already holds a `home_country` calls `complete_onboarding` again
+- **THEN** the call SHALL succeed and SHALL return the **original** stamp, per `003` §6b
+
+#### Scenario: The country write and the stamp are two statements, in that order
+- **WHEN** the country step submits
+- **THEN** the column write SHALL be issued first and the RPC second, so a refused value never
+  leaves a rider stamped complete without one
+- **AND** the intermediate state — a country, a username and no stamp — SHALL resume to the same
+  screen, which SHALL preselect the stored country so the retry is one tap
+- **AND** `complete_onboarding` SHALL NOT write `home_country` at all, so there is no path by which
+  a re-run can clear it — the hazard `075` names as the single most dangerous line in that change
+  is unreachable here rather than handled
+
+#### Scenario: Existing riders keep NULL and are never re-prompted
+- **WHEN** a rider whose `onboarding_completed_at` is already set holds a NULL `home_country`
+- **THEN** nothing in this change SHALL write a value for them, prompt them, re-gate them or
+  refuse them any capability
+- **AND** the column comment SHALL say so, so that a later session which assumes non-null
+  *"because onboarding requires it"* is contradicted by the schema rather than by folklore
+
+#### Scenario: The requirement is not derived from anything
+- **WHEN** a rider has a `profiles.location` such as `Amsterdam, NL`, or rows in
+  `profile_countries`, or a device position
+- **THEN** no migration and no action SHALL derive `home_country` from any of them, because the
+  derivation is silently wrong for exactly the riders whose free text does not resolve — the
+  population `localityOf` exists because of
+
+#### Scenario: A new raise SHALL NOT reach the welcome-club block
+- **WHEN** the completion guard is added to `complete_onboarding`
+- **THEN** it SHALL sit **below** the existing consent and username guards, **above** `058`'s
+  `club_members` insert and outside its `when others` handler
+- **AND** unlike those two it SHALL be gated on `not v_was_complete` — the transition into
+  completion — because `complete_onboarding` has no idempotency short-circuit (`003` §6b is a
+  `coalesce` inside the UPDATE, not an early return), so an ungated arm refuses a re-run by every
+  rider who onboarded before `113` and holds a NULL country permanently. That is the population
+  the scenario above promises is never re-prompted; measured on DEV, 24 of 25 profiles
+- **AND** no new raise SHALL be introduced inside that block, because a raise there rolls the
+  completion stamp back and decision #5 leaves a rider with a NULL stamp no way out of the wizard
+
+#### Scenario: The gate's table set is unchanged
+- **WHEN** `113` and `114` are applied
+- **THEN** `enforce_participation_gate` SHALL be on exactly the tables it was on before, and
+  SHALL still NOT be on `profiles` UPDATE
+- **AND** an account that never called `accept_terms()` writing `home_country` directly SHALL
+  remain permitted and SHALL remain unable to complete onboarding, because writing a country
+  confers no participation and the consent guard is evaluated independently
+
+### Requirement: Every role's reach into a rider's home country SHALL be stated
+
+`profiles.home_country` SHALL be readable by exactly the audience the `profiles` SELECT policy
+already admits, and writable by its owner alone. Each role SHALL have its access stated so that
+each line maps onto an assertion in `supabase/tests/rls_test.sql`, because an unstated negative
+silently becomes whatever the migration author assumed.
+
+The audience predicate is unchanged and is stated rather than referenced:
+`auth.uid() = id OR (username IS NOT NULL AND NOT private.is_blocked(auth.uid(), id))`.
+
+#### Scenario: The rider themselves
+- **WHEN** a rider reads or writes `home_country` on their own row
+- **THEN** they SHALL read it, SHALL set it while it is NULL, and SHALL change it to another
+  assigned code
+- **AND** they SHALL NOT return it to NULL: `enforce_onboarding_completion` SHALL coerce the
+  removal away — `new.home_country := coalesce(new.home_country, old.home_country)`, `038`'s shape
+  — and the assertion SHALL check the **stored value** rather than a SQLSTATE, because a coercion
+  raises nothing
+
+#### Scenario: Any other signed-in rider
+- **WHEN** a signed-in rider updates a `profiles` row that is not their own, setting
+  `home_country` to any value or to NULL
+- **THEN** zero rows SHALL be affected, because the UPDATE policy is `auth.uid() = id`
+
+#### Scenario: A blocked rider
+- **WHEN** rider A blocks rider B, and B reads A's `home_country` by any route
+- **THEN** zero rows SHALL be returned, and the same SHALL hold with A and B exchanged, because
+  blocking is symmetric even though the row is directional
+- **AND** this change SHALL open no new inference channel: there is no unique index, no
+  availability check and no count over this column
+
+#### Scenario: Club owner, admin, member and non-member
+- **WHEN** a rider holding `club_members.role` of `owner`, `admin` or `member`, or holding no
+  membership at all, reaches another rider's profile through a club roster, a ride crew, a
+  postcard byline or Explore
+- **THEN** they SHALL read `home_country` exactly as the SELECT policy already admits, and SHALL
+  write nothing
+- **AND** no club role SHALL confer authority to set, change or clear another rider's home country
+
+#### Scenario: A signed-out visitor
+- **WHEN** a request arrives with no session
+- **THEN** zero rows SHALL be returned and zero rows written, because `anon` holds no grant on
+  `profiles` at all
+- **AND** no rule in this change SHALL be expressed in a way that admits `anon`, per decision #1
+
+#### Scenario: The column is rider-owned, not server-owned
+- **WHEN** the grants are written
+- **THEN** `authenticated` SHALL hold SELECT, INSERT and UPDATE on `home_country`, the posture
+  `location` already has
+- **AND** it SHALL NOT take `025`'s server-owned posture, which is reserved for evidence the rider
+  must not author — a consent stamp, a completion stamp, a terms version, an analytics preference
+- **AND** the grant assertion SHALL be scoped to its grantee or use `has_table_privilege`, because
+  `postgres` and `service_role` hold everything by Supabase default
+
+#### Scenario: The route guard is not the enforcement
+- **WHEN** a rider defeats or bypasses the client-side route guard and calls
+  `complete_onboarding` directly with no country
+- **THEN** the refusal SHALL be identical, because it lives in the database
+- **AND** the guard SHALL NOT be modified to compensate for any defect in this rule
+
+### Requirement: A completion invariant added to a live table SHALL be armed separately from the column it reads
+
+A migration that adds a column a shipped client will write SHALL be separate from the migration
+that begins refusing writes which omit it, and the deploy SHALL sit between them.
+
+One file cannot be both sides of a deploy. The additive half must exist **before** the new bundle,
+or the bundle writes a column that is not there (`PGRST204`) and calls a signature that is not
+there (`PGRST202`) — `096` is the precedent, and the failure is that nobody can finish onboarding.
+The restrictive half must not exist **until** the new bundle is serving, or the old bundle's
+completion call — which passes no country — is refused for every rider mid-signup. `108`/`109` is
+the shape.
+
+#### Scenario: The additive migration is safe against the serving bundle
+- **WHEN** `113` is applied while the current bundle is still serving
+- **THEN** `complete_onboarding` SHALL be byte-identical before and after, and SHALL still stamp
+  completion for a rider with no country
+- **AND** the only behaviour `113` changes for the serving bundle is a trigger arm that is dead for
+  every row whose `home_country` is NULL — which is every row
+
+#### Scenario: The arming migration waits for a serving bundle, not a merge
+- **WHEN** `114` is scheduled
+- **THEN** it SHALL be applied only after the new bundle is confirmed **serving** — `READY` on the
+  merge sha with `aliasError` null — never merely after the merge
+- **AND** the same two-file split SHALL be preserved through the PROD promotion rather than
+  collapsed into one
+
+#### Scenario: The trigger edit is a coercion, and is exercised by hand before it applies
+- **WHEN** `113` changes `enforce_onboarding_completion`, which fires inside every profile edit's
+  own transaction
+- **THEN** the new arm SHALL be a coercion rather than a raise, so it cannot take a shipped write
+  path down
+- **AND** every affected write SHALL be exercised by hand on DEV first, in a rolled-back
+  transaction, as `authenticated`
+
+### Requirement: A client writing two columns from one pick SHALL NOT be able to clear the one the database protects, and SHALL NOT rely on that protection alone
+
+Where one rider action writes a pair of columns and only one of them carries a database-side
+irreversibility rule, the client SHALL omit the protected column when it has no value for it, **and**
+the protection SHALL be stated with the conditions under which it is silent. Neither substitutes for
+the other.
+
+The pair is `profiles.location` and `profiles.home_country`, written together from one place pick.
+`home_country` cannot be cleared once set; `location` can.
+
+**The protection, verified in the deployed `prosrc` on both projects 2026-09-08 rather than taken
+from prose.** `enforce_onboarding_completion`'s UPDATE arm carries
+`if old.home_country is not null then new.home_country := coalesce(new.home_country,
+old.home_country); end if;` — `038`'s exact shape for `username`, placed above the
+`old.onboarding_completed_at` early return so it is not dead code for the only population that can
+have a country to lose. A coercion, not a raise: a client sending a blank country gets the stored
+value back and sees no error.
+
+**Two conditions narrow it, and both are why the client's omission is also required.** It is keyed on
+`old.home_country is not null`, so it does nothing for a rider who has no country — measured
+2026-09-08, that is **every** rider on both projects, 0 of 25 on DEV and 0 of 5 on PROD. And the
+trigger's first statement is `if current_user <> 'authenticated' then return new; end if;`, so it is
+a rule about what the *client* may write and does not cover a `security definer` path or the seed.
+
+**No migration is proposed.** The coercion is correct as it stands, `profiles.location`'s deliberate
+absence of one is PD-419's obligation rather than an oversight, and changing a trigger on an
+already-shipped write path would owe a hand-exercise gate for a problem that does not exist.
+
+#### Scenario: A rider changes their town to a place with no country
+- **WHEN** a signed-in rider, on their own row, writes a new `location` from a pick whose
+  `countryCode` is `null` or absent
+- **THEN** the client SHALL send no `home_country` key at all
+- **AND** if it sends `home_country: null` regardless, the stored value SHALL be unchanged — assert
+  the **stored value**, never a SQLSTATE; an assertion written as a rejection would fail against a
+  correct implementation
+- **AND** a rider who has no stored country SHALL simply remain without one, because the coercion arm
+  does not fire
+
+#### Scenario: A rider changes their town to a place in another country
+- **WHEN** the pick carries a `countryCode` different from the stored one
+- **THEN** both columns SHALL be updated, and the country SHALL change — a *change* is permitted, a
+  *removal* is not, exactly as `038` permits a rename and refuses a removal
+- **AND** no other rider, in any club role — owner, admin, member, non-member — SHALL be able to set,
+  change or clear either column on someone else's row; `001`'s UPDATE policy is `auth.uid() = id` and
+  such a statement SHALL affect **zero rows**
+- **AND** a **blocked** rider SHALL read zero rows for the other's profile in both directions, and a
+  signed-out visitor SHALL read zero rows because `anon` holds no grant on `profiles`
+
+#### Scenario: A rider clears their town
+- **WHEN** a rider uses the profile setting's `Remove`
+- **THEN** `profiles.location` SHALL be set to SQL NULL — not `''`, which would read as a town
+  nobody typed — and the write SHALL carry no `home_country` key
+- **AND** their stored `home_country` SHALL survive, and they SHALL NOT be returned to the wizard,
+  because completion is a stored one-way stamp and `114` gates *becoming* onboarded rather than
+  *being* onboarded
+- **AND** clearing SHALL remain possible: PD-419's decision obliges withdrawal, and
+  `profiles.location` SHALL NOT acquire a coercion arm as part of this change
+
+#### Scenario: A completion is re-run by a rider who predates the requirement
+- **WHEN** an already-stamped rider with a NULL `home_country` reaches `complete_onboarding` by any
+  route
+- **THEN** they SHALL NOT be refused, because `114`'s guard is gated on `not v_was_complete` — the
+  transition into completion — and SHALL receive their **original** stamp
+- **AND** their stored `location` SHALL NOT be overwritten, because the caller passes
+  `p_location: null` and `075`'s `coalesce(nullif(btrim(p_location), ''), p.location)` reads that as
+  *leave it alone*
+- **AND** no caller in this change SHALL pass a real `p_location`, since that path **does** overwrite
+  a stored town on a re-run
+
+#### Scenario: The bounds are the database's and the messages are Zod's
+- **WHEN** a town longer than 100 characters, or a country code that is empty, lower-case,
+  three-letter, padded, or unassigned, reaches the row by any route
+- **THEN** `018`'s `profiles_location_length` and `113`'s two `home_country` CHECKs SHALL refuse it
+  with `23514`, whether or not the client ran `locationSchema` or `countryCodeSchema`
+- **AND** the picker's `maxNameLength` SHALL truncate a long label before it can be submitted, so the
+  rider is never handed a value they cannot shorten
+
+### Requirement: A thread's activity timestamp SHALL be server-owned, monotonic, and written only by a trigger
+
+`club_threads.last_activity_at` and `ride_threads.last_activity_at` SHALL be `not null`, SHALL
+default to the thread's own `created_at`, and SHALL be written only by an `AFTER INSERT` trigger on
+`club_messages` and `ride_thread_messages` respectively.
+
+`authenticated` SHALL hold **no INSERT and no UPDATE grant** on either column, and neither table
+SHALL gain an UPDATE policy. Both refusals SHALL exist independently: the column grant and the
+absent policy each refuse the write on their own, and the RLS suite SHALL assert the grant scoped to
+the `authenticated` grantee rather than by attempting a call, since the suite runs as the table owner
+for whom no barrier exists.
+
+The update SHALL be `greatest(last_activity_at, new.created_at)`, never a bare assignment. A message
+row's `created_at` is a client-defaultable column, and a backdated or clock-skewed insert SHALL NOT
+be able to pull a thread's position backwards. Monotonicity is also what makes the backfill and the
+trigger order-independent.
+
+The trigger SHALL fire `AFTER INSERT`, so that a message refused by the participation gate — a
+`BEFORE` trigger that raises — records no activity.
+
+**A rider SHALL NOT be able to move a thread other than by inserting a message they were already
+entitled to insert.** This change SHALL add no write path, no RPC and no grant.
+
+#### Scenario: A rider cannot write the column directly
+- **WHEN** an `authenticated` rider attempts to INSERT or UPDATE `last_activity_at` on either table
+- **THEN** the write SHALL be refused
+- **AND** the suite SHALL assert the absent grant by grantee-scoped privilege inspection
+
+#### Scenario: A backdated message does not move a thread backwards
+- **WHEN** a message is inserted carrying a `created_at` older than the thread's current
+  `last_activity_at`
+- **THEN** the column SHALL be unchanged
+- **AND** the thread SHALL keep its position
+
+#### Scenario: A refused message records no activity
+- **WHEN** the participation gate refuses a message insert
+- **THEN** the thread's `last_activity_at` SHALL be unchanged
+- **AND** the whole statement SHALL abort
+
+### Requirement: A trigger writing a table with no UPDATE grant and no UPDATE policy SHALL be `security definer`
+
+A trigger function runs as the calling role unless declared otherwise. Both thread tables carry a
+table-level SELECT grant to `authenticated`, a column-scoped INSERT grant, and **no UPDATE grant and
+no UPDATE policy at all** — so an `UPDATE` issued from a `security invoker` trigger would be refused
+twice over.
+
+That refusal is not a skipped bump. The `UPDATE` raises, the enclosing `INSERT` on the message table
+aborts, and **every reply in the app stops working**. The failure is total, immediate, and invisible
+to the RLS suite, which runs as the table owner.
+
+The function SHALL therefore live in `private`, be `security definer`, be owned by `postgres`, and
+carry a pinned `search_path` — matching `private.notify_club_thread_replied`, which already fires
+`AFTER INSERT` on `club_messages` for the same structural reason.
+
+Because the function bypasses RLS in its own body, it SHALL restate nothing about audience. It SHALL
+address exactly one row, by the primary key taken from `new.thread_id`, and SHALL write exactly one
+column. It SHALL make no decision a policy already owns.
+
+#### Scenario: A reply succeeds under the caller's own privileges
+- **WHEN** an `authenticated` crew member or club member inserts a message
+- **THEN** the insert SHALL succeed and the thread's `last_activity_at` SHALL advance
+- **AND** the rider SHALL have needed no grant on the thread table beyond SELECT
+
+#### Scenario: The definer function widens nothing
+- **WHEN** the trigger function runs
+- **THEN** it SHALL update exactly one thread row, identified by `new.thread_id`
+- **AND** it SHALL write only `last_activity_at`, and SHALL contain no audience predicate
+
+#### Scenario: The advisor finding is accounted for
+- **WHEN** the migration is applied to a hosted project
+- **THEN** the security advisors SHALL be read
+- **AND** a new `security definer` function in `private` SHALL be accounted for against the existing
+  per-migration accounting rather than left unexplained
+
+### Requirement: An existing thread's activity SHALL be backfilled in the migration that adds the column
+
+The migration SHALL set `last_activity_at` for every existing thread on both tables from that
+thread's newest message, falling back to the thread's own `created_at` where it has none.
+
+Without the backfill, every thread already stored on both projects reads as having its creation
+instant as its newest activity, so on the first render after the migration every live conversation
+in the app collapses back to its start date — the exact defect the newest-activity decision was made
+to prevent, applied to the entire existing corpus at once, and silently: the column would be
+correctly typed, correctly defaulted, and wrong for every row.
+
+The backfill SHALL be part of the same migration file as the column, so no deploy window exists in
+which the column is present and unpopulated.
+
+#### Scenario: An existing busy thread keeps its position through the migration
+- **WHEN** `116` is applied to a project holding threads with messages
+- **THEN** each thread's `last_activity_at` SHALL equal its newest message's `created_at`
+- **AND** the timeline's first render after the migration SHALL show the same ordering a correct
+  derived computation would have shown
+
+#### Scenario: An existing thread with no messages is unmoved
+- **WHEN** the migration is applied to a thread that has never been replied to
+- **THEN** its `last_activity_at` SHALL equal its `created_at`
+
+#### Scenario: The column is never observable as unpopulated
+- **WHEN** the migration runs
+- **THEN** the column, its default, its backfill and its constraint SHALL be in one file
+- **AND** no client SHALL be able to read a `null` or a default-only value for an existing thread
+
+### Requirement: An announcement thread SHALL be stamped uniformly, and its exclusion SHALL stay in the READ
+
+The trigger SHALL NOT special-case `club_threads.introduces_user_id`. An announcement thread's
+`last_activity_at` SHALL be maintained exactly like any other thread's, and simply never read for
+ordering, because `getClubThreads` and `getClubThreadReplies` exclude the marker **in the query**
+before ordering — PD-372's fix, which SHALL be preserved unchanged.
+
+A trigger that skipped announcements would put a presentation rule in the database. It would also be
+wrong the day `097`'s marker is NULLed when the subject leaves the club: the thread would become an
+ordinary timeline thread carrying a `last_activity_at` frozen at its creation, sorting into a
+position nothing in the schema explains.
+
+The exclusion SHALL remain a presentation filter and SHALL NOT be read as an audience rule. A
+non-member reads zero rows from `081` with or without it.
+
+#### Scenario: An announcement thread is stamped but not listed
+- **WHEN** a rider replies to a club introduction's announcement thread
+- **THEN** that thread's `last_activity_at` SHALL advance
+- **AND** it SHALL NOT appear as a thread entry on the club's timeline, because the read excludes it
+
+#### Scenario: A former announcement sorts correctly if its marker is cleared
+- **WHEN** `introduces_user_id` is NULLed on a thread that has been replied to
+- **THEN** the thread SHALL appear at its newest activity
+- **AND** SHALL NOT appear at its creation date, because the column was maintained all along
+
+#### Scenario: The exclusion stays in the query
+- **WHEN** the thread source is read
+- **THEN** the marker filter SHALL be applied inside the query, before the bound and the ordering
+- **AND** SHALL NOT be applied after the read, which would break the source's saturation signal
+
+### Requirement: A deleted message SHALL NOT un-bump its thread
+
+`last_activity_at` SHALL be maintained on INSERT only. No trigger SHALL recompute it on DELETE.
+
+This is a decision, not an omission. Recomputing on delete costs a scan of the thread's messages per
+moderation action, on the path a moderator uses, and the activity being erased **did happen** — the
+thread's position records that the conversation was alive, not that a particular message survives.
+A thread whose only reply is removed SHALL keep its bumped position until its next real message.
+
+#### Scenario: A moderated message leaves the position standing
+- **WHEN** a message is erased by its author or removed through the moderation RPC
+- **THEN** the thread's `last_activity_at` SHALL be unchanged
+- **AND** no scan of the thread's messages SHALL be performed
+
+#### Scenario: A deleted thread takes its column with it
+- **WHEN** a thread row is deleted
+- **THEN** its `last_activity_at` SHALL go with it, by ordinary row deletion
+- **AND** no orphaned activity record SHALL remain anywhere
+
+### Requirement: A copy transmitted outside the database's reach SHALL be enumerated per column, and its permanence SHALL be stated
+
+Where a privileged job transmits row contents to a destination no policy, cascade or deletion can
+reach — an email, a webhook, a third-party API — the columns that may leave SHALL be enumerated in
+**SQL**, per source, in the function that produces them, and the transmitting code SHALL be incapable
+of widening them.
+
+The enumeration is the access control. A privileged producer has no viewer whose row security could
+be re-checked, so a predicate cannot do this work and an allowlist of columns is the only mechanism
+left.
+
+#### Scenario: The projection lives in SQL, not in the caller
+- **WHEN** a privileged job assembles data for an external destination
+- **THEN** the columns SHALL be fixed by the producing function's return type
+- **AND** the caller SHALL pass no subject, table or column argument that could widen it
+- **AND** the caller SHALL issue no direct table read
+
+#### Scenario: Identity is excluded unless the destination is the subject
+- **WHEN** the transmitted rows concern riders
+- **THEN** no `profiles` or `auth.users` column SHALL be transmitted unless the recipient is that
+  rider
+- **AND** an identifier that joins to everything — a bare uuid of a person — SHALL count as identity
+  for this rule
+
+#### Scenario: A credential-like value is never transmitted
+- **WHEN** a projection is designed
+- **THEN** no signed URL, bearer token, session id or push token SHALL be included
+- **AND** the reason SHALL be recorded where the projection is defined: such a value is validated by
+  signature or possession rather than by policy, so it grants reach to whoever the message is
+  forwarded to
+
+#### Scenario: The permanence is written down where the copy is produced
+- **WHEN** such a transmission is designed
+- **THEN** the design SHALL state that no policy change, block, deletion or erasure request can
+  withdraw what was sent
+- **AND** it SHALL state that no withdrawal sweep will be attempted
+- **AND** the minimised projection SHALL be recognised as the whole mitigation available in code
+
+### Requirement: A table recording that a row was transmitted SHALL carry no copy of that row
+
+A marker, outbox or delivery-log row SHALL carry references, bookkeeping timestamps and a state, and
+SHALL NOT carry text from the row it describes, a rendered message, or a provider's error body.
+
+#### Scenario: No payload column under any name
+- **WHEN** a marker or outbox table is created
+- **THEN** it SHALL have no column holding a body, note, caption, title, username or rendered message
+- **AND** it SHALL have no `last_error` or equivalent, because a provider's error body can echo the
+  payload it rejected
+
+#### Scenario: The marker cannot outlive its subject
+- **WHEN** the described row is deleted
+- **THEN** the marker SHALL be removed by cascade
+- **AND** exactly one foreign key SHALL identify the subject, enforced by a CHECK when the table
+  serves several sources
+
+#### Scenario: The marker is not a status the app can read
+- **WHEN** any client role reads the marker table
+- **THEN** it SHALL be refused, by RLS with no policy and by an explicit revoke naming
+  `service_role`
+- **AND** the marker SHALL NOT be interpretable as a moderation or workflow state
 

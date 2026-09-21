@@ -657,3 +657,942 @@ rather than a club id guessed from a second read.
 - **AND** a key nothing fills SHALL be treated as worse than none, because it carries an
   invalidation claim about an entry that never exists
 
+### Requirement: A cache entry holding a signed URL SHALL NOT outlive the signature
+
+Where a cached value contains a signed Storage URL, the entry SHALL be treated as expiring when the
+signature does. A stale signature SHALL produce a re-mint, never a rendered broken image and never
+a silent blank.
+
+**A signed URL is the one cached value in this app that stops working on a clock rather than on an
+event.** Every other staleness rule here is about a *write* somewhere making a cached read wrong,
+and the fix is invalidation on that write. Nothing writes when a signature expires. A cache tuned
+only for the write case holds a dead URL indefinitely, and the symptom is an image that vanishes
+from a screen nobody touched.
+
+#### Scenario: An expired signature re-mints rather than renders
+- **WHEN** a cached value's signed URL has passed its expiry
+- **THEN** the URL SHALL be re-minted under the current session before use
+- **AND** the screen SHALL NOT render a broken image, an empty container where an image was, or a
+  retry the rider has to press
+
+#### Scenario: The signature's lifetime bounds the entry, not the other way round
+- **WHEN** a cache entry's lifetime and a signature's lifetime disagree
+- **THEN** the shorter one SHALL govern
+- **AND** an entry SHALL NOT be extended by a refetch that reuses the URL it already held
+
+#### Scenario: A signed URL is never cached across riders
+- **WHEN** a value containing a signed URL is cached
+- **THEN** its key SHALL be scoped to the signed-in rider
+- **AND** it SHALL NOT survive a sign-out, because the URL keeps working after the session that
+  minted it is gone
+
+#### Scenario: Expiry is not revocation, and the cache does not pretend otherwise
+- **WHEN** a rider loses access to the row an object hangs off
+- **THEN** invalidating the cache entry SHALL NOT be treated as having revoked their access
+- **AND** the outstanding URL SHALL be understood to work until it expires, which is a property of
+  Storage that no cache rule can change
+
+#### Scenario: A missing derivative is a normal cached value, not a cache miss
+- **WHEN** a cached row carries a NULL object path — no tile was ever rendered for it
+- **THEN** that NULL SHALL be cached as the answer it is
+- **AND** it SHALL NOT trigger a refetch on every render, because "no tile" is the steady state of
+  most rows rather than a gap waiting to be filled
+
+### Requirement: A mutation SHALL invalidate every key whose data the database changed, including rows it did not name
+
+The standing contract is that every read key is spelled in `src/lib/query/keys.ts` and every
+mutation invalidates the keys it affects. This change adds the first mutations whose effects reach
+**rows the call never mentioned**, so "the keys it affects" is wider than "the keys for the row it
+wrote".
+
+- **`updateRide`** SHALL invalidate `rides.detail(rideId)` and `rides.all()`. `rides.all()` rather
+  than `rides.list(filter)` alone, because a ride's `club_id` and `is_public` are editable and an
+  edit can move it between filter segments — invalidating only the segment it *was* in leaves it
+  visible in a list it no longer belongs to.
+- **`deleteRide`** SHALL invalidate `rides.all()`, which subsumes `detail`, `crew` and `messages`
+  through the shared prefix. It SHALL also invalidate `postcards.all()`, because
+  `postcards.ride_id` is `ON DELETE SET NULL` and any postcard tagged to that ride has changed.
+- **`updateClub`** SHALL invalidate `clubs.all()` — `yours`, `explore`, `mine` and `detail` are all
+  reachable from a name, description or privacy change. **When `is_public` changed, it SHALL also
+  invalidate `rides.all()`**, because `propagate_club_privacy_to_rides` rewrote ride rows the call
+  never named. A club edit that refreshes only club screens leaves the rides list showing rides as
+  public that the database has just made private.
+- **`deleteClub`** SHALL invalidate `clubs.all()`, `rides.all()` and `postcards.all()`. All three
+  are cascades or sweeps the client did not name: `club_members` and `feed_reads` (club screens),
+  `rides` (deleted by the function), `postcards` (cascade).
+
+#### Scenario: A club's privacy is toggled while the rides list is cached
+
+- **WHEN** an owner sets `is_public = false` on a club with public rides
+- **THEN** `rides.all()` SHALL be invalidated
+- **AND** the rides list SHALL NOT continue to render those rides as public
+
+#### Scenario: A ride is edited into a different club
+
+- **WHEN** an organizer changes a ride's `club_id`
+- **THEN** `rides.all()` SHALL be invalidated rather than only the filter segment it came from
+
+### Requirement: A mutation that deletes the resource the current screen reads SHALL navigate before or with the invalidation
+
+`deleteRide` and `deleteClub` are called from a screen whose own query key is about to resolve to
+nothing. Invalidating first and navigating second re-runs the detail read against a deleted row,
+which returns `null` and trips `notFound()` — a 404 flash on the way out of a successful action.
+
+The delete actions SHALL navigate away from the deleted resource as part of the same interaction,
+and the detail screen SHALL NOT be left mounted against an invalidated key for a deleted row.
+
+#### Scenario: An organizer deletes the ride they are looking at
+
+- **WHEN** deletion succeeds on `/rides/detail`
+- **THEN** the rider SHALL land on the rides list
+- **AND** SHALL NOT see a not-found screen in between
+
+### Requirement: A read-state write SHALL NOT invalidate the content it marks read
+
+Where a mutation records that a rider has *seen* something, it SHALL invalidate the badge derived
+from that record and SHALL NOT invalidate the content the badge summarises.
+
+**This is the one invalidation in the app that must be asymmetric, and getting it symmetric is
+expensive rather than merely wasteful.** Existing rules push in one direction — over-invalidating is
+the safe direction, because a refetch is cheaper than a correctness bug — and a read-state write is
+where that stops being true. The write fires while the rider is looking at the content: `015`
+already found this twice and narrowed both call sites for it, recording that refetching `/postcards`
+on `markFeedSeen` would *"replace the cards under a rider looking at the exhausted state"*.
+
+A live thread makes it worse than wasteful. The mark advances on every arriving message, so a
+symmetric invalidation turns each delivered message into a refetch that marks it read that triggers
+another refetch — one extra round trip per message on the screen the rider is actively reading, for
+data that just arrived.
+
+The direction that must hold is the other one: a write that produces new content SHALL reach the
+badge, and it SHALL do so through the key structure rather than through a second key named at the
+call site.
+
+#### Scenario: Marking seen refetches the badge only
+- **WHEN** a rider's read-state watermark is written
+- **THEN** only the key holding the derived unread answer SHALL be invalidated
+- **AND** the list, thread or feed that the watermark refers to SHALL NOT be invalidated
+
+#### Scenario: A new message reaches the badge without the call site naming it
+- **WHEN** content is written into a surface that carries a read watermark
+- **THEN** the badge's cached answer SHALL be invalidated
+- **AND** the widening SHALL be expressed in `src/lib/query/keys.ts` by nesting the badge's key
+  under the content's key, never by adding a second `invalidate` argument at the call site
+
+#### Scenario: The asymmetry is recorded where the narrow claim is made
+- **WHEN** an invalidation is deliberately narrower than the prefix above it
+- **THEN** the reason SHALL be recorded at that call site
+- **AND** it SHALL NOT be readable as an oversight, because every other narrow claim in this app is
+  one that widened from a `revalidatePath`
+
+### Requirement: A badge SHALL NOT be cached across riders, and its key SHALL be scoped to the resource it decorates
+
+An unread answer SHALL be cached per rider and per resource, and SHALL NOT survive a sign-out.
+
+The existing per-viewer rule already covers `club_unread_counts()` and the notification count. This
+adds the case those two do not have: an answer that is **per rider and per ride at once**, computed
+through a policy carrying a symmetric block arm, so two crew members on the same ride at the same
+moment can hold different correct answers about the same thread.
+
+#### Scenario: Two crew members hold different answers about the same thread
+- **WHEN** one crew member has blocked another and that other rider posts
+- **THEN** the blocker's cached answer SHALL be `false` while another crew member's is `true`
+- **AND** neither SHALL be treated as authoritative about the ride, matching the rule already stated
+  for the chat's crew count
+
+#### Scenario: Sign-out destroys it
+- **WHEN** a rider signs out
+- **THEN** `clearQueryCache()` SHALL be what removes the cached answer, rather than a per-key expiry
+- **AND** no unread answer SHALL be reused across a sign-out and sign-in on a shared device
+
+### Requirement: A read that costs money SHALL be cached, with a stated lifetime, and SHALL NOT outlive the session
+
+Every read this cache holds today is free at the point of use: a repeated query costs a round trip to
+our own database. A read that bills a third party per request is a different kind of read, and the
+cache stops being a latency optimisation and becomes a spend control.
+
+Such a read SHALL be issued through the cache under a key spelled in `keys.ts`, like every other
+read. **A declared key with no caller is worse than no key**, because it reads as coverage: the
+place-search key exists today and nothing uses it, so retyping a term re-issues the query.
+
+The key SHALL carry every input that changes the answer — the term and any bias — because two
+different questions cached under one key show whichever answered first to both.
+
+The entry SHALL have a stated lifetime chosen against how fast the answer actually changes, not
+against the default. A place does not move; a rider's typing does.
+
+A cached third-party response SHALL be destroyed at sign-out with the rest of the cache. A search
+term is frequently a home address, so a residual entry is a previous rider's address readable by the
+next rider on the same device.
+
+#### Scenario: A repeated question is not repeated to the vendor
+- **WHEN** the same term and the same bias are requested again within the entry's lifetime
+- **THEN** the cached answer SHALL be returned
+- **AND** no request SHALL reach the vendor and no metered attempt SHALL be recorded
+
+#### Scenario: The lifetime is a decision with a reason
+- **WHEN** the entry's lifetime is read
+- **THEN** it SHALL be stated beside the key with the reason it is that number
+- **AND** it SHALL NOT be inherited from whatever the cache defaults to
+
+#### Scenario: Sign-out leaves no terms behind
+- **WHEN** a rider signs out
+- **THEN** every cached term and result SHALL be cleared by the existing sign-out sweep
+- **AND** nothing SHALL persist them outside the cache — not local storage, not the session store, and
+  not a module-level variable that survives the navigation
+
+#### Scenario: A failed metered read is not cached as an answer
+- **WHEN** a metered read fails, is refused by a ceiling, or is aborted
+- **THEN** the failure SHALL NOT be stored as the answer for that key
+- **AND** a later identical request SHALL be free to try again, once, rather than being served a
+  cached failure for the entry's whole lifetime
+
+### Requirement: A form's accelerator read SHALL be cached under a named key and SHALL be moved by the writes that change it
+
+The recents list is read while a rider is filling a form, on focus, and re-read on every subsequent
+focus of that field. It SHALL be cached, its key SHALL be spelled in `src/lib/query/keys.ts` like
+every other key, and it SHALL NOT be fetched with a key written inline at the call site — a key that
+happens to be right is still a key nothing can reconcile.
+
+**The key SHALL be filed under the domain that owns the rows it reads**, so the writes that change it
+already reach it. Recents are derived from `rides`, and creating, editing and deleting a ride each
+already invalidate the whole `rides` prefix; a key nested there is therefore moved by all three with
+**no new invalidation call site**. Over-invalidating is the safe direction — an RSVP will also
+refetch it, costing one small read and never a wrong answer.
+
+A stale recents list SHALL be bounded rather than perfect: it is an accelerator, and the worst
+outcome of a stale one is that a rider taps search instead. It SHALL NOT be revalidated on a timer,
+polled, or subscribed to.
+
+The list SHALL be **destroyed** rather than refreshed when the session ends, for the reason sign-out
+destroys the cache rather than invalidating it: on a shared device, refetching would repopulate one
+rider's meeting points while another signs in.
+
+#### Scenario: Creating a ride moves the list
+- **WHEN** a rider creates a ride with a picked start
+- **THEN** the next focus of a start field SHALL offer that start, without a page reload
+- **AND** the freshness SHALL come from the ride domain's existing invalidation rather than from a new
+  claim made by the recents read
+
+#### Scenario: Editing or deleting a ride moves it too
+- **WHEN** a rider changes a ride's start, types over it, or deletes the ride
+- **THEN** the recents list SHALL reflect that on its next read
+- **AND** no invalidation SHALL be needed that the ride's own write does not already make
+
+#### Scenario: The key is declared, not spelled
+- **WHEN** the recents read is issued
+- **THEN** its key SHALL come from `keys.ts`
+- **AND** the mapping test that forbids inline keys SHALL cover it like every other read
+
+#### Scenario: Sign-out destroys it
+- **WHEN** a rider signs out
+- **THEN** the cached recents SHALL be destroyed with the rest of the cache rather than invalidated
+- **AND** the next rider on the device SHALL NOT be able to read them from anywhere
+
+### Requirement: A mutation that moves a rider between two halves of one list SHALL invalidate the list itself, not the half
+
+`getExploreClubs` returns one array assembled from two reads — the public `clubs` page and
+`discoverable_private_clubs` — under **one** key, `queryKeys.clubs.explore(...)`. Every mutation
+below SHALL claim that key by name, and SHALL NOT claim a narrower one on the reasoning that only
+one half changed.
+
+| Mutation | Claims |
+|---|---|
+| `requestToJoinClub(clubId)` | `clubs.explore(...)` — the card's control changes; and `clubs.joinRequests(clubId)` for the admin list |
+| `withdrawJoinRequest(clubId)` | the same two |
+| `approveClubJoinRequest(requestId)` | **`clubs.all()`** — the club moves from Explore to Your clubs, the roster gains a member, the detail's `viewer_role` changes, and the club picker on the create-ride and create-postcard forms gains an option; plus `postcards.feed(club:<id>)` and `rides.list(club:<id>)`, exactly as `invalidateClubMembership` already does; plus both notification keys |
+| `declineClubJoinRequest(requestId)` | `clubs.explore(...)`, `clubs.joinRequests(clubId)` and both notification keys |
+
+`approveClubJoinRequest` SHALL reuse `invalidateClubMembership` rather than enumerate club keys of
+its own. An enumeration looks narrower and misses `clubs.mine()`, which is the picker nobody
+remembers, and that is the recorded reason `joinClub` claims the whole `clubs` prefix.
+
+#### Scenario: An approval reaches every club surface
+- **WHEN** an approval succeeds
+- **THEN** Your clubs, Explore, the club detail, the roster, the club picker, the club's postcard
+  feed and the club's ride list SHALL all be invalidated
+- **AND** the invalidation SHALL be justified against `keys.ts`'s stated prefix reach, not against
+  intuition
+
+#### Scenario: A request does not claim the membership keys
+- **WHEN** a request is made or withdrawn
+- **THEN** `postcards.feed(club:<id>)` and `rides.list(club:<id>)` SHALL NOT be invalidated, because
+  no membership moved and nothing behind those keys can have changed
+
+#### Scenario: The approving admin's own view moves too
+- **WHEN** an admin approves from the club detail
+- **THEN** the pending-request list, the roster and the member count SHALL all redraw from one call
+
+### Requirement: A key SHALL NOT be added without a reader, and the preview key SHALL be separate from the detail key
+
+`queryKeys.clubs.preview(clubId)` SHALL be its own key and SHALL NOT share
+`queryKeys.clubs.detail(clubId)`. The two hold different shapes — a `ClubDetail` and a narrow
+`ClubPreview` — and a shared key would serve whichever landed first to whichever screen asked
+second.
+
+`queryKeys.clubs.joinRequests(clubId)` SHALL sit under the club, so `clubs.detail(clubId)`'s prefix
+reaches it and an approval that claims `clubs.all()` reaches it too.
+
+No key SHALL be added for which no read exists. A key nothing fills is worse than none: it carries
+an invalidation claim about an entry that never exists.
+
+#### Scenario: The preview and the detail cannot serve each other
+- **WHEN** a rider is approved into a club whose preview they had loaded
+- **THEN** the detail read SHALL run fresh rather than being served the preview's narrower shape
+
+#### Scenario: The prefix reach is documented positively
+- **WHEN** the three new keys are added
+- **THEN** `keys.ts`'s header SHALL state which prefixes reach each of them, stated positively, in
+  the table that file already carries for exactly this purpose
+
+### Requirement: A count and the list it summarises SHALL be read through the same predicate
+
+Any badge showing an admin how many requests are pending SHALL be derived from the same read that
+draws the list, in the same round trip — never from a separate `count` query.
+
+`club_unread_counts()` SHALL NOT be extended to include join requests by this change, and the
+omission SHALL be stated: a club's unread badge counts postcards and threads, and a pending request
+is a different kind of thing addressed to a different subset of the club.
+
+#### Scenario: The badge and the list agree by construction
+- **WHEN** the request section renders
+- **THEN** its count SHALL be the length of the array it renders
+- **AND** there SHALL be no second query that could disagree with it one tap away
+
+#### Scenario: The club badge is unchanged
+- **WHEN** a request arrives for a club
+- **THEN** `club_unread_counts()` SHALL return what it returns today
+- **AND** the admin SHALL learn of the request through the notification list, which is the surface
+  that already exists for events addressed to one rider
+
+### Requirement: A roster mutation SHALL declare every key it moves, including keys in another rider's cache it cannot reach
+
+Each of the four new mutations SHALL claim its invalidations explicitly in
+`src/lib/query/keys.ts`'s reconciliation table, in the same form the `revalidatePath` translations
+take.
+
+| Mutation | Keys invalidated in the actor's cache |
+|---|---|
+| `removeClubMember` | `clubs.members(clubId)`, `clubs.detail(clubId)` (the member count), `clubs.joinRequests(clubId)` (the stale request it deletes) |
+| `promoteClubMember` / `demoteClubAdmin` | `clubs.members(clubId)` and `clubs.detail(clubId)` — the second because `viewer_role` is on `ClubDetail` and a rider demoting themselves is impossible but a rider *promoting* somebody changes what that club's screen offers |
+| `clearClubJoinRequest` | `clubs.joinRequests(clubId)` and `notifications.all()` — the `085` retraction removes rows from the actor's own notification list |
+
+**The removed rider's cache is not reachable and SHALL NOT be pretended otherwise.** Their `clubs`
+lists, their club detail and their notification count all go stale on their device until their next
+fetch. That is the honest bound and SHALL be recorded as one; nothing in this architecture pushes an
+invalidation to another device.
+
+#### Scenario: The count and the list move together
+- **WHEN** a removal succeeds
+- **THEN** the roster and the club detail's `members_count` SHALL be invalidated in the same call,
+  so the screen never shows a roster of N beside a count of N+1
+
+#### Scenario: The other rider's staleness is bounded and stated
+- **WHEN** the removed rider's device next reads the club
+- **THEN** every read SHALL come back from the database under the current policies, and no client
+  filter SHALL be relied on to hide a club they can no longer see
+
+### Requirement: A notification type whose subject is fetched by a second read SHALL be invalidated with that read, and SHALL NOT be cached across viewers
+
+The decline row's club name comes from `public.discoverable_private_clubs`, which is **per-viewer**
+by construction — its predicate is `private.club_takes_join_requests_for(auth.uid(), …)`. It SHALL
+NOT be cached under any key shared between viewers, and its result SHALL NOT be stored on the
+notification row.
+
+`unread_notification_count()` is `security invoker` and reads the widened SELECT predicate, so the
+count and the list continue to answer the same question by construction. **No client-side filter
+SHALL be added to either** to compensate for the new type, which is the defect
+`client-cache-invalidation`'s standing count-and-list requirement exists to prevent.
+
+#### Scenario: The badge and the list agree after a decline
+- **WHEN** a rider is declined and their notification list and unread count are both read
+- **THEN** the count SHALL include the decline and the list SHALL contain it
+- **AND** neither SHALL be reconciled by a filter in `src/`
+
+#### Scenario: Clearing the request clears the badge
+- **WHEN** an admin clears the declined row
+- **THEN** the requester's next read SHALL return neither the row nor the count, because the
+  retraction deleted it in the database rather than a screen hiding it
+
+### Requirement: Wave state SHALL be cached with the entries it decorates, and a toggle SHALL invalidate every key it moves
+
+The join-wave read SHALL take its key under `clubs.detail(clubId)` — the nesting `members`,
+`threads`, `joins` and `threadReplies` already use — so an invalidation of `clubs.all()` or
+`clubs.detail(clubId)` reaches it for free. It is the only wave read: the thread-wave read and its
+key went with PD-372, and `101` dropped the table behind them.
+
+**No key SHALL hold a merged "entry plus its waves" shape.** Two shapes under one key is the
+collision `keys.ts`'s header warns against, and here it would put a decorated timeline entry behind
+the same key as the undecorated one the Threads list reads.
+
+A wave toggle SHALL invalidate every key its row appears under: waving or un-waving a **join** →
+the club's join-wave key **and** `notifications` for nobody, the fan-out being addressed to another
+rider whose client this one cannot invalidate.
+
+**The optimistic toggle is the rider's own view and the invalidation is the correction.** The
+local state moves first (`LikeButton`'s behaviour), the write answers, and a refused write rolls it
+back — the cache is not the mechanism for the first two.
+
+#### Scenario: A wave appears without a reload and without refetching the entry
+- **WHEN** a member waves another rider's join on the timeline
+- **THEN** the pressed state and the count SHALL move immediately
+- **AND** the join entry itself SHALL NOT be refetched, its row being unchanged
+
+#### Scenario: The wave state is reachable from the club prefix
+- **WHEN** any club mutation invalidates `clubs.all()` or `clubs.detail(clubId)`
+- **THEN** the join-wave key SHALL be reached, being a child of `clubs.detail(clubId)`
+
+#### Scenario: No key holds a decorated entry
+- **WHEN** the timeline renders
+- **THEN** each source's key SHALL hold its own undecorated rows
+- **AND** the decoration SHALL be applied where the entries are assembled, not stored merged
+
+### Requirement: A per-viewer count SHALL NOT be shared with a screen that reads a different predicate
+
+The wave count on a timeline entry is computed under the caller's own RLS and is therefore specific
+to that rider. It SHALL NOT be written into a cache entry another rider's session could read, and
+it SHALL NOT be reused by a screen whose read applies a different predicate.
+
+`client-cache-invalidation` already requires that a count and the list it summarises be invalidated
+together and read through the same predicate. **The wave count and its entry satisfy that**, since
+both come from reads issued in the same session under the same policies. What SHALL be recorded is
+the negative: there is no aggregate wave count anywhere — no club total, no "most waved" — so
+nothing exists that would need to agree with a list it does not summarise.
+
+#### Scenario: No aggregate wave figure exists to disagree with anything
+- **WHEN** the change is complete
+- **THEN** no screen, badge, RPC or cache key SHALL hold a wave total spanning more than one entry
+- **AND** the absence SHALL be recorded where the counts are defined, so a later "most waved
+  threads" strip is understood to need its own predicate decision first
+
+#### Scenario: A failed wave read leaves the entry cached and correct
+- **WHEN** the wave read errors while the entry's own read succeeded
+- **THEN** the entry SHALL remain cached under its own key, undecorated
+- **AND** no partial or zeroed wave state SHALL be written into any cache entry
+
+### Requirement: An admission SHALL invalidate both domains it moves, and the arriving screen SHALL NOT be one of them
+
+Accepting an invite and claiming a link each change **two** domains in one tap: the rider's club
+membership and the club's own roster and counts. Every key covering either SHALL be named by the
+mutation that moved it.
+
+The five keys this change adds SHALL be spelled in `src/lib/query/keys.ts`, each with the docstring
+that file's convention requires, and **no key SHALL be written inline in a component even when the
+string happens to be right**:
+
+| Key | What it holds | Who invalidates it |
+|---|---|---|
+| `clubs.invites(clubId)` | the club's outgoing invites, for an admin | send, withdraw, clear |
+| `clubs.inviteLinks(clubId)` | the club's links with their expiry and use count | mint, revoke, delete |
+| `invites.clubPending()` | the rider's own answerable invites | accept, decline |
+| `invites.clubLink(token)` | one token's preview — **the token is IN the key**, so two links opened in one session cannot share an entry | the claim |
+| `invites.clubSearch(clubId, query)` | the rider picker's hits, keyed on the query as well as the club | sending an invite, which must take that rider out of the picker |
+
+An accept or a claim SHALL additionally invalidate the rider's **club list** and the club's own
+detail, membership count and roster — the cross-domain half, and the half PD-329's review already
+caught once for rides.
+
+**The claim has no prior screen to invalidate from**, because the rider may have had no session when
+anything was cached. It SHALL therefore navigate to the club rather than relying on an invalidation
+to repaint a screen the rider is leaving.
+
+#### Scenario: An accept updates every surface that named the rider's membership
+- **WHEN** an invitee accepts
+- **THEN** `/clubs`, the club's detail, its roster, its member count and the rider's own invite list
+  SHALL all reflect it without a manual refresh
+
+#### Scenario: A withdrawn invite leaves no stale control
+- **WHEN** an admin withdraws an invite
+- **THEN** the club's invite list SHALL be invalidated
+- **AND** the invitee's notification row SHALL stop offering Accept and Decline, because those
+  controls read the live invite through the accessor rather than the notification that announced it
+
+#### Scenario: A failed claim leaves no false state
+- **WHEN** the claim is refused
+- **THEN** no optimistic membership SHALL remain on screen, and the landing screen SHALL move to its
+  dead-link state rather than showing a half-joined club
+
+#### Scenario: The preview is not cached across tokens or across viewers
+- **WHEN** two links are opened in one session, or one link is opened by two riders on one device
+- **THEN** each SHALL resolve its own entry, because the token is part of the key and the cache is
+  cleared on sign-out
+
+### Requirement: Posting an introduction SHALL invalidate every key it moves, and the join row SHALL NOT be one of them by accident
+
+One write changes four things a rider can see: whether they still owe an introduction, the club's
+thread list, the club's timeline, and the join row's comment count. Each SHALL be named at the call
+site rather than covered by invalidating a prefix and hoping.
+
+The keys the introduction decoration is held under SHALL be children of the club's detail key, so
+they die with the club's other per-club state, and SHALL be separate from the wave keys beside them
+— the two are read under different predicates and a screen holding one SHALL NOT be handed the
+other's.
+
+#### Scenario: A posted introduction moves all four
+- **WHEN** an introduction is posted
+- **THEN** the introduction decoration, the club's threads, the club's timeline sources and the
+  rider's own "do I owe one" state SHALL each be invalidated
+- **AND** the join row SHALL show its new count without a reload
+
+#### Scenario: A deleted introduction moves the same four
+- **WHEN** an introduction's thread is deleted by its author or taken down by an admin
+- **THEN** the same keys SHALL be invalidated
+- **AND** the join row SHALL lose its count and its link in the same pass
+
+### Requirement: A comment count SHALL be invalidated with the message list it summarises
+
+The count on a join row and the messages inside the thread are two readings of the same rows.
+Posting or erasing a comment SHALL invalidate both, so that returning from a thread to the club
+does not show a number that disagrees with what was just read.
+
+#### Scenario: Commenting updates the count behind the screen
+- **WHEN** a member posts a comment in an introduction's thread and navigates back to the club
+- **THEN** the join row's count SHALL include it
+
+#### Scenario: Erasing a comment updates the count
+- **WHEN** a member erases their own comment in an introduction's thread
+- **THEN** the join row's count SHALL fall by one for them
+- **AND** SHALL be unchanged for a viewer who could not read that comment
+
+### Requirement: A per-viewer count SHALL NOT be cached under a key shared with a different viewer or a different predicate
+
+The count is an aggregate over the rows row security returns to the reader, so it is not a fact
+about the thread. It SHALL NOT be stored in a cache entry that another screen reads under a
+different predicate, and it SHALL NOT survive a change of session.
+
+#### Scenario: Sign-out clears it
+- **WHEN** a rider signs out
+- **THEN** every cached introduction and count SHALL be discarded with the rest of the cache
+
+#### Scenario: One key, one predicate
+- **WHEN** two screens display a count for the same thread
+- **THEN** they SHALL read it under the same key and the same predicate, or under two keys
+- **AND** neither SHALL reuse the other's entry
+
+### Requirement: A mutation whose only effect on another rider is a notification SHALL invalidate nothing extra, and SHALL say so
+
+`sendClubMessage` SHALL NOT gain `invalidate(keys.notifications.list())` or
+`invalidate(keys.notifications.unread())`. No new cache key SHALL be added for either new
+notification type.
+
+**This requirement named a second action — the thread wave — and PD-372 deleted it.** `waveThread`
+and `unwaveThread` no longer exist, so a SHALL binding them would enter the canonical spec at
+archive time as a live rule about nothing; the scenario below carries the surviving half on the
+join wave. **The action's name is corrected here too**: it is `sendClubMessage`, never
+`postClubMessage` — that spelling appears nowhere in `src/` and is wrong in this change's
+`proposal.md`, `design.md` and `tasks.md` as well, which are left alone as history.
+
+**The actor is excluded from the recipient set by construction**, so the rider whose client would run
+the invalidation is exactly the rider the notification is not for. Invalidating their own
+notifications cache clears something the write did not change; and there is no mechanism in this
+hand-rolled cache to reach the recipient's client, so none is being invented.
+
+The recipient sees the row on their next navigation. That is the bounded staleness this capability
+already requires be **stated rather than fixed** — *the badge is stale until the next navigation* —
+and it is stated here for two more types. **A key added here would be a claim the app cannot honour**,
+which is worse than the staleness it appears to fix.
+
+#### Scenario: Posting a reply invalidates the thread, not the notifications
+
+- **WHEN** a rider posts a message into a club thread
+- **THEN** the invalidations SHALL be exactly those the thread already declares — the thread's
+  messages, and the club-level keys that already move with a new reply
+- **AND** neither notifications key SHALL be invalidated
+- **AND** the absence SHALL carry a comment at the site, because it is otherwise indistinguishable
+  from a forgotten invalidation
+
+#### Scenario: Waving a thread invalidates the wave state, not the notifications
+
+**SUPERSEDED by PD-372 — a rider can no longer wave a club thread, so this scenario's `WHEN`
+cannot occur.** `waveThread`, `unwaveThread` and `queryKeys.clubs.threadWaves` are all deleted; the
+club timeline's only waveable row is the announcement row. The rule the scenario expressed survives
+on the wave that remains, and is asserted there:
+
+- **WHEN** a rider waves or un-waves another rider's JOIN
+- **THEN** the existing `joinWaves` key SHALL be invalidated as it already is
+- **AND** neither notifications key SHALL be — `private.notify_club_waved` addresses the rider whose
+  join was waved, never the waver whose client runs the invalidation
+
+#### Scenario: The recipient's badge is stale for one navigation and no longer
+
+- **WHEN** a rider is the author of a thread that is replied to while they have the app open
+- **THEN** their unread badge MAY lag until their next navigation
+- **AND** this SHALL be stated in the change rather than papered over with a poll, a subscription or
+  a cross-client invalidation
+
+### Requirement: The count and the list SHALL still be invalidated together, and SHALL still read through one predicate
+
+The two new types SHALL be readable through exactly the paths every other type is: the list through
+`getNotificationsPage`, and the count through `unread_notification_count()`, which is
+`security invoker` so it reads through the same SELECT policy.
+
+**No screen, data function or action SHALL filter either new type** — not by block, not by
+membership, not by thread readability. The policy is the single place those rules live, and a filter
+applied to one of the two reads is how a nonzero badge ends up over an empty list.
+
+#### Scenario: A thread that stops resolving falls out of both, in the same instant
+
+- **WHEN** a recipient leaves the club, or is blocked with the thread's author, or the thread is
+  deleted
+- **THEN** the row SHALL leave the list and the unread count SHALL fall by the same number
+- **AND** neither SHALL be achieved by a client-side filter
+
+#### Scenario: Marking read clears the badge everywhere
+
+- **WHEN** the recipient marks notifications read with either new type present
+- **THEN** the count and the list SHALL be invalidated together, exactly as they are today
+- **AND** the two new types SHALL need no special handling to make that true
+
+### Requirement: A cached thread notification whose thread the reader may no longer see SHALL be evicted by the database
+
+A `club_thread_replied` or `club_thread_waved` row already cached in a client SHALL stop being
+returned by the next read once its thread stops resolving for that reader. No component SHALL drop it
+after the fact, and no data function SHALL filter it.
+
+**Eviction, not deletion.** Rejoining the club, or lifting the block, SHALL return the row with its
+original `created_at` and read state — because the underlying reason it vanished is a visibility
+change and visibility changes are reversible, while a delete is not.
+
+#### Scenario: A stale cached row does not survive a refetch
+
+- **WHEN** the row is in the client cache and the reader has since left the club
+- **THEN** the next fetch through the ordinary invalidation SHALL return the list without it
+- **AND** the component SHALL NOT be the thing that removed it
+
+### Requirement: A cache key whose last writer is removed SHALL be removed with it
+
+When the only action that invalidated a key and the only read that filled it are both deleted, the
+key SHALL be deleted too, along with any documentation naming it as a claim. A key nothing writes
+and nothing reads is indistinguishable from a live one at the call site, and the next screen that
+needs a club-scoped decoration will reach for it.
+
+Removing it SHALL NOT change what any surviving invalidation reaches: the removed key was a sibling
+under the club's detail prefix, so every wider invalidation that reached it also reached its
+siblings, and those SHALL still be reached.
+
+#### Scenario: The key and its claim go together
+- **WHEN** the thread wave action and read are removed
+- **THEN** the key they shared SHALL be removed
+- **AND** the invalidation-claim table naming those writers SHALL be updated in the same change
+
+#### Scenario: The surviving keys are unaffected
+- **WHEN** a club-wide invalidation runs after the change
+- **THEN** it SHALL reach exactly the keys it reached before, less the removed one
+
+### Requirement: A narrowed read SHALL keep the key it already had, and SHALL NOT gain a second one
+
+The reads that gain the announcement filter SHALL keep their existing cache keys. The filter is not a
+parameter a caller chooses — it is part of what the read means — so it SHALL NOT become a key
+segment, and no surface SHALL be able to ask for the unfiltered variant.
+
+This matters because two of these keys are shared: the thread list key is read by both the Threads
+list and the timeline, and the unread key by both the timeline and the club options menu. Sharing is
+correct only while every reader wants the same rows, and after this change they do.
+
+#### Scenario: One key, one meaning
+- **WHEN** the Threads list and the timeline read the club's threads
+- **THEN** they SHALL share one cache entry
+- **AND** that entry SHALL hold listable threads only
+
+#### Scenario: The unread map has one shape for all its readers
+- **WHEN** the timeline and the club options menu read the unread map
+- **THEN** they SHALL share one cache entry
+- **AND** it SHALL answer for listable threads only
+
+#### Scenario: Existing invalidations still cover these reads
+- **WHEN** a thread is created, deleted or moderated, or a message is posted
+- **THEN** the invalidations that reach these keys today SHALL still reach them
+- **AND** no new invalidation SHALL be required by this change
+
+### Requirement: A paged screen SHALL keep its first page in the shared cache and its later pages in session-local state
+
+The first page of a paged list SHALL live under its ordinary cache key, so that a screen sharing
+that key with another screen keeps sharing the request and the answer. Pages beyond the first
+SHALL live in component state for the life of the mount, and SHALL be re-read on the next visit.
+
+Moving the first page into local state to make paging simpler SHALL NOT be done: the club
+timeline's first window shares three of its keys with the Postcards list, the Threads list and the
+club's threads entrance, and two screens holding different answers to the same key is the
+collision `keys.ts` exists to prevent.
+
+An invalidation therefore refetches the **first page only**. The refetched page SHALL be absorbed
+into the pages already held rather than replacing them, so that a rider who has paged is not
+returned to the first page by an unrelated write.
+
+#### Scenario: A new row does not return a paged rider to the top
+- **WHEN** a mutation invalidates the first page's key while the rider has paged further down
+- **THEN** the first page SHALL be refetched and merged
+- **AND** the rider's position and the pages below SHALL survive
+
+#### Scenario: The first page keeps sharing its key
+- **WHEN** a paged screen and a list screen read the same rows
+- **THEN** they SHALL continue to resolve to the same cache entry
+- **AND** paging SHALL NOT introduce a second entry holding a different answer for that key
+
+#### Scenario: Depth does not survive the mount
+- **WHEN** the rider navigates away and returns
+- **THEN** the screen SHALL start at its first page
+- **AND** the later pages SHALL be re-read rather than restored from a stale copy
+
+### Requirement: A removal SHALL discard the later pages, and a control that can remove a row SHALL say so rather than be inferred
+
+The two kinds of refetch are indistinguishable to a cache and must be told apart by the screen:
+
+- **A removal SHALL discard the pages below the first**, which are then re-read from a clean
+  first page.
+- **An addition or an update SHALL leave them alone.**
+
+A refetched first page that fails to return a row it previously held, **inside the interval that
+page covers**, has had that row removed — blocked, hidden, deleted, or a membership ended — and
+SHALL discard the later pages.
+
+**That signal alone is NOT sufficient, and treating it as sufficient reintroduces the defect this
+requirement exists to close.** It can only see the interval the first page covers. A rider who has
+paged four pages down and blocks the author of a row that appears **only on page three** gets a
+first-page refetch that returns everything it held, reports no removal, and leaves the blocked
+rider's content on screen — which is exactly what the standing blocking rule forbids, and it is
+reachable without leaving the screen, because a postcard's own menu carries Hide and Block.
+
+So: **any control a paged screen renders whose action can remove rows SHALL discard the later
+pages itself, unconditionally, without waiting to observe whether the removed row was on the first
+page.** The signal SHALL be explicit — the component owning the control telling the screen — and
+SHALL NOT be inferred from a burst of refetches, which cannot be told apart from any other
+cache-wide invalidation.
+
+A screen adopting paging SHALL enumerate the removal-capable controls it renders, and a control
+added later either reports its removals or reopens this hole.
+
+Snapping the rider back is acceptable **only** on these branches: they have just acted on the
+content themselves, so a stream that reshuffles is expected, where a stream that reshuffles because
+somebody else posted a photo is the defect the requirement above forbids.
+
+#### Scenario: Blocking removes the blocked rider from the whole stream
+- **WHEN** a rider blocks another from a row on a paged screen
+- **THEN** the blocked rider's content SHALL disappear from the pages already drawn, not only from
+  the next fetch
+- **AND** the later pages SHALL be discarded and re-read
+
+#### Scenario: A block acting on a deep page still clears the deep pages
+- **WHEN** the removed row appears only on a page below the first
+- **THEN** the later pages SHALL still be discarded
+- **AND** the screen SHALL NOT depend on the first page's refetch to notice, because it cannot
+
+#### Scenario: Hiding a row does not merely hide it above the fold
+- **WHEN** a rider hides a postcard that also appears in a later page
+- **THEN** it SHALL disappear from every page the screen is holding
+
+#### Scenario: A wave, a like or a new postcard is not a removal
+- **WHEN** the first page is refetched and returns every row it previously held
+- **THEN** the later pages SHALL be kept
+- **AND** the rider SHALL NOT be moved
+
+### Requirement: A decoration read on a paged screen SHALL be keyed by depth and SHALL cover the whole accumulated subject set
+
+A read that decorates rows — a wave count, an introduction door — is scoped to the subject ids the
+screen's own sources are holding, and is enabled only once those ids exist, because this cache
+refetches on a changed **key** and not on a changed argument.
+
+On a paged screen the id set grows per fetched page, so the key SHALL carry the page depth and the
+read SHALL cover the **whole** accumulated set rather than the newest page's delta. A delta merged
+in component state would be left stale by exactly the invalidation that exists to refresh it.
+
+The key SHALL be a child of the existing decoration key, so that the mutations which invalidate it
+today reach every depth through the cache's prefix match, with no edit to any action.
+
+A decoration read SHALL NOT gate the rows it decorates, at any depth, and a display step that
+fetched no new rows SHALL trigger no decoration read.
+
+**No single request's subject list SHALL grow with paging depth.** A decoration read covering the
+accumulated set SHALL issue it in chunks of a named bound and merge the results. The reason is the
+interaction between two rules that are individually correct: a decoration must not gate its rows,
+so its failure is silent by design — and a request whose id list grows without bound eventually
+crosses a URI limit and fails. Silent plus unbounded means a decoration that simply stops
+appearing at depth, with nothing red anywhere. A ceiling on paging depth SHALL NOT be offered as
+the mitigation unless the limit it defends against has been measured.
+
+#### Scenario: A decoration request does not grow with depth
+- **WHEN** the accumulated subject set exceeds the chunk bound
+- **THEN** the read SHALL be issued as several bounded requests and merged
+- **AND** no request's subject list SHALL be a function of how deep the rider has paged
+
+#### Scenario: A newly paged row gets its decoration
+- **WHEN** a further page brings in rows that carry a decoration
+- **THEN** the decoration read SHALL re-run under a key naming the new depth
+- **AND** it SHALL return the state for every accumulated subject, not only the new ones
+
+#### Scenario: A wave placed on the first page still refreshes after paging
+- **WHEN** a rider waves and the action invalidates the decoration's key with no depth
+- **THEN** the depth-suffixed entry SHALL be invalidated by the prefix match
+- **AND** no action SHALL need to know how deep the screen has paged
+
+#### Scenario: A free display step costs no decoration read
+- **WHEN** a step raises the display cap without fetching rows
+- **THEN** the decoration key SHALL NOT change and no read SHALL be issued
+
+#### Scenario: A failed decoration read costs decorations only
+- **WHEN** the decoration read fails at any depth
+- **THEN** the rows SHALL render undecorated
+- **AND** no error state SHALL replace the list
+
+### Requirement: Moving the terminal onboarding step SHALL move the invalidation obligation with it
+
+Every write that changes a value `resolveDestination` reads SHALL call
+`invalidateOnboardingState()`, and when the wizard gains or loses a step the obligation SHALL be
+re-derived rather than inherited.
+
+`CLAUDE.md` states the standing half — *"any new writer of a stamp the decision reads must
+invalidate the cache"* — and `src/lib/actions/__tests__/writers-invalidate.test.ts` refuses a new
+stamp writer that does not. What that rule cannot catch on its own is a writer that stops being
+terminal: `setUsername` currently writes the username *and* commits the completion stamp, and after
+this change it writes only the username. It still owes an invalidation, for a different reason than
+before — `has_username` is now a value the resume branch reads — and losing sight of that is how a
+rider finishes a step and is sent straight back into it.
+
+**The home country is deliberately not a stamp the decision reads**, so nothing about it enters the
+guard cache; the new action's obligation comes entirely from the completion stamp it writes.
+
+#### Scenario: The new terminal writer invalidates
+- **WHEN** the country step's action completes onboarding
+- **THEN** it SHALL call `invalidateOnboardingState()` after the RPC succeeds, and `writers-invalidate.test.ts`
+  SHALL refuse it if it does not
+- **AND** the rider SHALL be routed by the guard on the next decision rather than by a cached
+  answer that still says *"not complete"*
+
+#### Scenario: The former terminal writer keeps its invalidation
+- **WHEN** `setUsername` stops calling `complete_onboarding`
+- **THEN** it SHALL keep `invalidateOnboardingState()`, because `has_username` is what moves the
+  resume step from `/onboarding/username` to `/onboarding/country`
+- **AND** removing it as *"no longer the last write"* SHALL be treated as the defect it is: the
+  rider would submit a username and be returned to the username screen
+
+#### Scenario: The guard cache gains no new field
+- **WHEN** this change is implemented
+- **THEN** `OnboardingState`, `GuardSnapshot`, `GuardState` and `my_onboarding_state()` SHALL each
+  keep their current shape
+- **AND** the generation counter, the `retry`/`superseded` outcomes and the by-value session check
+  SHALL be untouched, because nothing here introduces a write that races a read already in flight —
+  the country write is a rider-initiated submit, not a signup-time write behind an in-flight boot
+  read
+
+#### Scenario: An invalidation is necessary and not sufficient
+- **WHEN** any future writer of an onboarding value is added
+- **THEN** it SHALL invalidate, **and** the generation counter SHALL remain the thing that protects
+  a read which left before the write landed — the two SHALL NOT be treated as alternatives
+
+#### Scenario: The query cache is not involved
+- **WHEN** the country is written
+- **THEN** no `keys.ts` entry SHALL be added for it and no `invalidate()` call SHALL be made
+  against the query cache during onboarding, because no screen reads it yet
+- **AND** the profile editor's own write SHALL invalidate whatever key already covers the profile
+  row it edits, rather than introducing a second key for one column
+
+### Requirement: A second writer of a column the guard does not read SHALL NOT acquire a guard-cache claim
+
+Where a change gives a column a writer outside the onboarding wizard, that writer SHALL invalidate
+the guard cache **only if the guard's decision actually reads the column**, and the spec SHALL say
+which of the two it is rather than leaving it to the reviewer to work out.
+
+`profiles.home_country` gets a second writer here: `setRiderTown` writes it beside `location` when a
+later town change carries a country. It **SHALL NOT** call `invalidateOnboardingState()`.
+
+The reason is the single most load-bearing decision PD-428 made and it is easy to undo by accident.
+`resolveDestination` reads three values — `terms_accepted_at`, `onboarding_completed_at` and
+`has_username` — and `home_country` is none of them; `my_onboarding_state()` does not return it and
+its shape does not change here. A writer that invalidated the guard cache for a column the guard
+cannot see would look correct, pass every gate, and quietly establish that the country *is* guard
+state — which is the premise a later author would then widen the accessor on.
+
+The inverse mistake is the one `writers-invalidate.test.ts` already refuses, per **exported
+function** rather than per file. This requirement is the other direction, and nothing automated
+catches it.
+
+#### Scenario: The town writer's cache claims
+- **WHEN** `setRiderTown` writes a town, or a town and a country, or clears a town
+- **THEN** it SHALL invalidate `queryKeys.profile.all()` and `queryKeys.riderLocation()`, and SHALL
+  call `clearRiderLocation()` for the module memo — all three, because the memo is module state
+  rather than a cache entry and invalidating the keys alone leaves every screen re-reading a
+  five-minute-old answer built from the old town
+- **AND** it SHALL NOT call `invalidateOnboardingState()`
+- **AND** it SHALL NOT write `onboarding_completed_at`, `terms_accepted_at` or `username`
+
+#### Scenario: The wizard's terminal writer keeps its claim
+- **WHEN** the town step's action writes both columns and then stamps completion
+- **THEN** it SHALL call `invalidateOnboardingState()` once, after both writes rather than between
+  them, because the stamp the guard cached is what sent the rider to that screen
+- **AND** renaming that exported function SHALL NOT change the number of guard-cache writers, which
+  stays four and SHALL be re-derived by the counting query rather than asserted from this sentence
+- **AND** `writers-invalidate.test.ts` SHALL still refuse it if the call is removed, verified in both
+  directions — green now, red with the call deleted
+
+#### Scenario: A country written outside the wizard does not move the resume target
+- **WHEN** an already-onboarded rider changes their town, and with it their country
+- **THEN** the guard's cached onboarding state SHALL remain valid, and the rider SHALL NOT be
+  re-routed
+- **AND** their completion stamp SHALL be untouched, because completion is stored rather than derived
+  and no path in this change rewrites it
+
+### Requirement: A mutation that moves a row's POSITION SHALL invalidate the source that owns that position
+
+Posting or erasing a thread message invalidates the thread's own message list and the timeline's
+reply key today, and that is complete only while the reply source carries the reply row.
+
+This change moves the position onto the **thread** source, so the same mutation SHALL also
+invalidate the thread source's key — `clubs.threads(clubId)` and `rides.threads(rideId)`. Without
+it the reply count updates on a row that does not move, and the bump the rider was promised does not
+appear until an unrelated refetch or the next mount.
+
+The rule generalises and SHALL be stated as such: **a mutation SHALL invalidate every key whose
+ORDER it changes, not only every key whose CONTENT it changes.** A write that reorders a list it does
+not add a row to is the case this repo has no other way to catch — the list is not empty, not stale
+in content, and simply in the wrong order.
+
+Both the create path and the erase path SHALL be covered, since they share one helper in each
+domain.
+
+#### Scenario: A reply moves the thread to the top of the timeline
+- **WHEN** a member posts a reply in a club thread
+- **THEN** `clubs.threads(clubId)`, `clubs.threadReplies(clubId)` and
+  `clubs.threadMessages(threadId)` SHALL all be invalidated
+- **AND** the timeline SHALL redraw with that thread at its new position without a manual reload
+
+#### Scenario: The ride domain is invalidated identically
+- **WHEN** a crew member posts a reply in a ride thread
+- **THEN** `rides.threads(rideId)`, `rides.threadReplies(rideId)` and
+  `rides.threadMessages(threadId)` SHALL all be invalidated
+
+#### Scenario: The erase path invalidates what the create path does
+- **WHEN** a rider erases their own message
+- **THEN** the same keys SHALL be invalidated
+- **AND** the thread SHALL keep its position, because a deletion does not un-bump — the invalidation
+  is for the count and the participant faces, which do change
+
+#### Scenario: The claim is asserted rather than reviewed
+- **WHEN** this change is complete
+- **THEN** the existing action-module test that reads each writer's cache claim SHALL cover the
+  thread-source key
+- **AND** a writer that moves a thread's position without claiming that key SHALL fail it
+
+### Requirement: A cached window SHALL NOT be able to hold one row at two positions
+
+The club timeline accumulates windows across paging steps, and each window holds its rows as they
+were at its own fetch. With a mutable position, two windows can disagree about where one thread
+belongs.
+
+The accumulated source SHALL be de-duplicated by row identity, so that a thread present in more than
+one window resolves to exactly one row. The stream SHALL NOT be able to render two entries with one
+key, and the de-duplication SHALL be structural — in the fold — rather than a pass over the rendered
+list.
+
+A refetched first window SHALL be authoritative for the rows it returns, at whatever position it
+returns them, and SHALL replace those rows wherever a deeper window is still holding them.
+
+#### Scenario: A refetch does not duplicate a bumped thread
+- **WHEN** a thread held in a deep window is bumped and the first window refetches
+- **THEN** the accumulated source SHALL hold one row for that thread, at its new position
+- **AND** the deep window's stale copy SHALL be dropped
+
+#### Scenario: Stale positions do not accumulate across steps
+- **WHEN** a rider pages several times while other members are replying
+- **THEN** each thread SHALL appear exactly once in the merged stream
+- **AND** the number of rows SHALL NOT grow with the number of refetches
+

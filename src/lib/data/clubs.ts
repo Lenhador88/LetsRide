@@ -212,7 +212,7 @@ function byName(a: ClubListItem, b: ClubListItem) {
  * answer is that the state cannot occur**: `103`'s
  * `establish_club_owner_membership` trigger writes the owner's row in the same
  * statement as the club, so `owner_id` and membership agree by construction.
- * `openspec/changes/enforce-creator-membership/` holds the reasoning.
+ * `openspec/changes/archive/2026-09-21-enforce-creator-membership/` holds the reasoning.
  *
  * This read is deliberately unchanged by that. Unioning two definitions of
  * "yours" would be a second copy of an invariant the database now holds — free

@@ -12,7 +12,6 @@ security-advisor sweep, and any assertion about a grant that must name a *role* 
 attempt a statement, because the suite runs as the table owner for whom neither RLS nor the
 `private` USAGE barrier exists (`031`'s lesson).
 ## Requirements
-
 ### Requirement: A notification SHALL be readable by its recipient and by nobody else
 
 `public.notifications` SHALL be readable only by the rider named in `user_id`. There SHALL be no
@@ -72,6 +71,8 @@ is not. The conjunct set is therefore fixed per type and stated here rather than
 | `ride_joined` | `ride_id` | `rides` |
 | `club_joined` | `club_id` | `clubs` |
 | `ride_created_in_club` | `ride_id`, `club_id` | `rides` **AND** `clubs` |
+| **`club_thread_replied`** | **`thread_id`** | **`club_threads`** |
+| **`club_thread_waved`** | **`thread_id`** | **`club_threads`** |
 
 **The actor is a rendered resource and therefore a conjunct on every row, not a special case.** Every
 row's copy begins with the actor's username. A row whose actor does not resolve renders nothing, so
@@ -84,6 +85,63 @@ the last row to one conjunct.** It holds against `rides` SELECT as measured on 2
 policy has already been rewritten twice — by `017` and by `022` — and nothing in this spec or any
 other constrains it to keep the property. The conjunction is cheap and does not go stale; the
 derivation does.
+
+The conjunct set is fixed per type. The two types this change adds carry `club_id` alone, which is
+`club_joined`'s shape, so the per-column form already covers them:
+
+| Type | Subject columns | `EXISTS` conjuncts, all required |
+|---|---|---|
+| `club_invited` | `club_id` | `clubs` **or** the type-scoped exception below |
+| `club_invite_declined` | `club_id` | `clubs` |
+
+**One type now needs an exception, and the exception is the requirement's own rule applied
+honestly.** A `club_invited` row addressed to a rider who is not yet a member of a **private** club
+fails the `clubs` `EXISTS` — `clubs` SELECT being `is_public OR owner_id = auth.uid() OR
+private.is_club_member(id)` — so it would be written and never returned, for ever, looking correct
+to every reviewer. That is the failure this requirement exists to name, arriving on a surface whose
+entire purpose is to reach a non-member.
+
+**A type-scoped disjunct SHALL be the only permitted remedy**, and it SHALL be permitted only where
+all four of these hold. `089` established the pattern for `club_join_request_declined`; this change
+is its second instance and the conditions are written down here so a third does not widen the
+conjunct outright:
+
+1. the exception names **one type**, so no other `club_id`-carrying row is affected;
+2. its predicate is a **caller-relative** `security definer` wrapper whose subject-taking twin is
+   granted to no client role;
+3. the predicate is **exactly** the one that makes the notification actionable — for
+   `club_invited`, `private.has_live_club_invite(club_id)` — so the row becomes unreadable at the
+   same instant it stops being answerable;
+4. the row still discloses **nothing the recipient could not already read**, which for a live
+   invitee is the case, because `085`'s `discoverable_private_clubs` already returns that club's
+   name, avatar, location and member count to exactly that rider.
+
+**Relaxing the club conjunct generally is refused**, and so is a subject-less type: the second is
+lossy, because `notifications_event_key` is unique over all four subject columns with `NULLS NOT
+DISTINCT` (measured on DEV: `indnullsnotdistinct = true`), so two invites from one admin to one
+rider for two different clubs would collapse into one row and the second would be dropped by `on
+conflict do nothing`.
+
+**The two new types add a `thread_id` conjunct and nothing else.** They render the thread's title and
+open the thread; they name no club, so they set no `club_id` and take no club conjunct. Carrying a
+club would be a conjunct with no rendered resource behind it, and would put a weaker resolvability
+test beside a stronger one — inviting a later reader to simplify the strong one away.
+
+**The new conjunct can only narrow, and that is a derivation from the live policy text rather than a
+hope.** `club_threads` SELECT requires `private.is_club_member(club_id)` and `clubs` SELECT admits
+every member, so **thread-resolves implies club-resolves**. The derivation SHALL be re-run whenever
+either policy changes rather than recalled.
+
+The UPDATE policy's predicate SHALL remain **identical** to the SELECT policy's, in both `using` and
+`with check`, with the same conjunct added in the same place. A wider UPDATE policy lets
+`update … set read_at = now() where read_at is null` touch rows the rider cannot see, and the
+affected-row count PostgREST reports is the count of hidden rows — a marker for a block, which this
+spec elsewhere requires never be disclosed.
+
+**No type-scoped disjunct is added.** `089` and `093` each added one because their recipients are by
+construction riders who cannot read the subject club. Neither new type has that property: the
+recipient is the thread's author, who held a membership when they wrote it. The two existing
+disjuncts SHALL be preserved verbatim in the re-created policies.
 
 #### Scenario: A type rendering two resources requires both to resolve
 - **WHEN** a `ride_created_in_club` notification is read
@@ -172,6 +230,58 @@ them disagree by construction, and the disagreement is visible as a badge that n
 - **THEN** the subject `EXISTS` SHALL remain and SHALL carry a policy comment saying why
 - **AND** removing it SHALL fail at least two assertions rather than passing quietly
 
+#### Scenario: A private club's invite notification reaches its recipient
+- **WHEN** an admin invites a non-member to a private club
+- **THEN** the invitee SHALL read exactly one `club_invited` row
+- **AND** the row SHALL become unreadable the moment the invite stops being answerable — it is
+  withdrawn, the inviter's authority ends, or either block is placed
+
+#### Scenario: A stranger holding no invite reads nothing
+- **WHEN** a rider who holds no live invite is handed a `club_invited` row's id, or holds a row for a
+  club whose invite has since been withdrawn
+- **THEN** the row SHALL NOT be returned, because the exception's predicate is the live invite itself
+
+#### Scenario: The exception reaches one type only
+- **WHEN** the policy is read
+- **THEN** each exception SHALL name its `type` explicitly, and a `club_joined` or
+  `ride_created_in_club` row for an unreadable club SHALL still be dropped
+
+#### Scenario: A rider who left the club stops reading their own thread's notifications
+
+- **WHEN** the author of a thread leaves the club and then reads their notifications
+- **THEN** every `club_thread_replied` and `club_thread_waved` row for that thread SHALL stop being
+  returned, and the unread count SHALL fall by the same number in the same instant
+- **AND** authoring the thread SHALL NOT be enough to keep it, because `club_threads` SELECT's
+  own-row arm sits **inside** its block conjunct and the `private.is_club_member` conjunct dominates
+  it — which SHALL be asserted rather than assumed, since the opposite reading is the natural one
+- **AND** nothing SHALL delete the rows, so rejoining SHALL return them with their original
+  `created_at` and read state
+
+#### Scenario: A rider blocked with the thread's author loses the row by a different mechanism
+
+- **WHEN** the recipient is blocked with the thread's author in either direction
+- **THEN** the row SHALL stop being returned by the `club_threads` conjunct
+- **AND** this SHALL be asserted separately from the actor block, because the two are different
+  mechanisms and one assertion cannot say which fired
+- **AND** the case where recipient and thread author are the same rider SHALL be unaffected, because
+  `blocks_no_self_block` makes `is_blocked(x, x)` false
+
+#### Scenario: A private club discloses no more than it already did
+
+- **WHEN** any rider holds a notification for a thread in a private club
+- **THEN** the row SHALL be returned only while `club_threads` resolves for them, which requires
+  membership
+- **AND** the club's name, the thread's title and the message body SHALL never reach a
+  non-member's device
+- **AND** the row's `thread_id` reaching their device in an earlier response SHALL disclose nothing,
+  because every read of that id is refused
+
+#### Scenario: The thread conjunct is not simplified away
+
+- **WHEN** the SELECT policy is reviewed, refactored or replaced
+- **THEN** the `thread_id` `EXISTS` SHALL remain and SHALL carry a policy comment saying why
+- **AND** removing it SHALL fail at least two assertions rather than passing quietly
+
 ### Requirement: Blocking SHALL be applied twice — at fan-out and at read time — and the second SHALL NOT be optional
 
 A notification SHALL NOT be written for a recipient who is blocked by, or has blocked, the actor;
@@ -235,18 +345,60 @@ security at the moment of rendering.
 club, were removed from it, or were blocked by everyone in it — and the row would look perfectly
 correct to any reviewer, because the value in it was true when it was written.
 
-#### Scenario: No column holds a name, title or caption
-- **WHEN** the table is created
-- **THEN** it SHALL carry no `club_name`, `ride_title`, `actor_username`, `postcard_caption`,
-  `body`, `message` or equivalent column
-- **AND** the copy SHALL be composed at render time from `type` plus resources read separately
+**This requirement is about denormalisation, not about which readers a club's name may reach**, and
+the distinction is what the carve-out below turns on. `085` already widened the audience for a
+private club's name — `public.discoverable_private_clubs` returns it to every signed-in rider the
+club takes join requests from — and did so through an accessor evaluated live on every read. A
+notification may therefore *point at* a club that audience can already name, provided the name still
+comes from a live predicate and never off the row.
 
-#### Scenario: A non-member never receives a private club's name
-- **WHEN** a rider who is not a member of a private club holds any notification naming it
-- **THEN** the club SHALL not resolve, the row SHALL not be returned, and the club's name SHALL
-  never reach their device
-- **AND** the club's `id` reaching their device in an earlier response SHALL disclose nothing,
-  because every read of that id is refused
+**The carve-outs are type-scoped, one disjunct per type, and there are two.**
+`club_join_request_declined` (`089`, PD-335) and `club_invited` (`093`, PD-360) are each returned to
+a rider who is not a member of the private club they name, through a **type-scoped** disjunct on
+`036` §3's club conjunct:
+
+```sql
+or (type = 'club_join_request_declined'
+    and private.club_takes_join_requests(notifications.club_id))
+or (type = 'club_invited'
+    and private.has_live_club_invite(notifications.club_id))
+```
+
+Every other `club_id`-carrying type SHALL evaluate exactly the conjunct it evaluates today. An
+unconditional widening of that conjunct — which would make *any* `club_id`-carrying row resolve for
+any non-member holding one — SHALL NOT be made.
+
+**The invite notification does not weaken this and is worth stating so it is not read as an
+exception to it.** A `club_invited` row still carries **no name**: the copy resolves the club at
+render time, and the rider resolves it through `public.discoverable_private_clubs(club)` — a path
+`085` already grants them, gated on a predicate that is true for exactly a non-owner, non-member,
+unblocked rider of a non-default private club. So the club's name reaches them because they may read
+it, not because a notification told them.
+
+**The negative half is unchanged and is what the assertion checks**: a rider who is *not* a live
+invitee learns nothing, because the notification is not returned and the accessor's predicate has
+its own reasons to be false for them.
+
+#### Scenario: No column holds a name, title or caption
+- **WHEN** the table is inspected after `089`
+- **THEN** it SHALL still carry no `club_name`, `ride_title`, `actor_username`, `postcard_caption`,
+  `body`, `message` or equivalent column
+- **AND** the decline row's club name SHALL be resolved at render time through
+  `public.discoverable_private_clubs`, under a predicate that goes false the moment the rider is
+  blocked with the club's owner
+
+#### Scenario: A non-member receives a private club's name ONLY for the declined type, and only while the club would still take their request
+- **WHEN** a rider who is not a member of a private club holds a `club_join_request_declined` row
+  for it
+- **THEN** the row SHALL be returned, and the club's name SHALL be reachable to them — through the
+  accessor, never through the `club:clubs(...)` embed, which SHALL continue to return null
+- **WHEN** the same rider holds any **other** `club_id`-carrying type for the same club
+- **THEN** that row SHALL NOT be returned, unchanged from today
+
+#### Scenario: The carve-out closes when the rider is blocked
+- **WHEN** a `blocks` row exists in either direction between the requester and the club's owner
+- **THEN** `private.club_takes_join_requests` SHALL be false, the ordinary `clubs` EXISTS SHALL be
+  false, and the decline row SHALL NOT be returned and SHALL NOT be counted
 
 #### Scenario: A ride's title follows the ride's own policy
 - **WHEN** a notification names a ride the reader can no longer see
@@ -257,30 +409,24 @@ correct to any reviewer, because the value in it was true when it was written.
 - **THEN** the row SHALL NOT be returned by the SELECT policy, by the same `EXISTS` mechanism the
   subject uses, so the unread count falls with the list in the same instant
 - **AND** the row SHALL NOT be rendered with a placeholder name, an id, or "someone"
-- **AND** no component SHALL drop it after the fact, which is what an earlier revision of this
-  contract prescribed — *"render nothing for a row whose actor does not resolve"* — and which is
-  simultaneously a nonzero count over an empty list and a component-level visibility filter, both
-  forbidden by this change's own `client-cache-invalidation` delta
+- **AND** no component SHALL drop it after the fact
 
-#### Scenario: The NULL-username state is reachable today and the contract SHALL NOT assume it closed
-- **WHEN** the reachability of an unresolvable actor is assessed
-- **THEN** it SHALL be recorded as **reachable in one request by any rider**, verified against
-  `zwprydcyryvudhurbnye` on 2026-08-07, and not as a defect that cannot occur:
-  `has_column_privilege('authenticated','public.profiles','username','UPDATE')` is **true**; the
-  CHECK is `username IS NULL OR username ~ '^[A-Za-z0-9_]{3,25}$'` (`'^[a-z0-9_]{3,20}$'` when
-  this was measured; `056` widened it to admit capitals and `057` the length to 25), which NULL
-  passes; and
-  `enforce_onboarding_completion` guards only `terms_accepted_at` and `onboarding_completed_at` —
-  for an already-onboarded rider it pins completion and **returns early**, so `username` is never
-  reached
-- **AND** the consequence SHALL be stated: `profiles` SELECT is
-  `(auth.uid() = id) OR (username IS NOT NULL AND NOT is_blocked(…))`, so a rider who nulls their
-  username vanishes from every other rider's read of them while their notification rows survive
-- **AND** the eviction SHALL be an eviction rather than a deletion — restoring the username SHALL
-  return every row, with its original `created_at` and read state — because the underlying hole is
-  somebody else's to close and this change SHALL behave correctly whether it is open or shut
-- **AND** the hole itself SHALL be filed as its own issue rather than fixed here, because a
-  column-privilege change on `profiles` is not this change's blast radius
+#### Scenario: The self-actor row is immune to that eviction, and that is why it was chosen
+- **WHEN** the reader is the row's own `actor_id`
+- **THEN** `profiles` SELECT's first arm — `auth.uid() = id` — SHALL resolve them unconditionally,
+  including when they have nulled their own username
+- **AND** `private.is_blocked(x, x)` SHALL be false, because `blocks` carries
+  `CHECK (blocker_id <> blocked_id)`
+
+#### Scenario: The name is resolved, never stored
+- **WHEN** the two new types are added
+- **THEN** no `club_name` column SHALL appear, and the copy SHALL be composed at render time from
+  `type` plus a separately-read club
+
+#### Scenario: A blocked rider learns no name
+- **WHEN** a rider blocked with the club's owner is somehow addressed by a `club_invited` row
+- **THEN** the fan-out SHALL not have written it, and were it written by a repair statement the
+  accessor SHALL refuse them the name
 
 ### Requirement: A rider SHALL NOT be able to write, forge, retitle or dismiss a notification
 
@@ -371,8 +517,8 @@ delete the evidence that they were told something.
 
 ### Requirement: A notification SHALL die with its subject, its actor, its recipient and its club
 
-Every foreign key on `notifications` SHALL be `ON DELETE CASCADE`, including `user_id → profiles`
-and `actor_id → profiles`. A notification whose subject, actor or recipient no longer exists SHALL
+Every foreign key on `notifications` SHALL be `ON DELETE CASCADE`, including `user_id → profiles`,
+`actor_id → profiles` and `thread_id → club_threads`. A notification whose subject, actor or recipient no longer exists SHALL
 NOT survive as a tombstone.
 
 This is the reason the subject is typed columns rather than a polymorphic `subject_id`: a
@@ -449,11 +595,45 @@ clubs and postcards.
 - **THEN** notifications naming that club SHALL survive, because the club survives
 - **AND** only rows whose `actor_id` was the departing rider SHALL be removed
 
+#### Scenario: Deleting the thread destroys its notifications
+
+- **WHEN** a thread's author deletes their own thread
+- **THEN** every `club_thread_replied` and `club_thread_waved` row naming it SHALL be removed
+
+#### Scenario: Moderating a thread destroys its notifications
+
+- **WHEN** a club admin calls `public.moderate_club_thread`, or an operator calls
+  `private.remove_reported_thread`
+- **THEN** every notification naming that thread SHALL be removed by the same cascade
+- **AND** `private.remove_reported_thread`'s own body currently states that `notifications` *"has no
+  `thread_id` column and is not in the chain"*, which this change makes false — the claim SHALL be
+  corrected in the function's **external** comment, and the in-body edit filed separately, because
+  `create or replace` is the only way to reach an in-body comment and it moves `prosrc`, the value
+  every cross-project reconciliation in this repo compares
+- **AND** the reason SHALL NOT be given as the function being `security definer`: it is **not** one
+  (`prosecdef = false`, measured 2026-09-01). `public.moderate_club_thread` is the definer function,
+  and the two are easy to conflate because they sit in one migration and perform the same delete
+
+#### Scenario: Deleting the club destroys them too, through the thread
+
+- **WHEN** a club is deleted
+- **THEN** its threads SHALL cascade and every notification naming one of them SHALL go with them
+- **AND** this SHALL hold without `notifications.club_id` being set on either new type
+
+#### Scenario: A departing rider's thread notifications go in both directions
+
+- **WHEN** a rider deletes their account
+- **THEN** every `club_thread_replied` and `club_thread_waved` row **to** them SHALL be removed by
+  the `user_id` cascade, and every row naming them as actor SHALL be removed from every other rider's
+  list by the `actor_id` cascade
+- **AND** a rider who authored threads SHALL take those threads' notifications with them, through
+  `club_threads.author_id → profiles ON DELETE CASCADE`
+
 ### Requirement: Every cascade path into `notifications` SHALL be indexed
 
-Each of the six foreign keys on `notifications` SHALL have an index Postgres can use to find the
-referencing rows, so that every delete that reaches this table is an index scan rather than a
-sequential scan holding locks.
+Each foreign key on `notifications` SHALL have an index Postgres can use to find the referencing
+rows, so that every delete reaching this table is an index scan rather than a sequential scan holding
+locks. With `thread_id` there are **seven** FK columns and there SHALL be **seven** usable indexes.
 
 **`add-account-deletion` already carries this as a standing rule and this change is the first table
 it applies to**: *"Every foreign key referencing `public.profiles` SHALL have an index Postgres can
@@ -476,6 +656,10 @@ row costs one subject-index entry rather than four, and the fan-out's write ampl
 four index entries per row rather than eight. `015`'s `rides (club_id, created_at desc) where club_id
 is not null` is the precedent in this schema.
 
+`thread_id`'s index SHALL be **partial** — `where thread_id is not null` — matching the four existing
+subject indexes, because every row of the fourteen existing types leaves it NULL and a partial index
+enters only the rows that use it.
+
 #### Scenario: `actor_id` leads an index of its own
 - **WHEN** the migration is written
 - **THEN** `actor_id` SHALL have an index leading with it
@@ -488,11 +672,11 @@ is not null` is the precedent in this schema.
 - **AND** each SHALL be partial on its own column being non-NULL
 
 #### Scenario: The check is derived, not remembered
-- **WHEN** this change or any later one adds a foreign key to `notifications`
-- **THEN** the index set SHALL be verified by querying `pg_index` for FK columns lacking a
-  leading-column index, matching the derivation `add-account-deletion` requires
-- **AND** the count SHALL be **six FK columns, six usable indexes**, verified against the live
-  database after apply rather than asserted from the file
+
+- **WHEN** the index set is verified after apply
+- **THEN** it SHALL be derived by querying `pg_index` for FK columns lacking a leading-column index
+- **AND** the count SHALL be **seven FK columns, seven usable indexes**, verified against the live
+  database rather than asserted from the file
 
 #### Scenario: These indexes are not the speculative ones the fan-out spec forbids
 - **WHEN** the prohibition in `event-fanout-integrity` — *"no additional index SHALL be added
@@ -501,6 +685,22 @@ is not null` is the precedent in this schema.
   behind it and not a read query anyone chose to issue
 - **AND** the two requirements SHALL each name the other, because as first drafted they contradicted
   each other and neither mentioned it
+
+#### Scenario: The seventh FK gets the seventh index
+
+- **WHEN** the migration is written
+- **THEN** `notifications_thread_id_idx` SHALL exist, leading with `thread_id` and partial on it
+  being non-NULL
+- **AND** its position last in `notifications_event_key` SHALL NOT be offered as covering it, because
+  a non-leading column cannot serve the lookup
+
+#### Scenario: The write cost per row does not grow for existing types
+
+- **WHEN** a row of any pre-existing type is written after this change
+- **THEN** it SHALL maintain the same indexes it did before — the primary key, the uniqueness index,
+  the list index, the `actor_id` index and only those partial subject indexes whose column is
+  non-NULL on the row
+- **AND** `notifications_thread_id_idx` SHALL take no entry for it, because the index is partial
 
 ### Requirement: The unread count and the notification list SHALL agree by construction
 
@@ -821,6 +1021,10 @@ be used as evidence that the action is still available.
 This is `036` §2 applied to a control rather than to a string, and it binds harder: a stale string
 misinforms, a stale control performs a write.
 
+`club_join_requested` is the second actionable type, after `ride_invited`: whether Approve and
+Decline are offered on the row SHALL be decided by reading the live `club_join_requests` row under
+the reader's own row security at render time.
+
 A notification whose action is no longer available SHALL still render as a legible record of what
 happened, with the controls absent rather than disabled — a disabled control is a claim that the
 action exists.
@@ -832,14 +1036,23 @@ action exists.
 - **AND** a row whose invite has been revoked, answered on another device, or hidden by a block
   SHALL render as text with no controls
 
+#### Scenario: Controls are drawn from the request
+- **WHEN** the notification list renders a `club_join_requested` row
+- **THEN** the controls SHALL be shown only if a `club_join_requests` row for that club and reader
+  is visible to them and is `pending`
+- **AND** a row whose request has been withdrawn, answered on another device or hidden by a block
+  SHALL render as text with no controls
+
 #### Scenario: A stale submit is refused indistinguishably and refreshes
-- **WHEN** the reader presses Accept against an invite that has since been revoked or answered
-- **THEN** the RPC SHALL raise the same error a nonexistent invite raises
-- **AND** the surface SHALL re-read the invite and re-render rather than reporting a failure the
+- **WHEN** the reader presses Accept against an invite that has since been revoked or answered, or
+  Approve against a join request that has since been withdrawn or answered
+- **THEN** the RPC SHALL raise the same error a nonexistent invite, or a nonexistent request id,
+  raises
+- **AND** the surface SHALL re-read the subject and re-render rather than reporting a failure the
   rider can act on
 
 #### Scenario: The action never widens what the row discloses
-- **WHEN** the invite is not visible to the reader
+- **WHEN** the invite or join request is not visible to the reader
 - **THEN** the notification SHALL disclose nothing the notification policy does not already permit,
   and SHALL NOT reveal that an invite exists
 
@@ -867,4 +1080,654 @@ happened; the unique event key distinguishes them by `type`.
 - **WHEN** either rider blocks the other after the answer
 - **THEN** neither row SHALL be returned to its recipient, through the read-time block conjunct
 - **AND** both unread counts SHALL agree with their lists
+
+### Requirement: The type list and the subject shape SHALL be extended together, and neither new type SHALL need a new resolvability conjunct
+
+`notifications_type_check` and `notifications_subject_shape` SHALL be altered in the same migration.
+`085` adds **two** types, taking the first from eight strings to ten and adding two arms to the
+second, each carrying **`club_id` alone** — the same subject shape `club_joined` already has.
+
+| Type | Recipient | Actor | Subject columns |
+|---|---|---|---|
+| `club_join_requested` | the club's owner and its admins | the requester | `club_id` |
+| `club_join_request_approved` | the requester | the approving admin | `club_id` |
+
+Because the shape matches an existing type exactly, the SELECT policy's **per-column** resolvability
+conjuncts already cover them and SHALL NOT be rewritten. That is the property `036` chose the
+per-column form for.
+
+#### Scenario: Both constraints move together
+- **WHEN** the migration is applied
+- **THEN** `notifications_type_check` SHALL name ten types and `notifications_subject_shape` SHALL
+  carry an arm for each, with `else false` intact
+- **AND** an insert of either new type with a NULL `club_id`, or with any of `postcard_id`,
+  `comment_id` or `ride_id` set, SHALL be refused with `23514`
+
+#### Scenario: The read policy is unchanged
+- **WHEN** the SELECT policy is compared before and after
+- **THEN** its qual SHALL be identical, asserted by equality
+- **AND** no conjunct SHALL be added for either new type
+
+#### Scenario: A rider still cannot write or forge one
+- **WHEN** any client role attempts to insert either new type
+- **THEN** it SHALL be refused, because `authenticated` holds no INSERT grant on `notifications`
+  and this change adds none
+
+### Requirement: A notification whose recipient cannot resolve its subject SHALL NOT be written, and the case where that forecloses a notification entirely SHALL be recorded rather than worked around
+
+The standing requirement *"A rider SHALL NOT learn a private club's name … from a notification"*
+means a `club_id`-carrying row addressed to a non-member of a private club is **written and never
+returned**: `036` §3's conjunct is
+`club_id is null or exists (select 1 from public.clubs scl where scl.id = notifications.club_id)`,
+evaluated under the reader's own row security.
+
+**A declined requester was the case this foreclosed, and `089` (PD-335) reopened it without a
+workaround.** A declined requester holds no membership, so under that conjunct alone the club does
+not resolve and the row would be invisible. `club_join_request_declined` is instead returned through
+a type-scoped disjunct evaluated live — *A rider SHALL NOT learn a private club's name, or a private
+ride's title, from a notification* states it, and *A decline SHALL notify the rider without naming
+the individual who refused* states the row. The refusal SHALL still be recorded on the
+`club_join_requests` row, which stays the record.
+
+This requirement SHALL also bind the general case: a fan-out that cannot deliver to its intended
+recipient SHALL be **omitted with its reason written down**, and SHALL NOT be shipped as a row
+nobody reads.
+
+#### Scenario: The approval's notification resolves, and only because of statement order
+- **WHEN** `approve_club_join_request` succeeds
+- **THEN** the `club_members` row SHALL be written **before** the notification, so that
+  `private.can_read_club(requester, club)` is true at fan-out time and the SELECT policy's `EXISTS`
+  is true at read time
+- **AND** the ordering SHALL be asserted by reversing it in a scratch copy and observing the
+  notification vanish from the requester's read, not merely by reading the function
+
+#### Scenario: The requester's other notifications are unaffected
+- **WHEN** the requester holds notifications for other clubs and rides
+- **THEN** none SHALL be affected by their request being declined
+
+### Requirement: A notification SHALL NOT be the only record of an event whose recipient may lose the ability to read it
+
+Where an event has a durable row of its own — a request, an invite, a membership — the notification
+SHALL be an **alert** and the row SHALL be the **record**. A surface SHALL be able to state the
+event's current status from the row alone, with every notification for it deleted.
+
+#### Scenario: The rider learns their request's outcome from the request
+- **WHEN** a rider's request is declined and no notification exists
+- **THEN** their own `club_join_requests` row SHALL still say `declined` with its `responded_at`
+- **AND** their Explore list SHALL stop offering the club, which is the observable outcome
+
+#### Scenario: An approval's record is the membership, not the notification
+- **WHEN** the approval notification is later evicted — the rider leaves the club, so the club stops
+  resolving for them
+- **THEN** the fact that they were once a member SHALL not have depended on that row
+
+### Requirement: The retraction SHALL delete exactly the row its matching fan-out would have written
+
+Deleting a `club_join_requests` row — a withdrawal by the requester, a clear by an admin, or the
+delete that approval performs — SHALL retract the `club_join_requested` notification, matched on the
+full event key including `type`, on `retract_postcard_liked`'s shape.
+
+It SHALL NOT touch a `club_join_request_approved` row.
+
+#### Scenario: A withdrawal takes its alert with it
+- **WHEN** a requester withdraws a pending request
+- **THEN** every admin's `club_join_requested` row for that pair SHALL be deleted
+- **AND** their unread counts SHALL fall with their lists in the same instant
+
+#### Scenario: An approval retracts the request alert and leaves the join alert
+- **WHEN** an approval deletes the request row
+- **THEN** the `club_join_requested` rows SHALL be retracted
+- **AND** the `club_joined` rows written by the existing `notify_club_joined` trigger SHALL remain
+- **AND** the requester's `club_join_request_approved` row SHALL remain
+
+#### Scenario: The retraction is scoped by type
+- **WHEN** the retraction runs
+- **THEN** it SHALL match on `type = 'club_join_requested'` explicitly, so a future type sharing
+  the same `club_id` cannot be collected by it
+
+### Requirement: A decline SHALL notify the rider without naming the individual who refused
+
+`089` SHALL add an eleventh type, `club_join_request_declined`, carrying **`club_id` alone** — the
+subject shape `club_joined` already has, so `notifications_subject_shape` gains one arm and no
+per-column conjunct is added for it.
+
+**`actor_id` SHALL be the requester themselves, and SHALL NOT be the declining admin or the club's
+owner.** `NOTIFICATION_SELECT` embeds `actor:profiles!actor_id(...)` and the recipient holds
+table-wide SELECT on `notifications`, so any other choice hands the requester the identity `085`
+refused a `responded_by` column to withhold — and a client-side omission is advisory, not a
+guarantee. The club's owner is worse on two counts: it is a false attribution, and `owner_id` is
+deliberately absent from `discoverable_private_clubs`' seven columns, so it would be a new
+disclosure rather than a restated one.
+
+Making `actor_id` nullable SHALL NOT be the answer either: it is NOT NULL on a shipped table and
+`036` §3's actor conjunct would refuse the row, requiring a second policy edit to rescue the first.
+
+#### Scenario: Two declines from two clubs produce two rows
+- **WHEN** the same rider is declined by two different private clubs
+- **THEN** **two** rows SHALL exist, because `036` §8's key spans `club_id` and the two differ there
+- **AND** this SHALL be asserted, because it is the exact property a subject-less type would lose to
+  `nulls not distinct`
+
+#### Scenario: The requester cannot learn who pressed Decline, by any route
+- **WHEN** the requester reads every column of their own decline notification, including through a
+  hand-rolled request that names `actor_id`
+- **THEN** the value SHALL be their own id
+- **AND** no column on `club_join_requests` SHALL name the responder either — `085`'s absence of
+  `responded_by` is unchanged by this file
+
+#### Scenario: The type list and the subject shape move together
+- **WHEN** `089` is applied
+- **THEN** `notifications_type_check` SHALL name **eleven** types and `notifications_subject_shape`
+  SHALL carry an arm for each, with `else false` intact
+- **AND** an insert of the new type with a NULL `club_id`, or carrying `postcard_id`, `comment_id`
+  or `ride_id`, SHALL be refused with `23514`
+
+#### Scenario: A rider still cannot write or forge one
+- **WHEN** any client role attempts to insert the new type
+- **THEN** it SHALL be refused, because `authenticated` holds no INSERT grant on `notifications` and
+  this change adds none
+
+### Requirement: The read and write predicates SHALL be widened together, and the type literal SHALL be asserted rather than read
+
+The disjunct SHALL be added to `036` §3's SELECT policy **and** to `036` §4's UPDATE policy in
+**both** its USING and its WITH CHECK. The suite already asserts the three expressions are textually
+identical and SHALL continue to.
+
+Widening only the read leaves a rider able to see a row they can never mark read, and therefore a
+badge that never clears — the same class of defect as a write reaching a row a read does not return,
+arriving from the other side.
+
+**This is the first per-TYPE clause in a policy `036` §3 deliberately wrote per COLUMN**, and its
+failure mode is silent: a mistyped literal makes the disjunct never fire, the row unreadable, and
+nothing red — `085`'s original defect exactly. The change SHALL therefore assert that the literal in
+the policy equals the literal the fan-out writes, compared as strings.
+
+#### Scenario: All three expressions carry the disjunct and remain identical
+- **WHEN** the SELECT qual, the UPDATE qual and the UPDATE `with_check` are read from `pg_policies`
+- **THEN** all three SHALL be textually identical and all three SHALL contain the disjunct
+
+#### Scenario: The type string in the policy matches the type string the trigger writes
+- **WHEN** the policy text and `private.notify_club_join_request_declined`'s `prosrc` are compared
+- **THEN** the same literal SHALL appear in both, asserted by extraction rather than by eye
+
+#### Scenario: The recipient can mark the decline read, and the count falls with it
+- **WHEN** the requester marks the row read
+- **THEN** the UPDATE SHALL succeed and `unread_notification_count()` SHALL fall by one, because it
+  is `security invoker` and reads the widened predicate
+
+#### Scenario: No other type's readability moves
+- **WHEN** a rider who is not a member of a private club holds a `club_joined`,
+  `club_join_requested`, `club_join_request_approved` or `ride_created_in_club` row naming it
+- **THEN** none SHALL be returned, before or after `089`
+- **AND** this SHALL be asserted per type, because "the disjunct is type-scoped" is exactly the
+  claim a reviewer must not have to take on trust
+
+### Requirement: The decline row SHALL lead with the club, not with its actor
+
+Because the actor is the reader, the row SHALL NOT draw the actor's name or avatar. It SHALL draw
+the **club's** name and avatar and a complete sentence after it, falling back to "A club" exactly as
+`club_joined` does when its subject does not resolve.
+
+This is `085`'s own rule applied to a component — *a club refuses as a club* — rather than a
+workaround for the actor choice.
+
+The row SHALL carry a destination: the club's reduced screen, whose id comes from the notification's
+own `club_id` **column** rather than from the `club:clubs(...)` embed, which returns null for this
+audience. It SHALL carry no action pair; there is nothing to answer.
+
+#### Scenario: The reader never sees their own name on the row
+- **WHEN** a decline row is rendered
+- **THEN** the leading name SHALL be the club's and SHALL NOT be the reader's username
+- **AND** a component test SHALL assert it, because the data shape makes the wrong rendering the
+  natural one
+
+#### Scenario: The destination survives, or the row does not
+- **WHEN** the club is deleted
+- **THEN** the notification SHALL be deleted with it, because `notifications.club_id` is
+  `ON DELETE CASCADE`
+- **AND** there SHALL be no state in which the row renders with a destination that 404s
+
+### Requirement: A new notification type SHALL widen both CHECK constraints, and SHALL apply only after the bundle that knows it is serving
+
+`notifications` SHALL gain a twelfth type, `club_waved`. Both constraints SHALL be widened in the
+same migration:
+
+- `notifications_type_check` — the type list.
+- `notifications_subject_shape` — a `WHEN 'club_waved'` arm requiring `club_id IS NOT NULL` and
+  `postcard_id`, `comment_id` and `ride_id` all NULL. The `ELSE false` fallthrough means a type
+  added to the first list and forgotten in the second is refused by the database rather than stored
+  shapeless, which is the property that makes forgetting loud.
+
+The subject shape SHALL be **identical to `club_joined`'s**, so `notifications_event_key` collapses
+a wave per `(recipient, type, actor, club)` with no new column and no ninth index.
+
+**This migration is additive in SCHEMA and its ordering constraint is in the CLIENT.** It SHALL be
+applied only **after** the bundle that knows the new type is confirmed serving — a `READY`
+deployment on the merge sha with `aliasError` null — on each project independently. `notificationCopy`
+and `NotificationsListItem`'s `describe` are exhaustive switches, so one `club_waved` row landing
+while an older bundle is serving takes that rider's whole notifications screen down. This is `089`'s
+rule, not a new one.
+
+#### Scenario: An unknown type is refused by the database
+- **WHEN** a row with a type absent from `notifications_subject_shape` is inserted
+- **THEN** the insert SHALL be refused by the `ELSE false` arm
+- **AND** the refusal SHALL not depend on the type list, so the two constraints cannot silently
+  disagree
+
+#### Scenario: The client is exhaustive before the type can exist
+- **WHEN** `092` is applied to a project
+- **THEN** `notificationCopy` and `NotificationsListItem`'s `describe` SHALL already handle
+  `club_waved` in the bundle that project is serving
+- **AND** the deployment SHALL have been confirmed `READY` on the merge sha before the apply
+
+#### Scenario: A wave collapses per waver, per club
+- **WHEN** one rider waves the same join, un-waves and waves again
+- **THEN** at most one live `club_waved` row SHALL exist for that recipient and waver in that club
+- **AND** the collapse SHALL come from `notifications_event_key`'s `nulls not distinct`
+
+### Requirement: A welcome notification SHALL disclose no more than `club_joined` already does
+
+The `club_waved` row carries a club and an actor and nothing else. Its copy SHALL therefore be
+resolvable from the same joins the notifications list already makes, and SHALL disclose nothing a
+`club_joined` row would not.
+
+The standing requirement that *a rider SHALL NOT learn a private club's name from a notification*
+applies unchanged: the club's name is resolved through the reader's own `clubs` SELECT policy, so a
+recipient who cannot see the club sees no name — and, per the fan-out delta, sees no row at all.
+
+The copy SHALL name the gesture in the app's own vocabulary. Per `design.md` §D1 the product word
+is **wave**; the notification SHALL not say "liked your join", which names neither the gesture nor
+anything a rider did.
+
+#### Scenario: The club name comes from the reader's own policy
+- **WHEN** a `club_waved` row's recipient can no longer see the club
+- **THEN** the row SHALL be withheld from their list
+- **AND** no club name SHALL be embedded in the notification row itself
+
+#### Scenario: The copy is exhaustive and named
+- **WHEN** `club_waved` is added
+- **THEN** `notificationCopy` SHALL have a branch for it and the type union in `src/types/index.ts`
+  SHALL carry it
+- **AND** the string SHALL use the app's word for the gesture
+
+### Requirement: A wave SHALL NOT become a push notification in this change
+
+`deliver-push-notifications` and `078`'s `push_devices` are untouched. `club_waved` SHALL not be
+added to any push delivery set.
+
+Stated as a prohibition rather than left unmentioned: a welcome is a warm, low-stakes signal and a
+push is an interruption. Adding a type to a delivery set is a one-line change that would ship a
+per-signup interruption class into the Welcome club, which is the exact scale problem `058`'s
+carve-out exists to prevent — arriving through a different door.
+
+#### Scenario: No push is delivered for a wave
+- **WHEN** a join is waved
+- **THEN** an in-app notification SHALL be written and no push SHALL be delivered
+- **AND** the decision SHALL be recorded where the delivery set is defined, so a later addition is
+  deliberate
+
+### Requirement: A notification a rider can read SHALL be one they can mark read
+
+The `notifications` SELECT policy and the UPDATE policy that marks a row read SHALL carry the
+**identical** predicate, and any change to one SHALL be made to the other in the same statement
+block.
+
+They are two policies — `Notifications are readable only by their recipient` and `Riders mark only
+their own readable notifications read` — whose quals are byte-identical today, measured. Widening
+only the read gives a rider a notification they can see and can never clear: the UPDATE is refused,
+`read_at` never moves, and the unread count carries a number with nothing behind it that explains
+itself. **The feature demo works**, which is why this needs an assertion rather than a review.
+
+#### Scenario: The two quals stay equal
+- **WHEN** `pg_policies` is read for both policies after any change to either
+- **THEN** the SELECT `qual`, the UPDATE `qual` and the UPDATE `with_check` SHALL be equal
+
+#### Scenario: An invitee can clear their own invite notification
+- **WHEN** the invitee of a private club marks their `club_invited` row read
+- **THEN** the UPDATE SHALL succeed and the unread count SHALL fall by one
+
+#### Scenario: They can still not retitle it
+- **WHEN** the same rider attempts to write any column other than `read_at`
+- **THEN** it SHALL be refused, unchanged by this requirement
+
+### Requirement: This change SHALL add no notification type, and the fan-out it makes necessary SHALL be a named successor rather than a silence
+
+No notification type is added by this change, no fan-out trigger is hung, and neither notification
+CHECK constraint is widened. Writing an introduction produces exactly the notifications the join
+already produced, whatever those are, **and nothing more**.
+
+**This change SHALL NOT restate the join's recipient set**, and does not depend on it. That set is
+being widened from the club's owner and admins to every member by **PD-368**, separately and
+order-neutrally, so a copy of it written here would be wrong shortly after it was written — which is
+the shape of every stale claim this repo has paid for.
+
+**Replies to club threads SHALL be notified, and by a separate change** — `098`, which also notified
+the thread wave that `101` later retired. That was
+decided on 2026-09-01 and it is not this change's work: it needs a thread reference on
+`notifications`, a rebuild of the collapse index, two new types, two fan-outs, a retraction and both
+exhaustive client switches, and its migration's safe deploy order is the **opposite** of this one's.
+Until it lands, a rider who introduces themselves and receives replies is told nothing — which is
+how every club thread already behaves, and is a scheduled gap rather than an accepted one.
+
+#### Scenario: The type set is unchanged by this change
+- **WHEN** this change is applied
+- **THEN** the set of permitted notification types SHALL be identical to the set before it
+- **AND** the subject-shape constraint SHALL be unchanged
+- **AND** no trigger SHALL be hung on `club_messages` or on any wave table
+
+#### Scenario: An introduction adds no notification to a join
+- **WHEN** a rider joins a club and then introduces themselves
+- **THEN** the notifications written SHALL be exactly those the join wrote
+- **AND** no recipient SHALL receive a second row
+
+#### Scenario: Widening the join's recipients does not touch this change
+- **WHEN** the join fan-out's recipient set is widened by its own change
+- **THEN** nothing in this change SHALL need to be edited
+- **AND** no requirement here SHALL name that set
+
+#### Scenario: The successor is named, not merely awaited
+- **WHEN** this change's artifacts are read
+- **THEN** they SHALL name the change that closes the gap and the migration it takes
+- **AND** the gap SHALL NOT be described as a permanent property of club threads
+
+### Requirement: A reply notification SHALL be designed as a fan-out over ALL club threads, and SHALL NOT be bolted onto an introduction
+
+The successor SHALL treat an introduction as an ordinary thread. No notification type SHALL exist
+that fires only for introductions: a rule that notifies the author of one kind of thread and not
+another is a visibility decision embedded in a copy string, and a rider cannot tell which kind of
+thread they are looking at.
+
+It SHALL answer the recipient set, the collapse rule, the retraction on delete and on un-wave, the
+block arm at fan-out as well as at read, the bound on the recipient set, and the ordering constraint
+a new type places on the client's exhaustive switches — every one of which is an existing
+requirement of this capability or of event fan-out integrity. `098` built the reply notification and
+a wave notification beside it; `101` retired the wave half, so the reply is the one that fires.
+
+#### Scenario: An introduction is not privileged over other threads
+- **WHEN** the reply notification is added
+- **THEN** it SHALL fire for every club thread on the same terms
+- **AND** no notification type SHALL exist that fires only for introductions
+
+### Requirement: A notification carrying a thread as its subject SHALL identify that thread, and SHALL NOT be collapsed by club alone
+
+A notification whose subject is a conversation SHALL carry a reference to that conversation. It
+SHALL NOT reuse the club reference as a stand-in.
+
+**This is a correctness requirement, not a modelling preference, and it fails silently.** The
+collapse index is unique over the recipient, the type, the actor and every subject column together,
+with NULLs treated as equal. A thread-subject notification carrying only a club therefore collapses
+per `(recipient, type, actor, club)`: the same actor replying in a **second** thread of the same club
+produces a conflict, the fan-out's conflict clause discards it, and the recipient is never told —
+with no error raised anywhere. Such a notification also cannot address the conversation, so opening
+it lands the rider on the club instead of on the thread.
+
+Adding the reference means rebuilding the collapse index. That rebuild SHALL leave every existing
+type's collapse unchanged — existing rows hold NULL in the new column and NULLs compare equal — and
+SHALL be performed as one statement block so no window exists in which the uniqueness is absent.
+Every cascade path into notifications SHALL remain indexed, so the new reference SHALL carry its own
+partial index.
+
+#### Scenario: Two threads, one actor, one recipient, two notifications
+- **WHEN** one rider replies in two different threads of the same club and both notify the same
+  recipient
+- **THEN** the recipient SHALL receive two notifications, one per thread
+
+#### Scenario: The rebuild does not change any existing collapse
+- **WHEN** the collapse index is rebuilt to include the thread reference
+- **THEN** every existing notification type SHALL collapse exactly as it did before
+- **AND** no window SHALL exist in which the uniqueness constraint is absent
+
+#### Scenario: The new cascade path is indexed
+- **WHEN** the thread reference is added
+- **THEN** it SHALL carry an index, like every other cascade path into notifications
+
+### Requirement: A reply to a club thread SHALL notify the rider who started it, and nobody else
+
+`notifications` SHALL gain a fifteenth type, `club_thread_replied`, written by an `AFTER INSERT`
+trigger on `public.club_messages`. Its recipient SHALL be `club_threads.author_id` for the thread the
+message belongs to. Its subject SHALL be `thread_id` alone, with `postcard_id`, `comment_id`,
+`ride_id` and `club_id` all NULL.
+
+**No notification in this schema fires on a `club_messages` insert today** — fourteen types and none
+of them a reply — so a rider who opens a thread and is answered by three people is told nothing, ever.
+That is the gap this requirement closes, and it is what makes an introduction thread worth writing.
+
+The recipient set is one rider by decision, on `ride_joined`'s original footing: *widening it is a
+product decision recorded as an open question, not a default.* `proposal.md` Q1 is that question.
+
+#### Scenario: The thread's author is notified of a reply
+
+- **WHEN** a club member inserts a `club_messages` row into a thread they did not author
+- **THEN** exactly one `club_thread_replied` row SHALL be written, addressed to
+  `club_threads.author_id`
+- **AND** it SHALL carry `thread_id` and no other subject column
+
+#### Scenario: Replying to your own thread notifies nobody
+
+- **WHEN** the thread's author replies in their own thread
+- **THEN** zero notification rows SHALL be written
+- **AND** the exclusion SHALL be by rider id read from the inserted row, never from `auth.uid()`
+
+#### Scenario: No other member of the club is notified
+
+- **WHEN** a reply is written in a thread with other members and other prior repliers present
+- **THEN** only the thread's author SHALL receive a row
+- **AND** the club's owner SHALL NOT, its admins SHALL NOT, its ordinary members SHALL NOT, and prior
+  repliers SHALL NOT
+- **AND** the assertion SHALL be made with at least one prior replier present, because a
+  single-participant thread cannot distinguish the author-only set from a participants set
+
+#### Scenario: One rider replying repeatedly produces one live row
+
+- **WHEN** the same rider posts ten messages in the same thread
+- **THEN** exactly one `club_thread_replied` row SHALL exist for that recipient and that actor in that
+  thread
+- **AND** its `created_at` SHALL be the instant of their **first** reply and SHALL NOT be moved
+- **AND** the collapse SHALL come from `notifications_event_key`, absorbed by `on conflict do nothing`
+  rather than raised
+
+#### Scenario: Five riders replying produce five rows
+
+- **WHEN** five different riders each reply in the same thread
+- **THEN** five `club_thread_replied` rows SHALL exist, all addressed to the thread's author
+- **AND** each SHALL open the same thread
+
+#### Scenario: A non-member cannot cause the notification at all
+
+- **WHEN** a rider who is not a member of the club attempts to insert a `club_messages` row into one
+  of its threads
+- **THEN** the insert SHALL be refused, because `club_messages` INSERT carries an `EXISTS` against
+  `club_threads` evaluated under the caller's own row security and `club_threads` SELECT requires
+  `private.is_club_member(club_id)`
+- **AND** zero notification rows SHALL exist afterwards, because an `AFTER` trigger never reaches a
+  refused write
+
+### Requirement: The thread wave SHALL be retired at the database, and a `club_thread_waved` row already written SHALL stay readable
+
+No wave on a club thread SHALL be sent, stored, fanned out or withdrawn. `101` (PD-373) dropped
+`public.club_thread_waves`, the triggers `notify_club_thread_waved` and `retract_club_thread_waved`,
+and the functions behind them, after PD-372 had already removed every client path to a thread wave.
+`notifications` has no INSERT policy and no INSERT grant for any client role, so nothing can write a
+new `club_thread_waved` row.
+
+**The type SHALL survive.** `club_thread_waved` SHALL stay in `notifications_type_check` and
+`notifications_subject_shape`, carrying `thread_id` alone, so that every row written before `101`
+stays legal: it is returned under the same `club_threads` conjunct as `club_thread_replied`, renders
+its actor and the thread's title, opens the thread, and is rendered by `121`'s `push_payload_for`.
+Such a row SHALL leave only by the cascades every notification already takes — its thread, its actor
+or its recipient being deleted — and SHALL NOT be deleted to make the constraint narrower.
+
+#### Scenario: No thread wave can be written
+- **WHEN** the schema is read after `101`
+- **THEN** `to_regclass('public.club_thread_waves')` SHALL be NULL, and no trigger or function
+  SHALL exist that writes or retracts a `club_thread_waved` row
+
+#### Scenario: A wave notification written before the retirement stays readable
+- **WHEN** a rider reads a `club_thread_waved` row written before `101` whose thread they can still
+  read
+- **THEN** the row SHALL be returned, rendered and linked exactly as a `club_thread_replied` row is
+
+### Requirement: A reply notification SHALL NOT be retracted when its message is deleted
+
+No `AFTER DELETE` trigger SHALL be created on `public.club_messages`.
+
+The standing rule already decides this: *"a retraction hanging off a DELETE the **actor** controls is
+a rider-aimed delete of another rider's row in a table no rider may write … accepted once for likes
+and not a second time."* `public.delete_own_club_message` is exactly such a DELETE. Two further
+reasons hold independently: a rider who replied three times holds **one** notification keyed on the
+thread, so removing it on one message's deletion would clear a row the other two still justify; and
+post-then-delete-then-post would re-notify once per cycle, which is `090`'s generator.
+
+#### Scenario: Deleting your reply leaves the notification standing
+
+- **WHEN** a replier deletes their own message through `public.delete_own_club_message`
+- **THEN** the `club_thread_replied` notification SHALL survive, unchanged
+- **AND** the recipient SHALL keep reading "replied to ‹thread›" about a message that is gone, which
+  is correct because the row records an **event at an instant** and not a standing claim about the
+  present
+
+#### Scenario: Deleting one of several replies changes nothing
+
+- **WHEN** a rider who has posted three messages in a thread deletes one of them
+- **THEN** exactly one `club_thread_replied` row SHALL still exist for that actor and thread
+
+### Requirement: The two new types SHALL carry a `thread_id`, and every other type SHALL carry NULL there
+
+`notifications` SHALL gain `thread_id uuid references public.club_threads(id) on delete cascade`.
+`notifications_type_check` SHALL admit the two new types. `notifications_subject_shape` SHALL be
+re-created with **sixteen** arms: two new ones requiring `thread_id IS NOT NULL` with every other
+subject column NULL, and **`AND thread_id IS NULL` added to each of the fourteen existing arms**. The
+`ELSE false` fallthrough SHALL remain.
+
+**Adding the column and leaving the existing arms alone is the defect this requirement exists to
+prevent.** A `postcard_liked` row could then legally carry a `thread_id`, which would place it in a
+different equivalence class under the collapse key, break its own retraction's four-column scope, and
+make it resolvable or not according to a thread nothing about it renders. Nothing would refuse it.
+
+#### Scenario: An existing type cannot carry a thread
+
+- **WHEN** a `postcard_liked`, `ride_joined`, `club_joined` or any other pre-existing row is written
+  with a non-NULL `thread_id`
+- **THEN** the insert SHALL be refused by `notifications_subject_shape`
+- **AND** the assertion SHALL name at least two of the fourteen, because a single one cannot show the
+  arms were rewritten rather than one arm patched
+
+#### Scenario: A new type cannot carry a postcard, comment, ride or club
+
+- **WHEN** a `club_thread_replied` or `club_thread_waved` row is written with any of `postcard_id`,
+  `comment_id`, `ride_id` or `club_id` non-NULL
+- **THEN** the insert SHALL be refused
+
+#### Scenario: A new type cannot be written without a thread
+
+- **WHEN** either new type is written with `thread_id` NULL
+- **THEN** the insert SHALL be refused
+
+#### Scenario: An unknown type is still refused by the fallthrough
+
+- **WHEN** a row with a type absent from `notifications_subject_shape` is inserted
+- **THEN** the insert SHALL be refused by the `ELSE false` arm
+- **AND** the refusal SHALL not depend on the type list, so the two constraints cannot silently
+  disagree
+
+### Requirement: The collapse key SHALL include `thread_id`, and rebuilding it SHALL change no existing collapse
+
+`notifications_event_key` SHALL be re-created over `(user_id, type, actor_id, postcard_id, comment_id,
+ride_id, club_id, thread_id)`, still `NULLS NOT DISTINCT`, with `thread_id` **appended last**.
+
+**Without it, a reply notification collapses per *(recipient, type, actor, club)*.** Ana replies in
+thread X and the author is notified; Ana replies in thread Y **in the same club** and `on conflict do
+nothing` absorbs it — so the author is never told, for ever, with nothing raised anywhere. That is why
+the column is mandatory rather than convenient.
+
+**The rebuild SHALL be proved safe rather than asserted**, on three measured facts: the key is a plain
+UNIQUE INDEX and not a table constraint, so nothing depends on a constraint name; every existing row
+has `thread_id` NULL and `NULLS NOT DISTINCT` compares NULLs equal, so appending a column constant
+across every existing row cannot split an equivalence class; and **every one of the thirteen
+existing write sites into `public.notifications` ends in a bare `on conflict do nothing`** with no
+index name and no column list, so none names the index and none needs editing.
+
+**The thirteen SHALL be found by selecting on the INSERT rather than on a naming convention.**
+Twelve are `private.notify_*`; the thirteenth is `public.approve_club_join_request`, which is in
+neither that schema nor that name shape. A derivation that filters on schema and prefix reports
+twelve and cannot see a fourteenth site.
+
+#### Scenario: Every existing type collapses exactly as it did
+
+- **WHEN** each pre-existing fan-out is exercised twice with identical inputs after the rebuild
+- **THEN** exactly one row SHALL exist for each, as before
+- **AND** liking, unliking and liking again SHALL still leave one row
+- **AND** leaving and rejoining a ride SHALL still produce exactly one
+
+#### Scenario: A duplicate found during the rebuild is a pre-existing defect, not a rebuild problem
+
+- **WHEN** the `create unique index` fails on existing data
+- **THEN** it SHALL be treated as a pre-existing duplicate and investigated as a finding
+- **AND** the migration SHALL NOT be made to succeed by weakening the index
+
+#### Scenario: No fan-out names the index
+
+- **WHEN** the fan-out functions are reviewed after the rebuild
+- **THEN** none SHALL contain `on conflict (…)`, `on constraint` or the index's name
+- **AND** this SHALL be checked by reading `prosrc` rather than inferred from the migration files,
+  because a function may have been replaced since the file that created it
+
+#### Scenario: Two replies in different threads of the same club both notify
+
+- **WHEN** one rider replies in two different threads of the same club, both authored by the same
+  recipient
+- **THEN** two `club_thread_replied` rows SHALL exist
+- **AND** this SHALL be asserted directly, because it is the exact case the seven-column key swallows
+  and the case no error would ever report
+
+### Requirement: A tap on either new notification SHALL open the thread, and SHALL open nothing when the thread is unreadable
+
+The destination for both types SHALL be `routes.clubThread(thread.id)` — the thread itself, not its
+club and not the club's thread list. Neither type SHALL draw a trailing thumbnail.
+
+#### Scenario: The row opens the conversation it names
+
+- **WHEN** a `club_thread_replied` or `club_thread_waved` row is rendered
+- **THEN** its link SHALL resolve to the thread screen for that thread
+- **AND** it SHALL NOT resolve to the club, because the rider was told about a conversation and the
+  club's thread list does not say which one
+
+#### Scenario: An unresolvable thread yields an unlinked row rather than a dead link
+
+- **WHEN** the thread does not resolve for the reader
+- **THEN** the row SHALL render unlinked
+- **AND** this branch SHALL be understood as the floor rather than a live state, because the SELECT
+  policy withholds the whole row in exactly that case — the same predicate resolves the embed and the
+  conjunct
+
+#### Scenario: The thread's title is read live and degrades rather than throwing
+
+- **WHEN** the thread embed returns nothing for a row that was returned
+- **THEN** the copy SHALL fall back to a generic phrase naming no thread
+- **AND** no title, club name or message body SHALL ever be stored on the notification row
+
+### Requirement: A notification whose gesture the app can no longer make SHALL keep working, and its type SHALL NOT be removed
+
+Retiring the affordance that produced a notification SHALL NOT retire the notification. Rows already
+delivered SHALL keep their copy, their actor, their subject and their destination, and the client
+switches that render them SHALL remain exhaustive over every type the database can hold.
+
+The destructive successor came as `101` (PD-373): it dropped the table and its fan-out triggers and
+kept the type, because the type appears in the notification table's constraints and narrowing them
+while rows carry it makes those constraints unvalidatable. Rows already holding it SHALL stay.
+
+#### Scenario: A delivered wave notification still opens its thread
+- **WHEN** a rider opens a notification recording a wave on their thread, delivered before this change
+- **THEN** it SHALL render with its existing copy
+- **AND** its destination SHALL open the thread it names
+
+#### Scenario: No switch is narrowed
+- **WHEN** this change is applied
+- **THEN** every notification type SHALL still be handled by the client
+- **AND** no case SHALL be deleted on the grounds that nothing writes it any more
+
+#### Scenario: The deep link is the surviving route to an unlisted thread
+- **WHEN** a notification names a thread that no browse surface lists
+- **THEN** following it SHALL open that thread under the same policies as any other route to it
+- **AND** the absence of a browse route SHALL NOT be treated as a permission decision
 
