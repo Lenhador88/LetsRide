@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
@@ -63,7 +63,10 @@ function writeStub(dir, name, body = '') {
   chmodSync(file, 0o755)
 }
 
-beforeEach(() => {
+// Once per file, not per case: macOS scans every newly written executable on
+// its first exec, and fresh stubs per case measured ~12s for this file against
+// ~1s shared — enough load to time out an unrelated 5s test in the full suite.
+beforeAll(() => {
   tmp = mkdtempSync(path.join(os.tmpdir(), 'xcode-cloud-'))
   const bin = path.join(tmp, 'bin')
   const kegBin = path.join(tmp, 'keg', 'bin')
@@ -82,7 +85,11 @@ beforeEach(() => {
   writeStub(kegBin, 'node', `echo "\${STUB_NODE_VERSION:-v${NODE_MAJOR}.0.0}"`)
 })
 
-afterEach(() => {
+beforeEach(() => {
+  rmSync(path.join(tmp, 'calls.log'), { force: true })
+})
+
+afterAll(() => {
   rmSync(tmp, { recursive: true, force: true })
 })
 
