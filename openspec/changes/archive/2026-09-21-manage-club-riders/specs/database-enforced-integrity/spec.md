@@ -1,3 +1,15 @@
+<!--
+CORRECTED AT ARCHIVE (2026-09-21), against `088` and this change's own
+`club-membership-administration` delta. As drafted, this block said both RPCs are gated on
+`clubs.owner_id = auth.uid()` and carried the scenario `An admin cannot make another admin`
+("it SHALL raise insufficient_privilege, so the admin set cannot become self-replicating"). `088`
+gates `promote_club_member` on `private.is_club_admin_for` — the owner or an admin — and
+`demote_club_admin` on the owner or the admin stepping down, which is what
+`club-membership-administration` specifies. The two sentences now say so, and the scenario is
+`Only the owner or an admin can make an admin`. The three standing scenarios the block omitted
+are carried in ahead of its own.
+-->
+
 ## MODIFIED Requirements
 
 ### Requirement: Club membership role SHALL NOT be self-assignable
@@ -15,9 +27,27 @@ absence of privilege as well as of policy.
 no role argument.** `public.promote_club_member(target_club, rider)` writes the literal `'admin'`
 and `public.demote_club_admin(target_club, rider)` writes the literal `'member'`; neither accepts a
 role parameter, so — as with `085`'s `private.join_club_from_request` — there is no input by which a
-caller could attempt a value the design does not offer. Both are gated on `clubs.owner_id =
-auth.uid()` inside their own bodies, because RLS does not apply inside a definer function and that
-check is therefore the entire access control.
+caller could attempt a value the design does not offer. Each is gated inside its own body —
+promotion on `private.is_club_admin_for(auth.uid(), target_club)`, the owner or an admin; demotion
+on the owner, or the admin stepping down — because RLS does not apply inside a definer function and
+that check is therefore the entire access control. `club-membership-administration` states the
+authority in full.
+
+#### Scenario: A non-member joining a public club cannot arrive as owner or admin
+- **WHEN** a signed-in rider who is not a member inserts a `club_members` row for a public club
+  with `role` set to `owner` or `admin`
+- **THEN** the database SHALL reject the write
+
+#### Scenario: The creator's own owner row is still permitted
+- **WHEN** the rider named in `clubs.owner_id` inserts their own membership row with
+  `role = 'owner'`
+- **THEN** the write SHALL succeed
+
+#### Scenario: Nobody can promote an existing member
+- **WHEN** any rider — including the club owner — attempts to UPDATE `club_members.role`
+- **THEN** the write SHALL be refused, because no UPDATE policy on `club_members` exists
+- **AND** this SHALL remain true until the invitations feature ships its own policy, so that
+  the absence is a recorded gap rather than an accident
 
 #### Scenario: No client role can write `admin` by any verb
 - **WHEN** a rider attempts to insert a `club_members` row with `role = 'admin'`, or to update an
@@ -31,9 +61,11 @@ check is therefore the entire access control.
 - **THEN** neither SHALL accept a `text` role parameter, and each SHALL write its value as a literal
   in `prosrc`
 
-#### Scenario: An admin cannot make another admin
-- **WHEN** an admin calls `promote_club_member`
-- **THEN** it SHALL raise `insufficient_privilege`, so the admin set cannot become self-replicating
+#### Scenario: Only the owner or an admin can make an admin
+- **WHEN** a rider who is neither the club's owner nor one of its admins calls `promote_club_member`
+- **THEN** it SHALL raise `insufficient_privilege`
+- **AND** an admin's promotion SHALL succeed — `club-membership-administration`'s *Promotion SHALL be
+  open to admins* is the decision, and it records the counter-argument
 
 #### Scenario: The owner's roster row is unreachable by either RPC
 - **WHEN** either RPC targets `clubs.owner_id`

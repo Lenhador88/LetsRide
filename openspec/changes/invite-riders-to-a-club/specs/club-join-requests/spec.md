@@ -2,12 +2,11 @@
 
 ## MODIFIED Requirements
 
-> **Read this delta against the active changes, not against `openspec/specs/`.** The
-> `club-join-requests` capability is added by `show-private-clubs-and-request-to-join` (PD-325) and
-> extended by `manage-club-riders` (PD-326); **neither is archived**, so the base text these
-> requirements modify lives in
-> `openspec/changes/archive/2026-09-21-show-private-clubs-and-request-to-join/specs/club-join-requests/spec.md`.
-> Archive those two before this change, or the delta has nothing to attach to.
+> **Read this delta against `openspec/specs/club-join-requests/spec.md`.** The capability was added
+> by `show-private-clubs-and-request-to-join` (PD-325) and extended by `manage-club-riders` (PD-326),
+> and both archived on 2026-09-21 —
+> `openspec/changes/archive/2026-09-21-show-private-clubs-and-request-to-join/specs/club-join-requests/spec.md`
+> is the first — so the standing spec is the base text these requirements modify.
 
 ### Requirement: Only the rider themselves SHALL create a request, and only for a club the accessor would return
 

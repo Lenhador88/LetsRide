@@ -1,10 +1,9 @@
 # club-membership-administration
 
-> **Read this delta against the active change, not against `openspec/specs/`.** The
-> `club-membership-administration` capability is added by `manage-club-riders` (PD-326) and **is not
-> archived**, so the base text these requirements modify lives in
-> `openspec/changes/manage-club-riders/specs/club-membership-administration/spec.md`. Archive that
-> change before this one, or the delta has nothing to attach to.
+> **Read this delta against `openspec/specs/club-membership-administration/spec.md`.** The
+> capability was added by `manage-club-riders` (PD-326), which archived on 2026-09-21 —
+> `openspec/changes/archive/2026-09-21-manage-club-riders/specs/club-membership-administration/spec.md`
+> — so that is the base text these requirements modify.
 
 ## MODIFIED Requirements
 

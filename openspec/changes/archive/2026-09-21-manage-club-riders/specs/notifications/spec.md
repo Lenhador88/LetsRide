@@ -1,3 +1,13 @@
+<!--
+ADDED AT ARCHIVE (2026-09-21): the MODIFIED block for `A notification whose recipient cannot resolve its subject SH…`.
+`show-private-clubs-and-request-to-join` stated "there SHALL be no `club_join_request_declined`
+type" and `The decline writes no notification at all`; `089` reversed both. This change's
+`club-join-requests` ordering note meant archiving in order to keep that sentence out of the
+standing spec, but an ADDED requirement elsewhere cannot remove it, so it is retired here: that
+paragraph now points at the two requirements that replaced it, and the zero-rows scenario is
+replaced by `club-join-requests`' `The decline writes exactly one row, to exactly one rider`.
+-->
+
 ## MODIFIED Requirements
 
 ### Requirement: A rider SHALL NOT learn a private club's name, or a private ride's title, from a notification
@@ -69,6 +79,38 @@ any non-member holding one — SHALL NOT be made.
   including when they have nulled their own username
 - **AND** `private.is_blocked(x, x)` SHALL be false, because `blocks` carries
   `CHECK (blocker_id <> blocked_id)`
+
+### Requirement: A notification whose recipient cannot resolve its subject SHALL NOT be written, and the case where that forecloses a notification entirely SHALL be recorded rather than worked around
+
+The standing requirement *"A rider SHALL NOT learn a private club's name … from a notification"*
+means a `club_id`-carrying row addressed to a non-member of a private club is **written and never
+returned**: `036` §3's conjunct is
+`club_id is null or exists (select 1 from public.clubs scl where scl.id = notifications.club_id)`,
+evaluated under the reader's own row security.
+
+**A declined requester was the case this foreclosed, and `089` (PD-335) reopened it without a
+workaround.** A declined requester holds no membership, so under that conjunct alone the club does
+not resolve and the row would be invisible. `club_join_request_declined` is instead returned through
+a type-scoped disjunct evaluated live — *A rider SHALL NOT learn a private club's name, or a private
+ride's title, from a notification* states it, and *A decline SHALL notify the rider without naming
+the individual who refused* states the row. The refusal SHALL still be recorded on the
+`club_join_requests` row, which stays the record.
+
+This requirement SHALL also bind the general case: a fan-out that cannot deliver to its intended
+recipient SHALL be **omitted with its reason written down**, and SHALL NOT be shipped as a row
+nobody reads.
+
+#### Scenario: The approval's notification resolves, and only because of statement order
+- **WHEN** `approve_club_join_request` succeeds
+- **THEN** the `club_members` row SHALL be written **before** the notification, so that
+  `private.can_read_club(requester, club)` is true at fan-out time and the SELECT policy's `EXISTS`
+  is true at read time
+- **AND** the ordering SHALL be asserted by reversing it in a scratch copy and observing the
+  notification vanish from the requester's read, not merely by reading the function
+
+#### Scenario: The requester's other notifications are unaffected
+- **WHEN** the requester holds notifications for other clubs and rides
+- **THEN** none SHALL be affected by their request being declined
 
 ## ADDED Requirements
 
