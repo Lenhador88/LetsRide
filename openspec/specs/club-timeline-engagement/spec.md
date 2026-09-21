@@ -9,42 +9,33 @@ A wave row SHALL be visible exactly when its subject is visible to the caller, a
 achieved by an `EXISTS` against the parent table evaluated under the caller's own row security —
 never by restating membership, club visibility, or a block on the subject.
 
-Each SELECT policy SHALL be `user_id = auth.uid() or (<parent EXISTS> and not
+The SELECT policy SHALL be `user_id = auth.uid() or (<parent EXISTS> and not
 private.is_blocked(auth.uid(), user_id))` — the own-row branch a disjunct of the **whole** policy,
-for the reason the withdrawal requirement below states.
+for the reason the withdrawal requirement below states. `club_join_waves`' parent SHALL be
+`exists (select 1 from public.club_members m where m.club_id = club_join_waves.club_id and m.user_id = club_join_waves.subject_user_id)`.
 
-- `club_thread_waves`' parent SHALL be
-  `exists (select 1 from public.club_threads t where t.id = club_thread_waves.thread_id)`.
-- `club_join_waves`' parent SHALL be
-  `exists (select 1 from public.club_members m where m.club_id = club_join_waves.club_id and m.user_id = club_join_waves.subject_user_id)`.
+**There is one wave table.** `092` shipped a second, `club_thread_waves`; PD-372 removed every client
+path to it and `101` dropped it, with its policies, grants and triggers.
 
 **Both sides of every comparison in a parent `EXISTS` SHALL be table-qualified.** `club_members`
 has a column named `club_id` and one named `user_id`, so an unqualified comparison deparses to
 `m.club_id = m.club_id` and the subquery degenerates into "can I read any roster row anywhere".
 
-Neither policy SHALL name `private.is_club_member`, `clubs.is_public`, `clubs.owner_id`, or a block
-on the thread's author or the join's subject. Each parent policy already carries all of them, and a
-second copy is a policy free to drift.
+The policy SHALL NOT name `private.is_club_member`, `clubs.is_public`, `clubs.owner_id`, or a block
+on the join's subject. The parent policy already carries all of them, and a second copy is a policy
+free to drift.
 
 The INSERT policy SHALL use the **same** `EXISTS` as SELECT, so "cannot wave what you cannot see"
 needs no separate rule and cannot fall out of step with it.
 
-#### Scenario: A non-member of a public club sees and writes no wave
-- **WHEN** a signed-in rider who is not a member of a public club queries either wave table for
-  that club
-- **THEN** `club_thread_waves` SHALL return zero rows, because `club_threads` SELECT requires
-  `private.is_club_member`
-- **AND** an INSERT SHALL be refused, because the INSERT policy's `EXISTS` is the same one
-- **AND** neither outcome SHALL depend on any predicate written in this change
-
 #### Scenario: A policy change on the parent reaches the wave with no edit here
-- **WHEN** the SELECT policy on `club_threads` or `club_members` is later narrowed or widened
-- **THEN** the corresponding wave table's audience SHALL move with it
+- **WHEN** the SELECT policy on `club_members` is later narrowed or widened
+- **THEN** the wave table's audience SHALL move with it
 - **AND** no migration, no policy and no client module SHALL need editing for that to hold
 
 #### Scenario: The client adds no audience filter
-- **WHEN** either wave read is issued from `src/lib/data/`
-- **THEN** its predicates SHALL name only the subject ids and, for joins, the club
+- **WHEN** the wave read is issued from `src/lib/data/`
+- **THEN** its predicates SHALL name only the subject ids and the club
 - **AND** SHALL NOT include a membership test, a block test, a club-visibility test or a role test
 
 ### Requirement: Every role's reach into a wave SHALL be stated, including the negative cases
@@ -53,17 +44,18 @@ Membership below is `private.is_club_member(club_id)`, which is a `club_members`
 `clubs.owner_id` (`054`, split by `060`), so an owner holding no roster row is a member for every
 rule here.
 
-| Role | May read a wave | May wave a thread | May wave a join | Notes |
-|---|---|---|---|---|
-| Club **owner** | yes, all | yes | yes | reaches everything a member does |
-| Club **admin** (`club_members.role = 'admin'`) | yes, all | yes | yes | **no policy in this change tests `role`**, and none SHALL |
-| Club **member** | yes, all | yes | yes | |
-| **Non-member of a PUBLIC club** | **no thread waves**; **join waves for that club's joins, which they can already read** | **no** | **YES** | `club_members` SELECT has a public-club disjunct and `club_threads` SELECT does not; the two halves differ and the difference is not an oversight. **The join-wave WRITE follows the read, because the INSERT policy uses the same `EXISTS`** — making it "no" would require restating membership, which the first requirement above forbids by name. `092.1` asserts both halves |
-| **Non-member of a PRIVATE club** | none | no | no | `085`; `ClubPreviewScreen` issues no such read |
-| **Rider blocked by, or blocking, the WAVER** | never sees that wave, and it never counts for them | n/a | n/a | symmetric, via the reactor block arm |
-| **Rider blocked by, or blocking, the THREAD AUTHOR** | sees no wave on that thread | **no** | n/a | the thread row is already absent |
-| **Rider blocked by, or blocking, the JOIN SUBJECT** | sees no wave on that join | n/a | **no** | the membership row is already absent |
-| **Signed-out visitor** | reaches the shell and no data | no | no | `anon` holds no grant on either table and this change adds none |
+| Role | May read a wave | May wave a join | Notes |
+|---|---|---|---|
+| Club **owner** | yes, all | yes | reaches everything a member does |
+| Club **admin** (`club_members.role = 'admin'`) | yes, all | yes | **no policy in this change tests `role`**, and none SHALL |
+| Club **member** | yes, all | yes | |
+| **Non-member of a PUBLIC club** | **join waves for that club's joins, which they can already read** | **YES** | `club_members` SELECT has a public-club disjunct. **The join-wave WRITE follows the read, because the INSERT policy uses the same `EXISTS`** — making it "no" would require restating membership, which the first requirement above forbids by name. `092.1` asserts it |
+| **Non-member of a PRIVATE club** | none | no | `085`; `ClubPreviewScreen` issues no such read |
+| **Rider blocked by, or blocking, the WAVER** | never sees that wave, and it never counts for them | n/a | symmetric, via the reactor block arm |
+| **Rider blocked by, or blocking, the JOIN SUBJECT** | sees no wave on that join | **no** | the membership row is already absent |
+| **Signed-out visitor** | reaches the shell and no data | no | `anon` holds no grant on the table and this change adds none |
+
+No row names a thread wave: `101` dropped that table, so there is none to read or write.
 
 `club_join_waves`' row for a non-member of a public club is reachable — for reading **and for
 writing** — and empty in practice, because `ClubTimeline` disables every member-only read for a
@@ -83,20 +75,20 @@ table is corrected rather than the policy, because a signed-in rider welcoming a
 - **AND** no policy, grant, RPC or control introduced by this change SHALL reference `role`
 
 #### Scenario: A signed-out visitor reaches nothing
-- **WHEN** a request against either wave table arrives with no session
+- **WHEN** a request against the wave table arrives with no session
 - **THEN** zero rows SHALL be returned and every write SHALL be refused, because `anon` holds no
   grant
 - **AND** this change SHALL add none, per decision #1
 
 #### Scenario: The owner of a club they have left still waves in it
-- **WHEN** the rider named in `clubs.owner_id` holds no `club_members` row and waves a thread
+- **WHEN** the rider named in `clubs.owner_id` holds no `club_members` row and waves a join
 - **THEN** the write SHALL succeed, because the parent `EXISTS` resolves through
   `private.is_club_member`'s owner disjunct
-- **AND** no owner-specific arm SHALL appear in either policy
+- **AND** no owner-specific arm SHALL appear in the policy
 
 ### Requirement: A blocked rider's wave SHALL be invisible AND uncounted, and the count SHALL therefore be per-viewer
 
-Both wave tables SHALL carry the symmetric reactor arm
+The wave table SHALL carry the symmetric reactor arm
 `user_id = auth.uid() or not private.is_blocked(auth.uid(), user_id)`.
 
 The count SHALL be computed from the rows RLS returns and SHALL NOT be stored. `009` refused a
@@ -107,24 +99,24 @@ them."*
 **Three consequences follow and SHALL be treated as designed behaviour, stated wherever the count
 is defined:**
 
-1. **Two riders looking at one thread MAY see different totals**, and neither is told why.
+1. **Two riders looking at one join MAY see different totals**, and neither is told why.
 2. **A rider blocked by every other member still sees `1`** — their own, through the own-row arm.
 3. **A wave placed before a block SURVIVES the block.** Blocking changes what a rider can see,
    never what exists (`009` §7).
 
 Because the number is not a shared fact, it SHALL NOT be used as one. A wave count SHALL NOT order,
 rank or sort any list; SHALL NOT feed a threshold, badge or label implying a shared judgement
-("popular", "trending", "3+ waves"); and SHALL NOT be denormalised onto `club_threads`,
-`club_members` or any other row.
+("popular", "trending", "3+ waves"); and SHALL NOT be denormalised onto `club_members` or any other
+row.
 
 #### Scenario: A blocked rider's wave is absent from the rows and from the total
-- **WHEN** A has blocked B, and B has waved a thread both can otherwise reach
+- **WHEN** A has blocked B, and B has waved a join both can otherwise reach
 - **THEN** A's read SHALL return the row set without B's wave
-- **AND** A's count SHALL be one lower than B's own count of the same thread
+- **AND** A's count SHALL be one lower than B's own count of the same join
 - **AND** the two SHALL be produced by one mechanism, not by a client-side subtraction
 
 #### Scenario: A rider blocked by everyone still sees their own wave
-- **WHEN** a rider is blocked by every other member of the club and waves a thread
+- **WHEN** a rider is blocked by every other member of the club and waves a join
 - **THEN** their own count SHALL read `1`
 - **AND** every other member's count SHALL read `0`
 - **AND** neither view SHALL disclose that the other exists
@@ -136,7 +128,7 @@ rank or sort any list; SHALL NOT feed a threshold, badge or label implying a sha
   pagination differ per rider
 
 #### Scenario: A block placed after a wave does not delete it
-- **WHEN** B waves a thread and A then blocks B
+- **WHEN** B waves a join and A then blocks B
 - **THEN** the row SHALL still exist
 - **AND** it SHALL be absent from A's reads and from A's count, and present in B's
 
@@ -154,7 +146,7 @@ Relaxing the DELETE policy cannot repair that, because SELECT is applied first.
 **The own-row branch SHALL therefore be a disjunct of the WHOLE SELECT policy**, not a disjunct
 inside the block arm. Inside the block arm it is a **no-op** — `blocks_no_self_block` already makes
 `is_blocked(x, x)` false — and the parent `EXISTS` still dominates, so a rider blocked by a
-thread's author, **and** a rider who has merely left the club, both read zero of their own waves
+join's subject, **and** a rider who has merely left the club, both read zero of their own waves
 and both get `DELETE 0` with the row surviving while every remaining member still sees it. That
 shape was specified first, measured on the real chain, and corrected; `postcard_likes` carries it
 today and is filed separately. Un-hoisting the branch SHALL fail an assertion, because it looks
@@ -163,55 +155,21 @@ like a tightening and its cost is invisible from the DELETE policy alone.
 No role other than the row's author SHALL delete a wave. There SHALL be no owner or admin
 moderation verb for a wave, no `security definer` RPC, and no new advisor.
 
-**Narrowed by this change to the DATABASE layer, and the app-level exception is named rather than
-left for a reader to discover.** Every clause of this requirement stands as written: the DELETE
-policy is still `using (user_id = auth.uid())` with no visibility conjunct, the own-row branch is
-still a disjunct of the whole SELECT policy, and all three of its scenarios still hold — they are
-database-level and this change touches no policy, no grant and no table.
-
-**What is no longer true is its stated REASON, for thread waves alone.** *"A rider must be able to
-withdraw a wave from a subject that has gone out of view, or the row is stranded"* — and after this
-change every existing `club_thread_waves` row IS stranded, because the control that reached the
-DELETE is gone with the rest of the client path. Three rows on DEV, measured 2026-09-02. The
-product owner asked for this directly (*"yes, only annoucements are waveable please"*), so the
-requirement is narrowed rather than contested:
-
-- **For `club_join_waves` it holds end to end** — the join row is the club timeline's only waveable
-  row, and its control still withdraws.
-- **For `club_thread_waves` it holds at the database and nowhere above it.** A rider who waved a
-  thread before this change SHALL NOT be offered a way to withdraw it, and the app SHALL NOT grow
-  one back: re-adding a control to reach a stranded row would re-add the double count this change
-  removed.
-
-**The remedy is the successor, not a control.** `proposal.md` §The table with no writer names what
-dropping the table owes; until then the rows are inert rather than repairable, and that is the
-cost of the instruction rather than an oversight in it. A session reading this capability end to
-end SHALL read this as a superseding decision and SHALL NOT file the contradiction as a bug.
-
-#### Scenario: A wave on a thread whose author has since blocked the waver is still withdrawable
-- **WHEN** B waves A's thread and A then blocks B
-- **THEN** B SHALL still be able to read and delete their own wave
-- **AND** the delete SHALL match the row rather than reporting a silent success against zero rows
-- **AND** B SHALL still read no OTHER rider's wave on that thread, and still not read the thread
+It holds end to end: the join row is the club timeline's only waveable row, and its control still
+withdraws. The thread wave, whose rows PD-372 left without a control, is gone with the table `101`
+dropped.
 
 #### Scenario: A rider who has left the club can still withdraw what they left behind
-- **WHEN** a rider leaves a private club in which they waved a thread and welcomed a joiner
-- **THEN** both waves SHALL still be deletable by them, each delete matching its row
+- **WHEN** a rider leaves a private club in which they welcomed a joiner
+- **THEN** the wave SHALL still be deletable by them, the delete matching its row
 - **AND** no block SHALL be involved, `private.is_club_member` simply having stopped answering
 - **AND** the other waver's rows SHALL be untouched by the departure
 
 #### Scenario: No club role can delete another rider's wave
 - **WHEN** a club owner or admin attempts to delete a wave they did not write
 - **THEN** the delete SHALL match zero rows
-- **AND** no RPC SHALL exist that would let them, because `moderate_club_thread` already removes
-  the thread and cascades its waves
-
-#### Scenario: A pre-existing thread wave cannot be withdrawn from the app
-- **WHEN** a rider who waved a club thread before this change opens that thread's row on the club
-  timeline
-- **THEN** no wave control SHALL be drawn, waved or not
-- **AND** the row SHALL remain in `club_thread_waves` with its DELETE policy unchanged
-- **AND** no new affordance SHALL be added to reach it
+- **AND** no RPC SHALL exist that would let them, because removing the member already removes the
+  join and cascades its waves
 
 ### Requirement: A join wave SHALL die with the membership it decorates, not with the rider
 
@@ -257,8 +215,9 @@ so both need their own.
 
 ### Requirement: A wave SHALL be a participation-gated content write
 
-Both wave tables SHALL carry a `BEFORE INSERT` `enforce_participation_gate` trigger with
-`when (current_user = 'authenticated')`, taking the gate count from **17** to **19**.
+`club_join_waves` SHALL carry a `BEFORE INSERT` `enforce_participation_gate` trigger with
+`when (current_user = 'authenticated')`. `092` hung one on each of its two wave tables, taking the
+gate count from **17** to **19**; `101` dropped `club_thread_waves`, and its trigger with it.
 
 A wave is a rider-authored act visible to others and addressed, in the join case, to a named
 person. `023` refuses content writes without a consent stamp, and an account created by calling
@@ -269,7 +228,7 @@ The `when` clause is **not decoration**: `023` §2 measured that inside a `secur
 the gate would never fire. It is evaluated in the caller's context before the function is entered.
 
 #### Scenario: An unconsented account cannot wave
-- **WHEN** an account with `terms_accepted_at` NULL attempts either INSERT
+- **WHEN** an account with `terms_accepted_at` NULL attempts the INSERT
 - **THEN** the write SHALL be refused by the trigger
 - **AND** the refusal SHALL come from the database, not from a Zod schema or a disabled button
 
@@ -280,38 +239,21 @@ the gate would never fire. It is evaluated in the caller's context before the fu
 - **AND** the suite SHALL assert the presence on each new table by name, because a flat count
   cannot tell a new table's gate from a moved one
 
-### Requirement: A rider SHALL NOT be able to welcome themselves, and a rider MAY endorse their own thread
+### Requirement: A rider SHALL NOT be able to welcome themselves
 
-`club_join_waves` INSERT SHALL additionally require `user_id <> subject_user_id`.
+`club_join_waves` INSERT SHALL additionally require `user_id <> subject_user_id`. A wave on a join is
+*welcome*, addressed to a person; addressed to oneself it expresses nothing, and refusing it in the
+WITH CHECK keeps a self-addressed row out of the fan-out's path rather than relying on the fan-out
+to exclude it.
 
-`club_thread_waves` SHALL carry **no** such restriction, matching `postcard_likes`, which permits a
-self-like.
-
-The asymmetry is deliberate and SHALL be recorded where the constraint is written, so it is not
-read as an oversight and removed for consistency. A wave on a thread is an endorsement of a topic,
-which a rider may coherently feel about their own. A wave on a join is *welcome*, addressed to a
-person; addressed to oneself it expresses nothing, and refusing it in the WITH CHECK keeps a
-self-addressed row out of the fan-out's path rather than relying on the fan-out to exclude it.
-
-**The database half of this requirement stands unchanged and SHALL NOT be altered by this change**:
-the join wave's WITH CHECK SHALL continue to refuse `user_id = subject_user_id`, and the thread wave
-table SHALL continue to carry no such restriction, matching the self-like the postcard reaction
-permits.
-
-**The client half is retired.** No affordance in the app writes a thread wave any more, so "a rider
-MAY endorse their own thread" describes a permission the database still grants and the app no longer
-exercises. The asymmetry SHALL stay recorded where the constraint is written, so it is not read as an
-oversight and removed for consistency by a session that notices the affordance is gone.
+This requirement once also let a rider endorse their own thread, matching the self-like
+`postcard_likes` permits. That half went with the thread wave: PD-372 removed its affordance and
+`101` dropped `club_thread_waves`.
 
 #### Scenario: A self-welcome is still refused by the database
 - **WHEN** a rider attempts to wave their own join
 - **THEN** the INSERT SHALL be refused
 - **AND** the affordance SHALL be absent from their own join row
-
-#### Scenario: The thread wave table keeps its permissions
-- **WHEN** this change is applied
-- **THEN** no policy, grant, constraint or trigger on either wave table SHALL be altered
-- **AND** the assertions covering them SHALL neither be changed nor removed
 
 ### Requirement: The wave SHALL NOT introduce a timeline source, and the condition under which that changes SHALL be stated
 
@@ -319,7 +261,7 @@ A wave decorates an entry that is already on the stream. It SHALL contribute no 
 no ordering key and no `ClubTimelineSource`, so `mergeClubTimeline`, `boundedHorizon` and the
 coherence horizon are untouched by this change and **no new horizon is declared**.
 
-Each wave read SHALL be scoped to the subject ids the timeline is already holding — `attachLikeState`'s
+The wave read SHALL be scoped to the subject ids the timeline is already holding — `attachLikeState`'s
 shape — and SHALL therefore be bounded by the timeline's own bound rather than by one of its own.
 
 **If a later change draws a wave as its own entry** — *"Ana waved at Bruno"* — it becomes a source,
@@ -332,12 +274,12 @@ requirement. Stating the condition is the requirement; the entry is a non-goal h
 - **AND** no source SHALL be added, and no `horizon` field SHALL be computed from a wave read
 
 #### Scenario: A wave read is bounded by the entries on screen
-- **WHEN** the wave reads are issued
-- **THEN** each SHALL name the subject ids already returned by the timeline's own sources
-- **AND** SHALL NOT issue an unbounded read of either wave table
+- **WHEN** the wave read is issued
+- **THEN** it SHALL name the subject ids already returned by the timeline's own sources
+- **AND** SHALL NOT issue an unbounded read of the wave table
 
 #### Scenario: A failed wave read costs marks and not rows
-- **WHEN** either wave read errors
+- **WHEN** the wave read errors
 - **THEN** the timeline entries SHALL render with the toggle unpressed and no count
 - **AND** no error state SHALL be shown for the timeline, and no entry SHALL be withheld
 
@@ -356,7 +298,7 @@ The state table stands unchanged **for the row that still carries a wave**:
 | Loading | the entry SHALL render immediately with the toggle disabled and no count; the stream SHALL NOT be gated on the wave read |
 | Error | a failed read costs marks not rows; a failed **write** SHALL roll the optimistic toggle back and surface its message inline without reflowing the row |
 | Offline | the write SHALL fail and say so. It SHALL NOT be queued: a wave is an expression at a moment, and replaying it on reconnect makes the app act for the rider later, possibly after they have blocked the subject |
-| Permission denied | **the affordance SHALL be absent, not disabled and not erroring.** A rider who cannot read the subject never sees the entry; both INSERT policies use the same `EXISTS` as SELECT, so entry-visible-but-write-refused is empty by construction. A refusal SHALL NOT be rendered as a message naming a block |
+| Permission denied | **the affordance SHALL be absent, not disabled and not erroring.** A rider who cannot read the subject never sees the entry; the INSERT policy uses the same `EXISTS` as SELECT, so entry-visible-but-write-refused is empty by construction. A refusal SHALL NOT be rendered as a message naming a block |
 | Partial | a wave read resolving while another decoration has not SHALL be correct and SHALL NOT blank either |
 | Stale | read on load, no subscription. Another rider's wave appears on the next load; the rider's own toggle is optimistic and locally authoritative until the write answers |
 
@@ -483,11 +425,6 @@ The following SHALL be stated for such a table rather than discovered:
 - **WHEN** the thread wave control is removed
 - **THEN** its action, its read, its cache key and its component prop SHALL be removed with it
 - **AND** no exported function SHALL remain whose only caller was the removed control
-
-#### Scenario: The table is named, not dropped
-- **WHEN** the change is complete
-- **THEN** the thread wave table, its policies, its grants and its fan-out triggers SHALL be unchanged
-- **AND** the proposal SHALL name it as having no writer in the app, with what a successor owes
 
 #### Scenario: Delivered notifications survive the retirement
 - **WHEN** a rider opens a notification recording a thread wave delivered before this change

@@ -1401,7 +1401,8 @@ being widened from the club's owner and admins to every member by **PD-368**, se
 order-neutrally, so a copy of it written here would be wrong shortly after it was written — which is
 the shape of every stale claim this repo has paid for.
 
-**Comments and waves on club threads SHALL be notified, and by a separate change.** That was
+**Replies to club threads SHALL be notified, and by a separate change** — `098`, which also notified
+the thread wave that `101` later retired. That was
 decided on 2026-09-01 and it is not this change's work: it needs a thread reference on
 `notifications`, a rebuild of the collapse index, two new types, two fan-outs, a retraction and both
 exhaustive client switches, and its migration's safe deploy order is the **opposite** of this one's.
@@ -1429,7 +1430,7 @@ how every club thread already behaves, and is a scheduled gap rather than an acc
 - **THEN** they SHALL name the change that closes the gap and the migration it takes
 - **AND** the gap SHALL NOT be described as a permanent property of club threads
 
-### Requirement: A reply or wave notification SHALL be designed as a fan-out over ALL club threads, and SHALL NOT be bolted onto an introduction
+### Requirement: A reply notification SHALL be designed as a fan-out over ALL club threads, and SHALL NOT be bolted onto an introduction
 
 The successor SHALL treat an introduction as an ordinary thread. No notification type SHALL exist
 that fires only for introductions: a rule that notifies the author of one kind of thread and not
@@ -1439,11 +1440,12 @@ thread they are looking at.
 It SHALL answer the recipient set, the collapse rule, the retraction on delete and on un-wave, the
 block arm at fan-out as well as at read, the bound on the recipient set, and the ordering constraint
 a new type places on the client's exhaustive switches — every one of which is an existing
-requirement of this capability or of event fan-out integrity.
+requirement of this capability or of event fan-out integrity. `098` built the reply notification and
+a wave notification beside it; `101` retired the wave half, so the reply is the one that fires.
 
 #### Scenario: An introduction is not privileged over other threads
-- **WHEN** the reply and wave notifications are added
-- **THEN** they SHALL fire for every club thread on the same terms
+- **WHEN** the reply notification is added
+- **THEN** it SHALL fire for every club thread on the same terms
 - **AND** no notification type SHALL exist that fires only for introductions
 
 ### Requirement: A notification carrying a thread as its subject SHALL identify that thread, and SHALL NOT be collapsed by club alone
@@ -1540,123 +1542,30 @@ product decision recorded as an open question, not a default.* `proposal.md` Q1 
 - **AND** zero notification rows SHALL exist afterwards, because an `AFTER` trigger never reaches a
   refused write
 
-### Requirement: A wave on a club thread SHALL notify the rider who started it, and SHALL be retracted when withdrawn
+### Requirement: The thread wave SHALL be retired at the database, and a `club_thread_waved` row already written SHALL stay readable
 
-`notifications` SHALL gain a sixteenth type, `club_thread_waved`, written by an `AFTER INSERT` trigger
-on `public.club_thread_waves` and removed by an `AFTER DELETE` trigger on the same table. Its
-recipient SHALL be `club_threads.author_id`. Its subject SHALL be `thread_id` alone.
+No wave on a club thread SHALL be sent, stored, fanned out or withdrawn. `101` (PD-373) dropped
+`public.club_thread_waves`, the triggers `notify_club_thread_waved` and `retract_club_thread_waved`,
+and the functions behind them, after PD-372 had already removed every client path to a thread wave.
+`notifications` has no INSERT policy and no INSERT grant for any client role, so nothing can write a
+new `club_thread_waved` row.
 
-**A thread wave notifies nobody today, and that was deliberate**: `092` shipped
-`public.club_thread_waves` with no fan-out and recorded it in the database, in
-`comment on function private.notify_club_waved()` — *"A THREAD wave notifies nobody at all; there is
-deliberately no notify_club_thread_waved."* This requirement reverses that decision on the product
-owner's instruction, and the comment SHALL be corrected in the same migration.
+**The type SHALL survive.** `club_thread_waved` SHALL stay in `notifications_type_check` and
+`notifications_subject_shape`, carrying `thread_id` alone, so that every row written before `101`
+stays legal: it is returned under the same `club_threads` conjunct as `club_thread_replied`, renders
+its actor and the thread's title, opens the thread, and is rendered by `121`'s `push_payload_for`.
+Such a row SHALL leave only by the cascades every notification already takes — its thread, its actor
+or its recipient being deleted — and SHALL NOT be deleted to make the constraint narrower.
 
-#### Scenario: The thread's author is notified of a wave
+#### Scenario: No thread wave can be written
+- **WHEN** the schema is read after `101`
+- **THEN** `to_regclass('public.club_thread_waves')` SHALL be NULL, and no trigger or function
+  SHALL exist that writes or retracts a `club_thread_waved` row
 
-- **WHEN** a club member inserts a `club_thread_waves` row for a thread they did not author
-- **THEN** exactly one `club_thread_waved` row SHALL be written, addressed to `club_threads.author_id`
-
-#### Scenario: Waving your own thread notifies nobody
-
-- **WHEN** the thread's author waves at their own thread
-- **THEN** zero notification rows SHALL be written
-
-#### Scenario: Un-waving removes exactly the row the wave wrote
-
-- **WHEN** a rider deletes their `club_thread_waves` row
-- **THEN** the matching `club_thread_waved` notification SHALL be removed, whether or not it had been
+#### Scenario: A wave notification written before the retirement stays readable
+- **WHEN** a rider reads a `club_thread_waved` row written before `101` whose thread they can still
   read
-- **AND** the recipient's unread count SHALL fall if it was unread, which SHALL be accepted rather
-  than compensated for
-
-#### Scenario: One rider's un-wave cannot reach another rider's notification
-
-- **WHEN** riders A and B have both waved the same thread, and A un-waves
-- **THEN** A's `club_thread_waved` notification SHALL be removed and B's SHALL survive
-- **AND** the retraction SHALL match on `user_id`, `type`, `actor_id` **and** `thread_id` together,
-  never on a subset
-- **AND** this SHALL be asserted with two actors, because a single-actor assertion cannot fail
-
-#### Scenario: Deleting the thread fires the retraction, which matches nothing, and does not raise
-
-- **WHEN** a thread is deleted and its `club_thread_waves` rows cascade away
-- **THEN** the `AFTER DELETE` retraction SHALL fire once per cascaded row, inside the deletion's own
-  transaction
-- **AND** it SHALL find **no** `club_threads` row — the parent is already gone when the cascade's
-  delete fires — so it SHALL resolve no recipient and SHALL delete **zero** rows
-- **AND** the notifications SHALL be removed by `notifications.thread_id`'s own `ON DELETE CASCADE`,
-  which is what actually does the work here
-- **AND** the thread deletion SHALL succeed
-- **AND** this SHALL NOT be described as a redundant or duplicated removal, because the retraction
-  cannot reach the row at all in this case — a description claiming redundancy is satisfied by an
-  implementation that raises, since the row is gone either way
-- **AND** the redundancy that does NOT exist SHALL NOT be "restored" by adding a `pg_trigger_depth()`
-  or `TG_OP` guard, and no guard SHALL be added for any reason: a guard that skips the cascade case
-  is one refactor away from skipping the rider case
-
-#### Scenario: Wave, un-wave and wave again re-notifies once per cycle, and that is a stated cost
-
-- **WHEN** a rider waves, un-waves and waves the same thread again
-- **THEN** exactly one live row SHALL exist afterwards
-- **AND** it SHALL be a **new** row with a new `created_at` and an unread state, because the
-  retraction removed the first and the collapse key therefore did not collide
-- **AND** this SHALL be recorded as the same exposure `club_waved` carries since `092`, bounded by
-  `club_thread_waves`' primary key `(thread_id, user_id)` and by the recipient being a single rider
-  who can block the waver
-- **AND** the alternative — dropping the retraction, which is what `090` did to `ride_invited` for
-  exactly this reason — SHALL be an open question against **all three** wave-shaped fan-outs together
-  rather than a divergence introduced here
-
-### Requirement: The wave retraction SHALL resolve its recipient by joining `club_threads`, and SHALL tolerate that thread being gone
-
-`public.club_thread_waves` holds only `(thread_id, user_id, created_at)`. The notification's
-recipient — `club_threads.author_id` — is therefore **not on the deleted row**, so
-`private.retract_club_thread_waved()` SHALL obtain it by joining `public.club_threads` on
-`old.thread_id`. Resolving no row SHALL delete nothing and SHALL NOT raise.
-
-**This is the one place where `092`'s `retract_club_waved` cannot simply be copied, and copying it is
-the likely implementation.** That function reads all four of its scope columns straight off `OLD`,
-because `club_join_waves` carries `subject_user_id`, `user_id` and `club_id`. Its shape therefore
-works unchanged on a cascade. This one cannot: on the cascade path the `club_threads` row is
-**already deleted** when the referencing delete fires its `AFTER DELETE` triggers, so the join finds
-nothing.
-
-The failure mode is severe and is not visible in a passing test of the ordinary path. A
-`select … into strict` or any `if not found then raise` raises `NO_DATA_FOUND` **inside the thread's
-own delete**, which aborts it — and with it `public.moderate_club_thread`, `private.remove_reported_thread`,
-club deletion and account deletion, each of which reaches `club_thread_waves` through the same
-cascade. A fan-out failure is deliberately not swallowed, so this would surface as a rider unable to
-delete their own thread and an admin unable to moderate one.
-
-The forms that satisfy this are a `DELETE … USING public.club_threads` join, or a scalar subquery
-compared with `=` (which yields NULL and matches nothing when the thread is gone). `INTO STRICT`,
-`PERFORM` + `FOUND`, and any `raise` on the empty case do not.
-
-#### Scenario: The recipient is joined, not read off the deleted row
-
-- **WHEN** `private.retract_club_thread_waved()` is written
-- **THEN** it SHALL obtain `user_id` from `public.club_threads.author_id` for `old.thread_id`
-- **AND** it SHALL NOT read a recipient column off `OLD`, because `club_thread_waves` has none
-- **AND** the scope SHALL still be all four of `user_id`, `type`, `actor_id` and `thread_id`
-
-#### Scenario: A missing thread deletes nothing and raises nothing
-
-- **WHEN** the retraction fires for a wave whose thread no longer exists
-- **THEN** it SHALL delete zero rows and SHALL complete normally
-- **AND** the statement that caused the cascade SHALL succeed
-
-#### Scenario: Every path that cascades into `club_thread_waves` still succeeds
-
-- **WHEN** a thread is deleted by its author, moderated through `public.moderate_club_thread`,
-  removed through `private.remove_reported_thread`, or reached by a club deletion or an account
-  deletion
-- **THEN** each SHALL succeed with the retraction trigger installed
-- **AND** each SHALL be asserted **separately**, because they enter the cascade by different routes
-  and an assertion on one does not cover the others
-- **AND** the assertion SHALL check that the statement **succeeded**, not merely that the
-  notification is absent — the notification is absent under a raising implementation too, because the
-  transaction rolled back
+- **THEN** the row SHALL be returned, rendered and linked exactly as a `club_thread_replied` row is
 
 ### Requirement: A reply notification SHALL NOT be retracted when its message is deleted
 
@@ -1803,12 +1712,9 @@ Retiring the affordance that produced a notification SHALL NOT retire the notifi
 delivered SHALL keep their copy, their actor, their subject and their destination, and the client
 switches that render them SHALL remain exhaustive over every type the database can hold.
 
-The fan-out triggers SHALL remain in place, because the table they hang off is unchanged by this
-change; they simply have no caller in the app.
-
-Removing the type is part of the destructive successor that drops the table, and that successor SHALL
-account for rows already holding the value — the type appears in the notification table's constraints,
-so removing it while rows carry it makes those constraints unvalidatable.
+The destructive successor came as `101` (PD-373): it dropped the table and its fan-out triggers and
+kept the type, because the type appears in the notification table's constraints and narrowing them
+while rows carry it makes those constraints unvalidatable. Rows already holding it SHALL stay.
 
 #### Scenario: A delivered wave notification still opens its thread
 - **WHEN** a rider opens a notification recording a wave on their thread, delivered before this change

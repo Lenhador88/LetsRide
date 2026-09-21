@@ -169,10 +169,9 @@ a photo with a byline rather than a sentence about a person, and partial fidelit
 invert its message.
 
 **A wave adds a fifth author column to that rule and SHALL be filtered by its own table's policy,
-not by the entry's.** A thread by an unblocked author may carry a wave by a blocked rider, exactly
-as `081` records that *"a thread by an unblocked author can hold messages by a blocked one"*. Both
-wave tables therefore carry their own symmetric arm on `user_id`, and the client SHALL restate
-neither.
+not by the entry's.** A join entry for an unblocked rider may carry a wave by a blocked one, as `081`
+records that *"a thread by an unblocked author can hold messages by a blocked one"*. The wave table
+therefore carries its own symmetric arm on `user_id`, and the client SHALL restate none.
 
 **A wave SHALL NOT be attributed in the UI in this change.** No list of who waved is drawn, so the
 "actor cannot be named" rule that drops an event does not arise for waves: there is no sentence
@@ -202,12 +201,6 @@ nameless.
 - **THEN** the creation entry SHALL render as a club-scoped sentence with no avatar and no name
 - **AND** it SHALL NOT be dropped, because it is an event about the club rather than about a
   person
-
-#### Scenario: A blocked rider's wave on a visible thread is filtered by its own policy
-- **WHEN** A has blocked B, and B has waved a thread authored by C whom A has not blocked
-- **THEN** the thread entry SHALL render for A
-- **AND** B's wave SHALL be absent from A's rows and from A's count
-- **AND** the absence SHALL come from `club_thread_waves`' own policy, not from `club_threads`'
 
 #### Scenario: No waver is named
 - **WHEN** an entry carries waves
@@ -391,9 +384,9 @@ wherever the timeline is described:
 - **A rider who leaves and rejoins appears to join for the first time**, at their new `joined_at`.
 - **A deleted postcard, ride or thread removes its entry**, with no tombstone.
 - **A wave dies with the entry it decorates**, from `club-timeline-engagement`.
-  `club_join_waves` cascades from `club_members (club_id, user_id)` and `club_thread_waves` from
-  `club_threads(id)`, so a leave, a thread deletion or an account deletion removes the reactions
-  along with the row — and a rejoin starts at zero waves rather than inheriting the old ones.
+  `club_join_waves` cascades from `club_members (club_id, user_id)`, so a leave or an account
+  deletion removes the reactions along with the row — and a rejoin starts at zero waves rather than
+  inheriting the old ones.
 - **An introduction does NOT die with the membership it decorates**, which is new in this change
   and is the one deliberate asymmetry with the wave beside it. A wave is a reaction to an event; an
   introduction is words, and the comments under it are other riders' words. So a leave clears the
@@ -405,8 +398,8 @@ There SHALL be no "a rider left" entry, in this change or in any successor built
 leave is a DELETE and there is no row to read.
 
 **The timeline DOES now hold rows of its own in one narrow sense, and the distinction is the
-point.** It holds *reaction* rows — `club_thread_waves` and `club_join_waves` — which are not
-entries and never appear in the merged output. An introduction is **not** one of those: it is a
+point.** It holds *reaction* rows — `club_join_waves` — which are not entries and never appear in
+the merged output. An introduction is **not** one of those: it is a
 `club_threads` row, so it is an entry in its own right on the thread source *and* a decoration on a
 join entry.
 

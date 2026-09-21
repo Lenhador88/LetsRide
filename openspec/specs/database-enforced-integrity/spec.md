@@ -3559,10 +3559,10 @@ catch anything. That is `015`'s `feed_reads` lesson exactly.
 
 ### Requirement: A trigger that must fire for every writer SHALL carry no `WHEN` clause, and one that must skip privileged writers SHALL keep its
 
-`public.club_messages` and `public.club_thread_waves` SHALL each keep their
-`enforce_participation_gate BEFORE INSERT … WHEN (CURRENT_USER = 'authenticated')` trigger unchanged.
-The three fan-out and retraction triggers this change adds to the same two tables SHALL carry **no**
-`WHEN` clause.
+`public.club_messages` SHALL keep its `enforce_participation_gate BEFORE INSERT … WHEN
+(CURRENT_USER = 'authenticated')` trigger unchanged, and the fan-out trigger `098` adds to the same
+table SHALL carry **no** `WHEN` clause. (`098` added three triggers across two tables; `101` dropped
+`club_thread_waves`, and the two wave triggers with it.)
 
 **Two triggers on one table with opposite clauses is the point, not an inconsistency.** The gate is a
 rule about the client and must skip a privileged write; a fan-out is a rule about the data and must
@@ -3570,15 +3570,15 @@ fire for every writer, including the seed the RLS suite runs as. Copying either 
 silent defect in opposite directions: a gated fan-out never fires for a privileged write, and an
 ungated participation gate refuses a `security definer` RPC.
 
-**The participation-gate trigger count SHALL NOT move.** This change creates no table, and both
-parent tables already carry the gate — measured at **22** on both projects on 2026-09-01. The count
+**The participation-gate trigger count SHALL NOT move.** This change creates no table, and the
+parent table already carries the gate — measured at **22** on both projects on 2026-09-01. The count
 SHALL be asserted rather than left inferred, following the precedent of asserting a count that stays
 still.
 
-#### Scenario: The gate still refuses an unconsented rider on both parent tables
+#### Scenario: The gate still refuses an unconsented rider on the parent table
 
-- **WHEN** a rider with `terms_accepted_at` NULL attempts to post a club message or wave a thread
-- **THEN** both SHALL be refused with `23514`
+- **WHEN** a rider with `terms_accepted_at` NULL attempts to post a club message
+- **THEN** it SHALL be refused with `23514`
 - **AND** zero notification rows SHALL exist afterwards, because an `AFTER` trigger never runs on a
   refused write
 

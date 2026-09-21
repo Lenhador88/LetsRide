@@ -1016,34 +1016,31 @@ SHALL be added to either** to compensate for the new type, which is the defect
 
 ### Requirement: Wave state SHALL be cached with the entries it decorates, and a toggle SHALL invalidate every key it moves
 
-The two wave reads SHALL take keys under `clubs.detail(clubId)` — the nesting `members`, `threads`,
-`joins` and `threadReplies` already use — so an invalidation of `clubs.all()` or
-`clubs.detail(clubId)` reaches them for free.
+The join-wave read SHALL take its key under `clubs.detail(clubId)` — the nesting `members`,
+`threads`, `joins` and `threadReplies` already use — so an invalidation of `clubs.all()` or
+`clubs.detail(clubId)` reaches it for free. It is the only wave read: the thread-wave read and its
+key went with PD-372, and `101` dropped the table behind them.
 
 **No key SHALL hold a merged "entry plus its waves" shape.** Two shapes under one key is the
 collision `keys.ts`'s header warns against, and here it would put a decorated timeline entry behind
 the same key as the undecorated one the Threads list reads.
 
-A wave toggle SHALL invalidate every key its row appears under:
-
-- waving or un-waving a **thread** → the club's thread-wave key. It SHALL NOT invalidate
-  `clubs.detail(clubId).threads`, whose rows have not changed, and SHALL NOT invalidate the unread
-  map, which is a different fact about the same thread.
-- waving or un-waving a **join** → the club's join-wave key **and** `notifications` for nobody, the
-  fan-out being addressed to another rider whose client this one cannot invalidate.
+A wave toggle SHALL invalidate every key its row appears under: waving or un-waving a **join** →
+the club's join-wave key **and** `notifications` for nobody, the fan-out being addressed to another
+rider whose client this one cannot invalidate.
 
 **The optimistic toggle is the rider's own view and the invalidation is the correction.** The
 local state moves first (`LikeButton`'s behaviour), the write answers, and a refused write rolls it
 back — the cache is not the mechanism for the first two.
 
 #### Scenario: A wave appears without a reload and without refetching the entry
-- **WHEN** a member waves a thread on the timeline
+- **WHEN** a member waves another rider's join on the timeline
 - **THEN** the pressed state and the count SHALL move immediately
-- **AND** the thread entry itself SHALL NOT be refetched, its row being unchanged
+- **AND** the join entry itself SHALL NOT be refetched, its row being unchanged
 
 #### Scenario: The wave state is reachable from the club prefix
 - **WHEN** any club mutation invalidates `clubs.all()` or `clubs.detail(clubId)`
-- **THEN** both wave keys SHALL be reached, being children of `clubs.detail(clubId)`
+- **THEN** the join-wave key SHALL be reached, being a child of `clubs.detail(clubId)`
 
 #### Scenario: No key holds a decorated entry
 - **WHEN** the timeline renders
