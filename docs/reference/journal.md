@@ -29,7 +29,7 @@ PD-430 on `guard.ts` + `supabase/migrations/` + `rls_test.sql` + `walk.mjs`, PD-
 
 **Reading the file list rather than the territory is what made this firing non-idle.** slot-1
 declares `openspec/` wholesale; its PR touches only
-`openspec/changes/require-a-home-country-at-onboarding/`. PD-264 touches three entirely different
+`openspec/changes/archive/2026-09-21-require-a-home-country-at-onboarding/`. PD-264 touches three entirely different
 change directories, so the declared collision was not a real one. **A finished-but-unmerged slot is
 the one case where this substitution is sound** — the session has ended, so the file list cannot
 grow. Do not generalise it to a live build.
