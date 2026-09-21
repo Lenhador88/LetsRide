@@ -1,7 +1,7 @@
-> **Ordering note.** `club-join-requests` is **not yet a standing capability** — it is a delta in
-> `openspec/changes/show-private-clubs-and-request-to-join/`, which is unarchived and sits on this
-> same branch. The requirements below are written as ADDED against the capability that change
-> establishes, so `show-private-clubs-and-request-to-join` SHALL be archived **before** this change.
+> **Ordering note.** `club-join-requests` became a standing capability when
+> `openspec/changes/archive/2026-09-21-show-private-clubs-and-request-to-join/` archived, ahead of
+> this change as required. The requirements below are written as ADDED against the capability that
+> change establishes, so `show-private-clubs-and-request-to-join` SHALL be archived **before** this change.
 > `tasks.md` 9.3 carries that step. Archiving in the other order folds out a standing spec saying
 > *"there SHALL be no `club_join_request_declined` type"* that the shipped code already contradicts.
 

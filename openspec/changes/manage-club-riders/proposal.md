@@ -18,7 +18,7 @@ here is inferred and unmarked.
 **The `openspec` CLI is still not installed** — `npm run openspec -- list --json` returns
 `sh: 1: openspec: not found`, and `node_modules/@fission-ai/openspec` holds no `bin` this project can
 run — so these artifacts were written by hand against the structure
-`openspec/changes/show-private-clubs-and-request-to-join/` establishes. `openspec validate` HAS since run on them and the change validates. Same artifact, per `CLAUDE.md` §Working Principles' *fix the tool, don't route around it*;
+`openspec/changes/archive/2026-09-21-show-private-clubs-and-request-to-join/` establishes. `openspec validate` HAS since run on them and the change validates. Same artifact, per `CLAUDE.md` §Working Principles' *fix the tool, don't route around it*;
 recorded rather than passed over.
 
 ## Four things that contradict what a reader would otherwise assume
@@ -64,7 +64,7 @@ carries that delta. Shipping the decline without it would leave a standing contr
 contradicts, which is the state `openspec/config.yaml` exists to prevent.
 
 **And a second, unarchived contract says the same thing harder.**
-`openspec/changes/show-private-clubs-and-request-to-join/specs/notifications/spec.md` states
+`openspec/changes/archive/2026-09-21-show-private-clubs-and-request-to-join/specs/notifications/spec.md` states
 *"there SHALL be no `club_join_request_declined` type."* That change is **not archived** (it is on
 this same branch), so the archive order is load-bearing:
 `show-private-clubs-and-request-to-join` **first**, then this one — otherwise the standing spec is

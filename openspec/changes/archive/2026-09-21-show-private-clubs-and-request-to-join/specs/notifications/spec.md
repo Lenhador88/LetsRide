@@ -1,3 +1,40 @@
+<!--
+MERGED AT ARCHIVE (2026-09-21). This change ADDED `An actionable notification SHALL derive its actions from the live subject row, never from its own type` for `club_join_requested`,
+and `invite-riders-to-a-ride` ADDED a requirement of the same name for `ride_invited` and archived
+first (2026-09-08), so the ADD collided. The two are one rule applied to two subjects: the block is
+now a MODIFIED of the standing requirement, adding this change's type paragraph and its
+`Controls are drawn from the request` scenario, and widening the two scenarios both versions
+shared by name to cover an invite or a join request. As drafted:
+
+Requirement (as drafted): An actionable notification SHALL derive its actions from the live subject row, never from its own type
+
+`club_join_requested` is the second actionable notification type in this app, after `ride_invited`.
+Whether Approve and Decline are offered on the row SHALL be decided by reading the live
+`club_join_requests` row under the reader's own row security at render time — never from the
+notification's `type`, `created_at` or `read_at`.
+
+A notification whose action is no longer available SHALL still render as a legible record of what
+happened, with the controls **absent rather than disabled** — a disabled control is a claim that
+the action exists.
+
+Scenario (as drafted): Controls are drawn from the request
+- **WHEN** the notification list renders a `club_join_requested` row
+- **THEN** the controls SHALL be shown only if a `club_join_requests` row for that club and reader
+  is visible to them and is `pending`
+- **AND** a row whose request has been withdrawn, answered on another device or hidden by a block
+  SHALL render as text with no controls
+
+Scenario (as drafted): A stale submit is refused indistinguishably and refreshes
+- **WHEN** the reader presses Approve against a request that has since been withdrawn or answered
+- **THEN** the RPC SHALL raise the same error a nonexistent request id raises
+- **AND** the surface SHALL re-read and re-render rather than reporting a failure the rider can act
+  on
+
+Scenario (as drafted): The action never widens what the row discloses
+- **WHEN** the request is not visible to the reader
+- **THEN** the notification SHALL disclose nothing the notification policy does not already permit
+-->
+
 ## ADDED Requirements
 
 ### Requirement: The type list and the subject shape SHALL be extended together, and neither new type SHALL need a new resolvability conjunct
@@ -83,34 +120,6 @@ event's current status from the row alone, with every notification for it delete
   resolving for them
 - **THEN** the fact that they were once a member SHALL not have depended on that row
 
-### Requirement: An actionable notification SHALL derive its actions from the live subject row, never from its own type
-
-`club_join_requested` is the second actionable notification type in this app, after `ride_invited`.
-Whether Approve and Decline are offered on the row SHALL be decided by reading the live
-`club_join_requests` row under the reader's own row security at render time — never from the
-notification's `type`, `created_at` or `read_at`.
-
-A notification whose action is no longer available SHALL still render as a legible record of what
-happened, with the controls **absent rather than disabled** — a disabled control is a claim that
-the action exists.
-
-#### Scenario: Controls are drawn from the request
-- **WHEN** the notification list renders a `club_join_requested` row
-- **THEN** the controls SHALL be shown only if a `club_join_requests` row for that club and reader
-  is visible to them and is `pending`
-- **AND** a row whose request has been withdrawn, answered on another device or hidden by a block
-  SHALL render as text with no controls
-
-#### Scenario: A stale submit is refused indistinguishably and refreshes
-- **WHEN** the reader presses Approve against a request that has since been withdrawn or answered
-- **THEN** the RPC SHALL raise the same error a nonexistent request id raises
-- **AND** the surface SHALL re-read and re-render rather than reporting a failure the rider can act
-  on
-
-#### Scenario: The action never widens what the row discloses
-- **WHEN** the request is not visible to the reader
-- **THEN** the notification SHALL disclose nothing the notification policy does not already permit
-
 ### Requirement: The retraction SHALL delete exactly the row its matching fan-out would have written
 
 Deleting a `club_join_requests` row — a withdrawal by the requester, a clear by an admin, or the
@@ -134,3 +143,55 @@ It SHALL NOT touch a `club_join_request_approved` row.
 - **WHEN** the retraction runs
 - **THEN** it SHALL match on `type = 'club_join_requested'` explicitly, so a future type sharing
   the same `club_id` cannot be collected by it
+
+## MODIFIED Requirements
+
+### Requirement: An actionable notification SHALL derive its actions from the live subject row, never from its own type
+
+Where a notification row offers the reader an action — a button that performs a write — whether the
+action is offered, enabled or disabled SHALL be decided by reading the subject's own row under the
+reader's row security at render time. The notification's `type`, `created_at` or `read_at` SHALL NOT
+be used as evidence that the action is still available.
+
+This is `036` §2 applied to a control rather than to a string, and it binds harder: a stale string
+misinforms, a stale control performs a write.
+
+`club_join_requested` is the second actionable type, after `ride_invited`: whether Approve and
+Decline are offered on the row SHALL be decided by reading the live `club_join_requests` row under
+the reader's own row security at render time.
+
+A notification whose action is no longer available SHALL still render as a legible record of what
+happened, with the controls absent rather than disabled — a disabled control is a claim that the
+action exists.
+
+#### Scenario: Accept and Decline are drawn from the invite, not from the type
+- **WHEN** the notification list renders a `ride_invited` row
+- **THEN** the controls SHALL be shown only if a `ride_invites` row for that ride and reader is
+  visible to them and is `pending`
+- **AND** a row whose invite has been revoked, answered on another device, or hidden by a block
+  SHALL render as text with no controls
+
+#### Scenario: Controls are drawn from the request
+- **WHEN** the notification list renders a `club_join_requested` row
+- **THEN** the controls SHALL be shown only if a `club_join_requests` row for that club and reader
+  is visible to them and is `pending`
+- **AND** a row whose request has been withdrawn, answered on another device or hidden by a block
+  SHALL render as text with no controls
+
+#### Scenario: A stale submit is refused indistinguishably and refreshes
+- **WHEN** the reader presses Accept against an invite that has since been revoked or answered, or
+  Approve against a join request that has since been withdrawn or answered
+- **THEN** the RPC SHALL raise the same error a nonexistent invite, or a nonexistent request id,
+  raises
+- **AND** the surface SHALL re-read the subject and re-render rather than reporting a failure the
+  rider can act on
+
+#### Scenario: The action never widens what the row discloses
+- **WHEN** the invite or join request is not visible to the reader
+- **THEN** the notification SHALL disclose nothing the notification policy does not already permit,
+  and SHALL NOT reveal that an invite exists
+
+#### Scenario: Answering from the list moves the list
+- **WHEN** the reader answers from the notification row
+- **THEN** the invite list, the notification list, its unread count, the ride and the ride's crew
+  SHALL all be invalidated, because the answer changes all five

@@ -60,7 +60,7 @@ than gaps (`085`, PD-325).**
   under the reader's RLS, so a non-member reads neither object, `signImagePaths` answers null and
   `Avatar` falls back. `085.6` pins both zeros so the day a storage arm lands the test names it;
   the one-arm change that would alter it is written out in
-  `openspec/changes/show-private-clubs-and-request-to-join/design.md` §The avatar that will not
+  `openspec/changes/archive/2026-09-21-show-private-clubs-and-request-to-join/design.md` §The avatar that will not
   sign rather than made. The COVER stays members-only either way — an avatar is the
   club's identity, a cover is its content.
 - **The `Requests` section on the club detail is the MINIMUM that makes a request answerable, and
