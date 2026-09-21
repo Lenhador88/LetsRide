@@ -327,11 +327,16 @@ row's copy renders is still returned to the caller under the caller's **own** ro
 expressed as an `EXISTS` per resource, evaluated under the caller's RLS, and **conjoined** where a
 type renders more than one.
 
-The conjunct set is fixed per type and stated here rather than derived:
+**A type is not limited to one subject table, and stating it as one is how a leak gets specified.**
+`ride_created_in_club` sets both `ride_id` and `club_id`, and renders both — the club's name in the
+copy, the ride as the destination. Naming one table per type forces a choice and both choices are
+wrong: `clubs` alone leaks a public club's private ride (the row renders "created a ride in ‹club›"
+for a ride the rider cannot open), and `rides` alone leaves the club name renderable when the club
+is not. The conjunct set is therefore fixed per type and stated here rather than derived:
 
 | Type | Subject columns | `EXISTS` conjuncts, all required |
 |---|---|---|
-| *(every type)* | `actor_id` | `profiles` |
+| *(every type)* | `actor_id` | `profiles` — see the actor requirement below |
 | `postcard_liked` | `postcard_id` | `postcards` |
 | `postcard_commented` | `postcard_id`, `comment_id` | `postcards` **AND** `postcard_comments` |
 | `ride_joined` | `ride_id` | `rides` |
@@ -339,6 +344,54 @@ The conjunct set is fixed per type and stated here rather than derived:
 | `ride_created_in_club` | `ride_id`, `club_id` | `rides` **AND** `clubs` |
 | **`club_thread_replied`** | **`thread_id`** | **`club_threads`** |
 | **`club_thread_waved`** | **`thread_id`** | **`club_threads`** |
+
+**The actor is a rendered resource and therefore a conjunct on every row, not a special case.** Every
+row's copy begins with the actor's username. A row whose actor does not resolve renders nothing, so
+it must not be returned — and an earlier revision of this spec left `profiles` out of the conjunct
+set and pushed the case to the screen, which is the client-side visibility filter this same
+requirement forbids two paragraphs above.
+
+**Ride-implies-club is a derivation from today's policy text and SHALL NOT be relied on to collapse
+the last row to one conjunct.** It holds against `rides` SELECT as measured on 2026-08-07, but that
+policy has already been rewritten twice — by `017` and by `022` — and nothing in this spec or any
+other constrains it to keep the property. The conjunction is cheap and does not go stale; the
+derivation does.
+
+The conjunct set is fixed per type. The two types this change adds carry `club_id` alone, which is
+`club_joined`'s shape, so the per-column form already covers them:
+
+| Type | Subject columns | `EXISTS` conjuncts, all required |
+|---|---|---|
+| `club_invited` | `club_id` | `clubs` **or** the type-scoped exception below |
+| `club_invite_declined` | `club_id` | `clubs` |
+
+**One type now needs an exception, and the exception is the requirement's own rule applied
+honestly.** A `club_invited` row addressed to a rider who is not yet a member of a **private** club
+fails the `clubs` `EXISTS` — `clubs` SELECT being `is_public OR owner_id = auth.uid() OR
+private.is_club_member(id)` — so it would be written and never returned, for ever, looking correct
+to every reviewer. That is the failure this requirement exists to name, arriving on a surface whose
+entire purpose is to reach a non-member.
+
+**A type-scoped disjunct SHALL be the only permitted remedy**, and it SHALL be permitted only where
+all four of these hold. `089` established the pattern for `club_join_request_declined`; this change
+is its second instance and the conditions are written down here so a third does not widen the
+conjunct outright:
+
+1. the exception names **one type**, so no other `club_id`-carrying row is affected;
+2. its predicate is a **caller-relative** `security definer` wrapper whose subject-taking twin is
+   granted to no client role;
+3. the predicate is **exactly** the one that makes the notification actionable — for
+   `club_invited`, `private.has_live_club_invite(club_id)` — so the row becomes unreadable at the
+   same instant it stops being answerable;
+4. the row still discloses **nothing the recipient could not already read**, which for a live
+   invitee is the case, because `085`'s `discoverable_private_clubs` already returns that club's
+   name, avatar, location and member count to exactly that rider.
+
+**Relaxing the club conjunct generally is refused**, and so is a subject-less type: the second is
+lossy, because `notifications_event_key` is unique over all four subject columns with `NULLS NOT
+DISTINCT` (measured on DEV: `indnullsnotdistinct = true`), so two invites from one admin to one
+rider for two different clubs would collapse into one row and the second would be dropped by `on
+conflict do nothing`.
 
 **The two new types add a `thread_id` conjunct and nothing else.** They render the thread's title and
 open the thread; they name no club, so they set no `club_id` and take no club conjunct. Carrying a
@@ -360,6 +413,109 @@ spec elsewhere requires never be disclosed.
 construction riders who cannot read the subject club. Neither new type has that property: the
 recipient is the thread's author, who held a membership when they wrote it. The two existing
 disjuncts SHALL be preserved verbatim in the re-created policies.
+
+#### Scenario: A type rendering two resources requires both to resolve
+- **WHEN** a `ride_created_in_club` notification is read
+- **THEN** it SHALL be returned only if **both** the ride and the club resolve for the reader
+- **AND** the leak this closes SHALL be asserted directly: a **public** club, a ride whose
+  `is_public` is false, and a reader who has left that club — the club resolves, the ride does not,
+  and the row SHALL NOT be returned
+- **AND** the assertion SHALL NOT be replaced by one relying on ride-visibility implying
+  club-visibility, because that is a property of the current `rides` policy and not of this contract
+
+**This is the whole reason the change stores ids rather than a text snapshot, and it is the
+requirement most likely to be dropped as "we can just filter in the client".** A fan-out-time
+check answers a question that was true when the row was written. A rider who leaves a private
+club, is removed from it, or loses a ride when its club turns private, holds notification rows
+whose copy names a resource they may no longer see. If the only control is fan-out, they keep
+reading it for ever.
+
+**Filtering it in a screen is forbidden by decision #2's own reasoning and is worse here than for
+blocks**, because the count RPC and the list are two different reads: a client-side filter makes
+them disagree by construction, and the disagreement is visible as a badge that never clears.
+
+#### Scenario: A rider who leaves a private club loses its notifications
+- **WHEN** a rider holding a `ride_created_in_club` or `club_joined` notification for a private
+  club leaves that club
+- **THEN** their next read SHALL return zero rows for it
+- **AND** the unread count SHALL fall by the same number, in the same instant, because both read
+  through the same policy
+
+#### Scenario: A public club's notifications survive leaving, and that asymmetry is deliberate
+- **WHEN** the same rider leaves a **public** club
+- **THEN** the notification SHALL still be returned, because `clubs` SELECT admits any signed-in
+  rider to a public club and the subject therefore still resolves
+- **AND** this SHALL be asserted separately from the private case, because a single assertion
+  cannot say which arm of the club policy did the work
+
+#### Scenario: A club turning private retracts its ride notifications from non-members
+- **WHEN** a public club is set private, and its rides therefore cease to be public
+- **THEN** riders who are not members of that club SHALL stop reading `ride_created_in_club`
+  notifications for its rides
+- **AND** nothing SHALL delete those rows, so a rider who rejoins SHALL read them again
+
+#### Scenario: A notification about your own resource always resolves
+- **WHEN** the recipient reads a `postcard_liked`, `postcard_commented` or `ride_joined`
+  notification whose subject they authored or organise
+- **THEN** the subject SHALL always resolve, because `postcards` SELECT and `rides` SELECT each
+  carry an own-row arm ahead of every other predicate
+- **AND** this SHALL hold even if they have hidden their own postcard, because `postcard_hides` is
+  an input to the *other* arm of that policy only
+
+#### Scenario: A comment notification stops being returned by three different mechanisms, and they SHALL NOT be conflated
+- **WHEN** a `postcard_commented` notification stops reaching its recipient
+- **THEN** the cause SHALL be one of exactly three, each asserted separately because each is a
+  different mechanism and a single assertion cannot say which fired:
+- **AND** the comment being **deleted** SHALL remove the row outright, by the `comment_id`
+  `ON DELETE CASCADE` — a deletion, not an eviction, so unblocking or restoring nothing brings it
+  back
+- **AND** the commenter being **blocked** SHALL evict it by the `not private.is_blocked(auth.uid(),
+  actor_id)` conjunct on `notifications` itself — not by the `postcard_comments` policy, whose own
+  block arm names the same pair and is therefore redundant here rather than load-bearing
+- **AND** the **postcard** being deleted SHALL remove it by the `postcard_id` cascade, taking the
+  comment with it
+- **AND** an earlier revision of this scenario was titled *"Hiding the postcard a comment sits on
+  retracts the comment notification"*, which asserted the **opposite** of the own-resource scenario
+  above and is false: the recipient of a `postcard_commented` row is by construction the postcard's
+  author, whose own-row arm on `postcards` sits ahead of the hide predicate. A hide retracts nothing
+
+#### Scenario: Hiding your own postcard retracts nothing, which is the deliberate reading
+- **WHEN** the postcard's author hides their own postcard and then reads their notifications
+- **THEN** every `postcard_liked` and `postcard_commented` row naming it SHALL still be returned
+- **AND** this SHALL be asserted rather than inferred, because `postcard_hides` is an input to the
+  `postcards` SELECT policy and it is only the *ordering* of that policy's arms that makes the answer
+  come out this way
+
+#### Scenario: An organizer flipping a ride's own `is_public` is a second, independent retraction path
+- **WHEN** the organizer of a club ride sets `rides.is_public` to false directly, rather than the
+  club being turned private
+- **THEN** riders who received `ride_created_in_club` and have **since left** that club SHALL stop
+  reading it, because neither arm of `rides` SELECT admits them any more
+- **AND** riders who are still members SHALL keep reading it, because the club-member arm does not
+  consult `is_public` at all
+- **AND** both paths SHALL be asserted, because the spec previously named only the club turning
+  private and an organizer can reach the same outcome through a column on their own row
+
+#### Scenario: The resolvability conjunct is not simplified away
+- **WHEN** the SELECT policy is reviewed, refactored or replaced
+- **THEN** the subject `EXISTS` SHALL remain and SHALL carry a policy comment saying why
+- **AND** removing it SHALL fail at least two assertions rather than passing quietly
+
+#### Scenario: A private club's invite notification reaches its recipient
+- **WHEN** an admin invites a non-member to a private club
+- **THEN** the invitee SHALL read exactly one `club_invited` row
+- **AND** the row SHALL become unreadable the moment the invite stops being answerable — it is
+  withdrawn, the inviter's authority ends, or either block is placed
+
+#### Scenario: A stranger holding no invite reads nothing
+- **WHEN** a rider who holds no live invite is handed a `club_invited` row's id, or holds a row for a
+  club whose invite has since been withdrawn
+- **THEN** the row SHALL NOT be returned, because the exception's predicate is the live invite itself
+
+#### Scenario: The exception reaches one type only
+- **WHEN** the policy is read
+- **THEN** each exception SHALL name its `type` explicitly, and a `club_joined` or
+  `ride_created_in_club` row for an unreadable club SHALL still be dropped
 
 #### Scenario: A rider who left the club stops reading their own thread's notifications
 
@@ -399,9 +555,83 @@ disjuncts SHALL be preserved verbatim in the re-created policies.
 
 ### Requirement: A notification SHALL die with its subject, its actor, its recipient and its club
 
-Every foreign key on `notifications` SHALL be `ON DELETE CASCADE`, including the new
-`thread_id → club_threads`. A notification whose subject, actor or recipient no longer exists SHALL
+Every foreign key on `notifications` SHALL be `ON DELETE CASCADE`, including `user_id → profiles`,
+`actor_id → profiles` and `thread_id → club_threads`. A notification whose subject, actor or recipient no longer exists SHALL
 NOT survive as a tombstone.
+
+This is the reason the subject is typed columns rather than a polymorphic `subject_id`: a
+polymorphic column can carry no foreign key, so nothing cascades, and deleting a postcard leaves a
+notification pointing at a row that no longer exists with nothing to detect it. See `design.md`
+§D1.
+
+**Account deletion is the case that reaches two levels down and is invisible in any single foreign
+key**, so it is stated rather than left to be discovered — the same failure `029` records for
+clubs and postcards.
+
+#### Scenario: Deleting the postcard destroys its notifications
+- **WHEN** a postcard is deleted
+- **THEN** every `postcard_liked` and `postcard_commented` notification naming it SHALL be removed
+
+#### Scenario: Deleting a comment destroys its notification only
+- **WHEN** a comment is deleted — by its author, or by the postcard's author through
+  `moderate_comment()`
+- **THEN** the `postcard_commented` notification naming it SHALL be removed
+- **AND** `postcard_liked` notifications on the same postcard SHALL survive
+
+#### Scenario: Unliking retracts the notification
+- **WHEN** a rider removes their `postcard_likes` row
+- **THEN** the matching `postcard_liked` notification SHALL be removed, whether or not it had been
+  read
+- **AND** the recipient's unread count SHALL fall if it was unread, which SHALL be accepted rather
+  than compensated for
+
+#### Scenario: Leaving a club or a ride retracts nothing, and that SHALL be stated rather than left silent
+- **WHEN** the actor of a `club_joined` row deletes their `club_members` row, or the actor of a
+  `ride_joined` row deletes their `ride_members` row
+- **THEN** the notification SHALL survive, unchanged, for as long as its subject and both parties do
+- **AND** the recipient SHALL keep reading "joined club ‹club›" about a rider who has since left,
+  which is correct because the row records an **event at an instant** — `created_at` is that instant
+  — and not a standing claim about the present
+- **AND** `postcard_unliked` SHALL be understood as the **exception** rather than the pattern it
+  generalises: a like is a one-tap toggle, so without a retraction it is an unbounded notification
+  generator aimed at another rider, which is a harassment argument and not a truthfulness one
+- **AND** no `AFTER DELETE` trigger SHALL be added on `club_members` or `ride_members`, because a
+  retraction hanging off a DELETE the **actor** controls is a rider-aimed delete of another rider's
+  row in a table no rider may write — the hazard `event-fanout-integrity`'s retraction-scoping
+  requirement exists to bound, accepted once for likes and not a second time
+
+#### Scenario: Deleting the ride destroys its notifications
+- **WHEN** a ride is deleted
+- **THEN** every `ride_joined` and `ride_created_in_club` notification naming it SHALL be removed
+
+#### Scenario: Deleting the club destroys notifications the ride itself survives
+- **WHEN** a club is deleted directly, so that `rides.club_id` is set to NULL and the ride survives
+- **THEN** every `club_joined` and `ride_created_in_club` notification naming that club SHALL still
+  be removed, because their copy names a club that no longer exists
+- **AND** this SHALL be asserted explicitly, because `rides.club_id` is `ON DELETE SET NULL` while
+  `notifications.club_id` is `ON DELETE CASCADE`, and the two disagreeing is the point
+
+#### Scenario: A departing rider's notifications are hard-deleted in both directions
+- **WHEN** a rider deletes their account
+- **THEN** every notification **to** them SHALL be removed by the `user_id` cascade
+- **AND** every notification **about** them as actor SHALL be removed by the `actor_id` cascade,
+  from every other rider's list
+- **AND** no tombstone, "deleted rider" byline or placeholder SHALL remain, matching the ruling
+  already made for comments and ride messages
+
+#### Scenario: An organizer's account deletion reaches notifications two levels down
+- **WHEN** a rider who organises rides deletes their account
+- **THEN** those rides SHALL be removed — `rides.organizer_id` is `ON DELETE CASCADE` — and every
+  notification about them SHALL go with them, including rows delivered to riders who are still
+  active
+- **AND** this SHALL be stated as a consequence of the erasure rather than discovered, because it
+  is invisible in any single foreign key
+
+#### Scenario: A club transferred rather than deleted keeps its notifications
+- **WHEN** an owner's account deletion transfers their club to a remaining admin or member through
+  `private.transfer_owned_clubs`
+- **THEN** notifications naming that club SHALL survive, because the club survives
+- **AND** only rows whose `actor_id` was the departing rider SHALL be removed
 
 #### Scenario: Deleting the thread destroys its notifications
 
@@ -443,9 +673,56 @@ Each foreign key on `notifications` SHALL have an index Postgres can use to find
 rows, so that every delete reaching this table is an index scan rather than a sequential scan holding
 locks. With `thread_id` there are **seven** FK columns and there SHALL be **seven** usable indexes.
 
+**`add-account-deletion` already carries this as a standing rule and this change is the first table
+it applies to**: *"Every foreign key referencing `public.profiles` SHALL have an index Postgres can
+use"*, and *"WHEN a future migration adds a table referencing `profiles` THEN it SHALL add the index
+in the same file"*. `036` adds two such keys — `user_id` and `actor_id`. Only `user_id` is served by
+the list index; `actor_id` sits **third** in the uniqueness index and so cannot lead a lookup. That
+requirement is therefore unmet by the draft, and an unindexed `actor_id` is a sequential scan of
+every notification in the table for every account deletion.
+
+The four subject keys are not covered by that requirement's literal text — they reference
+`postcards`, `postcard_comments`, `rides` and `clubs`, not `profiles` — but they sit on the **same
+cascade**, one level further down: deleting a rider cascades to their postcards and rides, and each
+of those cascades here. Indexing them is therefore this change's own decision, taken for the
+requirement's reason rather than under its letter, and it is recorded as such rather than claimed as
+compliance.
+
+**The subject indexes SHALL be partial** — `where <column> is not null` — because most rows leave
+most subject columns NULL. A partial index enters only the rows that use it, so a `postcard_liked`
+row costs one subject-index entry rather than four, and the fan-out's write amplification stays at
+four index entries per row rather than eight. `015`'s `rides (club_id, created_at desc) where club_id
+is not null` is the precedent in this schema.
+
 `thread_id`'s index SHALL be **partial** — `where thread_id is not null` — matching the four existing
 subject indexes, because every row of the fourteen existing types leaves it NULL and a partial index
 enters only the rows that use it.
+
+#### Scenario: `actor_id` leads an index of its own
+- **WHEN** the migration is written
+- **THEN** `actor_id` SHALL have an index leading with it
+- **AND** its position in the uniqueness index SHALL NOT be offered as covering it, because a
+  non-leading column cannot serve the lookup
+
+#### Scenario: The four subject keys are indexed, partially
+- **WHEN** the migration is written
+- **THEN** `postcard_id`, `comment_id`, `ride_id` and `club_id` SHALL each have an index
+- **AND** each SHALL be partial on its own column being non-NULL
+
+#### Scenario: The check is derived, not remembered
+
+- **WHEN** the index set is verified after apply
+- **THEN** it SHALL be derived by querying `pg_index` for FK columns lacking a leading-column index
+- **AND** the count SHALL be **seven FK columns, seven usable indexes**, verified against the live
+  database rather than asserted from the file
+
+#### Scenario: These indexes are not the speculative ones the fan-out spec forbids
+- **WHEN** the prohibition in `event-fanout-integrity` — *"no additional index SHALL be added
+  speculatively for a query no screen issues"* — is applied to this set
+- **THEN** it SHALL NOT forbid them, because a cascade is a delete path with a standing requirement
+  behind it and not a read query anyone chose to issue
+- **AND** the two requirements SHALL each name the other, because as first drafted they contradicted
+  each other and neither mentioned it
 
 #### Scenario: The seventh FK gets the seventh index
 
@@ -454,13 +731,6 @@ enters only the rows that use it.
   being non-NULL
 - **AND** its position last in `notifications_event_key` SHALL NOT be offered as covering it, because
   a non-leading column cannot serve the lookup
-
-#### Scenario: The check is derived, not remembered
-
-- **WHEN** the index set is verified after apply
-- **THEN** it SHALL be derived by querying `pg_index` for FK columns lacking a leading-column index
-- **AND** the count SHALL be **seven FK columns, seven usable indexes**, verified against the live
-  database rather than asserted from the file
 
 #### Scenario: The write cost per row does not grow for existing types
 
