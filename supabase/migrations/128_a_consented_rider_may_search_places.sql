@@ -87,6 +87,10 @@ create trigger enforce_consent_gate
 
 -- --- §3  The shared function's comment, restamped from the trigger count ---
 -- `docs/reference/schema.md` §The participation gate: read the count, never
--- the comment. Twenty-four before this file, twenty-three after it.
+-- the comment. Twenty-four before this file, twenty-three after it. The
+-- enumeration is carried forward from `123`'s stamp with the ledger FOLDED OUT
+-- of it (every later ordinal shifts down by one) rather than noted in a
+-- trailing sentence — the trailing-sentence shape is how `109`'s drop left the
+-- string one high.
 comment on function public.enforce_participation_gate() is
-  'Decision #5 and T&C consent, enforced where they are actually broken rather than by a redirect (023). One function, one BEFORE INSERT trigger per gated table — twenty-three since 128 moved place_search_attempts to enforce_consent_gate. Count pg_trigger rather than this string (docs/reference/schema.md §The participation gate).';
+  'Decision #5 and T&C consent, enforced where they are actually broken rather than by a redirect (023). One function, twenty-three BEFORE INSERT triggers — the ninth is ride_map_render_attempts (051), the tenth club_threads and the eleventh club_messages (081, the tenth renamed from club_discussions by 082), the twelfth ride_invites (083), the thirteenth feedback (084), the fourteenth club_join_requests (085), the fifteenth ride_invite_links (091), the sixteenth club_join_waves (092), the seventeenth club_invites and the eighteenth club_invite_links (093), the nineteenth club_thread_reports (094), the twentieth ride_threads and the twenty-first ride_thread_messages (108), the twenty-second ride_thread_reports (122), the twenty-third postcard_comment_reports (123); the five uncovered INSERT-policy tables are named in 023''s header with their reasons. The ordinals are positions in this list and nothing more, and THREE tables have left the middle of it: club_thread_waves (092, dropped by 101), ride_messages (034, dropped by 109), and place_search_attempts (069), which 128 moved to enforce_consent_gate because the wizard''s town step searches before it can hold the onboarding stamp — each time every entry after it shifted down by one, and no trigger moved. Read the count off pg_trigger, never off this string.';
