@@ -33,8 +33,9 @@ resolve identically — which is the point of writing them down rather than assu
 - **AND** it SHALL NOT call the vendor, SHALL NOT write a metering row, and SHALL NOT disclose which of
   the three it refused for
 
-#### Scenario: An account without consent cannot search
-- **WHEN** a rider whose consent stamp is NULL calls the proxy with a valid session
+#### Scenario: An un-onboarded account cannot search
+- **WHEN** a rider whose consent stamp is NULL (an account that never accepted the terms, and so
+  never reached the wizard's town step) calls the proxy with a valid session
 - **THEN** the metering row SHALL be refused by the consent gate
 - **AND** the proxy SHALL return the same exhausted-or-refused outcome it returns for a ceiling, without
   the vendor being called

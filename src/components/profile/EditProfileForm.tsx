@@ -29,14 +29,18 @@ const initialState = seedRetained(emptyActionState)
  * where they ride from (`rides_from`, PD-476) and the bio.
  *
  * **`location` is NOT one of them, since PD-425, and adding it back is the
- * reversal to expect.** `rides_from` is not it by another name: it is a
- * separate column that nothing reads for a position. It was a plain `<Input>` that accepted any string, and
- * it sat directly above `LocationSetting` — PD-419's picker-backed control —
- * under the *same* heading, "Where you ride from". So one screen carried two
- * controls for one column: the top one stored `asdf` happily and the bottom one
- * then told the rider `asdf` could not be placed. `setRiderTown` is the column's
- * only writer now, and `profileEditSchema` carries no `location` member, so a
- * field re-added here would submit nothing the action reads.
+ * reversal to expect.** The `location` field was a plain `<Input>` that
+ * accepted any string, and it sat directly above `LocationSetting` — PD-419's
+ * picker-backed control — under the *same* heading, "Where you ride from". So
+ * one screen carried two controls for one column: the top one stored `asdf`
+ * happily and the bottom one then told the rider `asdf` could not be placed.
+ * `setRiderTown` is that column's only writer here now, and `profileEditSchema`
+ * carries no `location` member, so a field re-added here would submit nothing
+ * the action reads.
+ *
+ * **`rides_from` (PD-476) is not that field back under another name.** It is a
+ * separate column that nothing reads for a position, and it took the heading
+ * once `LocationSetting` was renamed to what it governs.
  *
  * The v1 version of this called `supabase.from('profiles').update()` from the
  * browser and then `router.refresh()`, validating nothing. It is now

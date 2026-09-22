@@ -66,10 +66,13 @@ stays the rider's action.
 - **WHEN** the rider types, taps or picks in the field while the lookup is in flight
 - **THEN** the lookup's late answer SHALL be dropped and SHALL NOT replace the rider's own answer
 
-#### Scenario: A grant does what the row's grant does
+#### Scenario: A grant clears the dismissal, and the save refreshes the position
 - **WHEN** the tap returns a fix
-- **THEN** the rider-location cache key SHALL be invalidated and the question row's dismissal
-  record SHALL be cleared, exactly as `LocationQuestionRow`'s own grant does
+- **THEN** the question row's dismissal record SHALL be cleared, exactly as `LocationQuestionRow`'s
+  own grant does
+- **AND** the rider-location cache key SHALL NOT be invalidated by the tap. On Explore the sheet
+  belongs to the question row, and a refresh answering from the new fix hides the row, and the
+  sheet with it, before the town lands. The town's save invalidates it instead
 
 #### Scenario: It never submits the step
 - **WHEN** the control is tapped on the onboarding step, inside the step's form

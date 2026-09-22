@@ -49,7 +49,8 @@ PROD before the promotion merges. The bundle reads and writes the column. `128` 
 
 - [x] 4.1 Export `toPlaceValue` from `PlaceSearchField`
 - [x] 4.2 `TownFromDevice`: `type="button"`, the releasing ceiling, the defensive denial read,
-      `invalidate` + `clearDismissal` on a fix, the touched counter, the non-error status line
+      `clearDismissal` on a fix (and no `riderLocation` refresh; the save does it), the touched
+      counter, the non-error status line
 - [x] 4.3 Wired into the onboarding town step and `TownQuestionSheet`
 - [x] 4.4 jsdom test for every outcome; the type, dismissal, denial and touched guards each
       verified to fail with the guard removed
@@ -62,7 +63,7 @@ PROD before the promotion merges. The bundle reads and writes the column. `128` 
 
 ## 5. Gates and docs
 
-- [ ] 5.1 `tsc`, lint, `test:unit`, `docs:check`; the RLS suite in CI
-- [ ] 5.2 `docs/reference/schema.md` (the `profiles` row, the participation gate, the ledger row)
+- [x] 5.1 `tsc`, lint, `test:unit`, `docs:check`; the RLS suite in CI
+- [x] 5.2 `docs/reference/schema.md` (the `profiles` row, the participation gate, the ledger row)
       and `docs/reference/migrations.md` (applied state) record `127` and `128`; every count in
       `CLAUDE.md` that moved is updated

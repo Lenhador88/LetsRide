@@ -11,8 +11,6 @@ import {
   requestDeviceLocation,
   type DeviceLocationPermission,
 } from '@/lib/location/rider-location'
-import { invalidate } from '@/lib/query'
-import { queryKeys } from '@/lib/query/keys'
 import { LOCATION_MAX_LENGTH } from '@/lib/validation/profile'
 
 /**
@@ -43,11 +41,16 @@ async function findTown(): Promise<Outcome> {
     // will never honour.
     return (await deviceLocationPermission()) === 'granted' ? { missed: true } : { declined: true }
   }
-  // `LocationQuestionRow`'s three things on a grant, for the same reasons: the
-  // resolver's memo already moved, so a screen holding the key (the profile's
-  // `LocationSetting`, under the sheet) must re-read; and a grant clears the
-  // Explore row's dismissal record outright (`rider-position-question`).
-  invalidate(queryKeys.riderLocation())
+  // A grant clears the Explore row's dismissal record outright
+  // (`rider-position-question`), as the row's own grant does.
+  //
+  // **What it deliberately does NOT do is `invalidate(queryKeys.riderLocation())`**,
+  // which the row's grant does. Here it would unmount the very sheet this
+  // control sits in: on Explore, `TownQuestionSheet` belongs to
+  // `LocationQuestionRow`, and a refresh answering from this fix (which
+  // `requestDeviceLocation` has already stored in the resolver's memo) turns the
+  // row `hidden` before the town lands. The save does the refresh instead —
+  // `setRiderTown` clears the memo and invalidates the key.
   clearDismissal()
   const found = await reverseGeocodePlace(fix.lat, fix.lon)
   return found ? { place: toPlaceValue(found, LOCATION_MAX_LENGTH) } : { missed: true }
@@ -159,7 +162,9 @@ export function TownFromDevice({
             Use my current location
           </Button>
           {/* Mounted before its content, or a screen reader announces nothing. */}
-          <p role="status" aria-live="polite" className="text-sm font-medium text-muted empty:hidden">
+          {/* `text-foreground`, not `text-muted`: on the onboarding gradient
+              `#666` measures 3.5–4.1:1 against the 4.5 a 14px line needs. */}
+          <p role="status" aria-live="polite" className="text-sm font-medium text-foreground empty:hidden">
             {missed ? TOWN_FROM_DEVICE_MISSED : ''}
           </p>
         </>

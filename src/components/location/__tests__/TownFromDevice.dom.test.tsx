@@ -51,7 +51,6 @@ vi.mock('@/lib/query', async (importOriginal) => ({
 const { TownFromDevice, TOWN_FROM_DEVICE_CEILING_MS, TOWN_FROM_DEVICE_MISSED } = await import(
   '@/components/location/TownFromDevice'
 )
-const { queryKeys } = await import('@/lib/query/keys')
 
 const FIX = { lat: 52.6424, lon: 5.0602, source: 'device' as const }
 const HOORN = {
@@ -143,8 +142,10 @@ describe('a tap', () => {
     expect(reverseGeocodePlace).toHaveBeenCalledWith(FIX.lat, FIX.lon)
     expect(onFound).toHaveBeenCalledTimes(1)
     expect(onFound.mock.calls[0][0]).toMatchObject({ placeId: 'geoapify:hoorn', countryCode: 'NL' })
-    // The resolver's memo already moved; a screen holding the key must re-read.
-    expect(invalidate).toHaveBeenCalledWith(queryKeys.riderLocation())
+    // NOT invalidated on the tap: on Explore the sheet belongs to the question
+    // row, and a refresh answering from this fix hides the row — and the sheet
+    // with it — before the town lands. The save refreshes instead.
+    expect(invalidate).not.toHaveBeenCalled()
     // A grant clears the Explore row's dismissal record outright, as the row's
     // own grant does.
     expect(clearDismissal).toHaveBeenCalledTimes(1)

@@ -53,7 +53,7 @@ is verified both ways: it fails with a probe file under `lib/location/`.
 ```
 tap → requestDeviceLocation()          the OS dialog, when permission reads `prompt`
     ├─ no fix → re-read permission     `granted` → "type your town instead"; anything else → hide
-    └─ fix → invalidate(riderLocation), clearDismissal()
+    └─ fix → clearDismissal()          (no riderLocation refresh; the save does it)
            → reverseGeocodePlace()     one search-places credit, `type=city`
            → toPlaceValue(result, LOCATION_MAX_LENGTH)
            → onFound(place)            only if the field was not touched since the tap
@@ -70,13 +70,17 @@ TOWN_FROM_DEVICE_CEILING_MS = 20_000   releases the control; the lookup keeps ru
 - **"Denied" is read defensively.** `deviceLocationPermission()` folds an unsupported Permissions
   API into `prompt`, and `getPositionOnce` turns a denial into `null`. So a null fix proves only a
   missing fix when the permission still reads `granted`, and otherwise the control goes for good.
-- **A grant does `LocationQuestionRow`'s two cache jobs.** It invalidates
-  `queryKeys.riderLocation()`, because the resolver's memo already moved. It also calls
-  `clearDismissal()`, because the standing spec says a grant clears the Explore row's dismissal
-  record outright.
+- **A grant clears the Explore row's dismissal record** (`clearDismissal()`), because the standing
+  spec says a grant clears it outright. **It does NOT invalidate `queryKeys.riderLocation()`**,
+  which the row's own grant does. The final review found why: on Explore the town sheet belongs to
+  `LocationQuestionRow`, and a refresh answering from the fix just stored in the resolver's memo
+  turns the row `hidden`, which unmounts the sheet before the town lands. `setRiderTown`'s save
+  clears the memo and invalidates the key, so the refresh happens after the rider has answered.
 - **The ceiling releases, it does not cancel.** The OS dialog is modal; a rider who reads it for
   longer than 20 s still gets their town when they allow it.
-- **Failure is one muted `role="status"` line, never `text-danger`**, mounted before its content.
+- **Failure is one `role="status"` line, never `text-danger`**, mounted before its content. It is
+  `text-foreground` rather than `text-muted`, because `#666` measures 3.5–4.1:1 on the onboarding
+  gradient.
 - **`type="button"`**: on the onboarding step the control sits inside the step's `<form>`.
 - **`toPlaceValue` is exported from `PlaceSearchField`**, rather than copied, so a device pick and
   a typed pick produce the same `PlaceValue` (including `countryCode`, which the town step needs

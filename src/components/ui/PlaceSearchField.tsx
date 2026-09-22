@@ -1084,7 +1084,7 @@ function ListBody({
 /**
  * A vendor result, as the value this field stores.
  *
- * Exported for `TownFromDeviceButton` (PD-477), so a town filled from the
+ * Exported for `TownFromDevice` (PD-477), so a town filled from the
  * device is the same `PlaceValue` a typed pick would be — country code, zone
  * and the length bound included — rather than a second hand-built copy that
  * drifts.

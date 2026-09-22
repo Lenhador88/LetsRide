@@ -3913,7 +3913,7 @@ reset role;
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  23, '128 moved place_search_attempts from this gate to enforce_consent_gate, so one fewer. 069/081/082/083/084/085/091/092/093/094/101/108/109/122/123: twenty-three gate triggers, one per gated table — 081 added TWO, so did 092, so did 093 and so did 108 (ride_threads AND ride_thread_messages), because the advisor and the trigger sweep both fire once per table; 094 added ONE, club_thread_reports being its only new table; 101 removed ONE by dropping club_thread_waves, 092''s OTHER table keeping its gate; 109 removed ONE more by dropping ride_messages; and 122 and 123 added ONE each, ride_thread_reports and postcard_comment_reports. ** This flat total is the one number a new report table moves, and it is NOT what proves either gate landed ** — 122.7 and 123.7 name their own table and assert the delta, because a total cannot tell a new gate from one that moved');
+  23, 'TWENTY-THREE since 128 moved place_search_attempts to enforce_consent_gate — the history below stops at 123''s twenty-four. 069/081/082/083/084/085/091/092/093/094/101/108/109/122/123: twenty-four gate triggers, one per gated table — 081 added TWO, so did 092, so did 093 and so did 108 (ride_threads AND ride_thread_messages), because the advisor and the trigger sweep both fire once per table; 094 added ONE, club_thread_reports being its only new table; 101 removed ONE by dropping club_thread_waves, 092''s OTHER table keeping its gate; 109 removed ONE more by dropping ride_messages; and 122 and 123 added ONE each, ride_thread_reports and postcard_comment_reports. ** This flat total is the one number a new report table moves, and it is NOT what proves either gate landed ** — 122.7 and 123.7 name their own table and assert the delta, because a total cannot tell a new gate from one that moved');
 -- Named rather than counted, because the total above cannot tell 091's new gate
 -- from one that moved off another table to land here.
 select assert_eq(
@@ -3947,7 +3947,7 @@ select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal
       and pg_get_triggerdef(oid) ilike '%current_user%'),
-  23, '128 moved place_search_attempts from this gate to enforce_consent_gate, so one fewer. 069/081/083/084/085/091/092/093/094/101/108/109/122/123: every gate trigger carries the WHEN guard that reads the invoking role — including 108''s two, which is what stops the gate firing for the migration role that seeds a ride thread, and 122''s and 123''s, where it is what stops it firing for the table owner the RLS suite runs as');
+  23, 'TWENTY-THREE since 128 moved place_search_attempts to enforce_consent_gate — the history below stops at 123''s twenty-four. 069/081/083/084/085/091/092/093/094/101/108/109/122/123: every gate trigger carries the WHEN guard that reads the invoking role — including 108''s two, which is what stops the gate firing for the migration role that seeds a ride thread, and 122''s and 123''s, where it is what stops it firing for the table owner the RLS suite runs as');
 
 -- The two halves of the security-definer question, and they point opposite ways.
 -- The gate functions MUST be definer; the profile completion guard must NOT be,
@@ -15731,7 +15731,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  23, '128 moved place_search_attempts from this gate to enforce_consent_gate, so one fewer. 078.9c: ... and 078 itself added NO trigger — the total is twenty-three because 081, 092, 093 and 108 each added two content tables with one each, 083, 084, 085, 091, 094, 122 and 123 added one more each, 101 dropped 092''s club_thread_waves and 109 dropped ride_messages, each taking that table''s gate with it, and push_devices is still not among them');
+  23, 'TWENTY-THREE since 128 moved place_search_attempts to enforce_consent_gate — the history below stops at 123''s twenty-four. 078.9c: ... and 078 itself added NO trigger — the total is twenty-four because 081, 092, 093 and 108 each added two content tables with one each, 083, 084, 085, 091, 094, 122 and 123 added one more each, 101 dropped 092''s club_thread_waves and 109 dropped ride_messages, each taking that table''s gate with it, and push_devices is still not among them');
 
 -- ---------------------------------------------------------------------------
 -- 078.10  The key is the installation, asserted against the catalogue.
@@ -17552,11 +17552,11 @@ select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal
       and pg_get_triggerdef(oid) ilike '%current_user%'),
-  23, '128 moved place_search_attempts from this gate to enforce_consent_gate, so one fewer. 081.20/085/091/092/093/094/101/108/109/122/123: ... and all twenty-three carry the WHEN guard that reads the invoking role — inside a security definer body current_user is the OWNER, so a guard moved into the function would fire for nobody. 108 added TWO (ride_threads, ride_thread_messages), 109 takes one back off when it drops ride_messages, and 122 and 123 add one each for their report tables');
+  23, 'TWENTY-THREE since 128 moved place_search_attempts to enforce_consent_gate — the history below stops at 123''s twenty-four. 081.20/085/091/092/093/094/101/108/109/122/123: ... and all twenty-four carry the WHEN guard that reads the invoking role — inside a security definer body current_user is the OWNER, so a guard moved into the function would fire for nobody. 108 added TWO (ride_threads, ride_thread_messages), 109 takes one back off when it drops ride_messages, and 122 and 123 add one each for their report tables');
 select assert_eq(
   (select obj_description('public.enforce_participation_gate()'::regprocedure, 'pg_proc')
      like '%twenty-three BEFORE INSERT triggers%'),
-  true, '128 restamped it to twenty-three, folding place_search_attempts out of the enumeration. 081.20/083/084/085/091/092/093/094/101/108/122/123: ... and the function''s own comment is restamped to twenty-four — a database comment is the only documentation no edit to CLAUDE.md reaches (028, 033). 122 adds the twenty-third (ride_thread_reports) and 123 the twenty-fourth (postcard_comment_reports); 101 had restamped it DOWNWARD, the only time this ledger has moved that way, renumbering the ordinals after the seventeenth because they are positions in a list rather than identities. ** 122 also FIXED it: the stamp it inherited said twenty-three while pg_trigger answered twenty-two, because 109''s drop of ride_messages was recorded as a trailing sentence instead of folded into the enumeration, so a reader incrementing the string rather than the count would have written twenty-four here one file early. **');
+  true, '128 restamped the comment to twenty-three, folding place_search_attempts out of the enumeration; the history below stops at 123. 081.20/083/084/085/091/092/093/094/101/108/122/123: ... and the function''s own comment is restamped to twenty-four — a database comment is the only documentation no edit to CLAUDE.md reaches (028, 033). 122 adds the twenty-third (ride_thread_reports) and 123 the twenty-fourth (postcard_comment_reports); 101 had restamped it DOWNWARD, the only time this ledger has moved that way, renumbering the ordinals after the seventeenth because they are positions in a list rather than identities. ** 122 also FIXED it: the stamp it inherited said twenty-three while pg_trigger answered twenty-two, because 109''s drop of ride_messages was recorded as a trailing sentence instead of folded into the enumeration, so a reader incrementing the string rather than the count would have written twenty-four here one file early. **');
 select assert_eq(
   (select obj_description('public.enforce_participation_gate()'::regprocedure, 'pg_proc')
      like '%club_join_requests (085)%'),
@@ -23166,7 +23166,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  23, '128 moved place_search_attempts from this gate to enforce_consent_gate, so one fewer. 092.13/093/094/101/108/109/122/123: ... and the flat total is TWENTY-THREE, having been twenty-two after 109, twenty-three after 108, twenty-one after 101, twenty-two after 094, twenty-one after 093, nineteen after 092 and seventeen before it. Both halves are asserted because neither implies the other, and the ABSOLUTE is only meaningful here because this suite replays the whole chain — on a hosted project it depends on which of 092-123 has applied, so the number that travels is the DELTA (+2 for 092, +2 for 093, +1 for 094, +0 for 095, -1 for 101, +2 for 108, -1 for 109, +1 for 122, +1 for 123) and the table names');
+  23, 'TWENTY-THREE since 128 moved place_search_attempts to enforce_consent_gate — the history below stops at 123''s twenty-four. 092.13/093/094/101/108/109/122/123: ... and the flat total is TWENTY-FOUR, having been twenty-two after 109, twenty-three after 108, twenty-one after 101, twenty-two after 094, twenty-one after 093, nineteen after 092 and seventeen before it. Both halves are asserted because neither implies the other, and the ABSOLUTE is only meaningful here because this suite replays the whole chain — on a hosted project it depends on which of 092-123 has applied, so the number that travels is the DELTA (+2 for 092, +2 for 093, +1 for 094, +0 for 095, -1 for 101, +2 for 108, -1 for 109, +1 for 122, +1 for 123) and the table names');
 select assert_eq(
   (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
     where t.tgname = 'enforce_participation_gate'
@@ -27384,7 +27384,7 @@ select assert_eq((select cmd::text from pg_policies where tablename = 'feedback'
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  23, '128 moved place_search_attempts from this gate to enforce_consent_gate, so one fewer. 096.10: 096 adds NO participation-gate trigger — twenty-three, because feedback already had one and profiles deliberately has none. The absolute has moved six times since 096 without 096 changing: twenty-two, twenty-one when 101 dropped club_thread_waves, twenty-three when 108 gated ride_threads and ride_thread_messages, twenty-two again when 109 dropped ride_messages, twenty-three when 122 gated ride_thread_reports and twenty-three when 123 gated postcard_comment_reports. Every one of those is a change to the CHAIN and not to 096');
+  23, 'TWENTY-THREE since 128 moved place_search_attempts to enforce_consent_gate — the history below stops at 123''s twenty-four. 096.10: 096 adds NO participation-gate trigger — twenty-four, because feedback already had one and profiles deliberately has none. The absolute has moved six times since 096 without 096 changing: twenty-two, twenty-one when 101 dropped club_thread_waves, twenty-three when 108 gated ride_threads and ride_thread_messages, twenty-two again when 109 dropped ride_messages, twenty-three when 122 gated ride_thread_reports and twenty-four when 123 gated postcard_comment_reports. Every one of those is a change to the CHAIN and not to 096');
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgrelid = 'public.profiles'::regclass and not tgisinternal
@@ -28035,7 +28035,7 @@ reset role;
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  23, '128 moved place_search_attempts from this gate to enforce_consent_gate, so one fewer. 097.14: TWENTY-THREE participation-gate triggers — 097 adds no table and therefore no gate, and its content write is gated inside the function instead. The absolute moves without 097 moving: -1 for 101''s club_thread_waves, +2 for 108''s two thread tables, -1 for 109''s ride_messages, +1 for 122''s ride_thread_reports, +1 for 123''s postcard_comment_reports');
+  23, 'TWENTY-THREE since 128 moved place_search_attempts to enforce_consent_gate — the history below stops at 123''s twenty-four. 097.14: TWENTY-FOUR participation-gate triggers — 097 adds no table and therefore no gate, and its content write is gated inside the function instead. The absolute moves without 097 moving: -1 for 101''s club_thread_waves, +2 for 108''s two thread tables, -1 for 109''s ride_messages, +1 for 122''s ride_thread_reports, +1 for 123''s postcard_comment_reports');
 -- Pinned by NAME since 112, because the claim is about WHICH triggers are here
 -- rather than how many: a count that moves says nothing about whether 097 was
 -- the one that moved it, which is the only thing this assertion is about.
@@ -29315,7 +29315,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  23, '128 moved place_search_attempts from this gate to enforce_consent_gate, so one fewer. 098.36: TWENTY-THREE participation-gate triggers — 098 added no table so it added no gate; 101 removed one by dropping club_thread_waves, 108 added two, 109 removed one by dropping ride_messages, and 122 and 123 added one each. A count that moves by exactly the tables added or dropped is worth asserting: a new table WITHOUT a gate looks exactly like this number being right');
+  23, 'TWENTY-THREE since 128 moved place_search_attempts to enforce_consent_gate — the history below stops at 123''s twenty-four. 098.36: TWENTY-FOUR participation-gate triggers — 098 added no table so it added no gate; 101 removed one by dropping club_thread_waves, 108 added two, 109 removed one by dropping ride_messages, and 122 and 123 added one each. A count that moves by exactly the tables added or dropped is worth asserting: a new table WITHOUT a gate looks exactly like this number being right');
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal
@@ -29910,7 +29910,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  23, '128 moved place_search_attempts from this gate to enforce_consent_gate, so one fewer. 099.9: TWENTY-THREE participation-gate triggers — 099 adds no table and therefore no gate, and it changes a fan-out rather than a write path a rider owns. The absolute moved under it five times: -1 for 101, +2 for 108, -1 for 109, +1 for 122, +1 for 123');
+  23, 'TWENTY-THREE since 128 moved place_search_attempts to enforce_consent_gate — the history below stops at 123''s twenty-four. 099.9: TWENTY-FOUR participation-gate triggers — 099 adds no table and therefore no gate, and it changes a fan-out rather than a write path a rider owns. The absolute moved under it five times: -1 for 101, +2 for 108, -1 for 109, +1 for 122, +1 for 123');
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'public' and tablename = 'notifications'),
@@ -30231,7 +30231,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  23, '128 moved place_search_attempts from this gate to enforce_consent_gate, so one fewer. 100.8: TWENTY-THREE participation-gate triggers — 100 added no table and therefore no gate, it replaced two function bodies and hung nothing; 101 removed one by dropping club_thread_waves, 108 added two, 109 removed one, and 122 and 123 added one each');
+  23, 'TWENTY-THREE since 128 moved place_search_attempts to enforce_consent_gate — the history below stops at 123''s twenty-four. 100.8: TWENTY-FOUR participation-gate triggers — 100 added no table and therefore no gate, it replaced two function bodies and hung nothing; 101 removed one by dropping club_thread_waves, 108 added two, 109 removed one, and 122 and 123 added one each');
 
 reset role;
 select set_config('test.uid', '', false);
@@ -34760,7 +34760,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  23, '128 moved place_search_attempts from this gate to enforce_consent_gate, so one fewer. 111.14: TWENTY-THREE participation-gate triggers — 111 adds a table with no authenticated writer, so a gate on it would raise this number while gating nothing (078.9''s lesson). The two that DID arrive after it are 122''s and 123''s report tables, which have an authenticated writer and therefore earn theirs');
+  23, 'TWENTY-THREE since 128 moved place_search_attempts to enforce_consent_gate — the history below stops at 123''s twenty-four. 111.14: TWENTY-FOUR participation-gate triggers — 111 adds a table with no authenticated writer, so a gate on it would raise this number while gating nothing (078.9''s lesson). The two that DID arrive after it are 122''s and 123''s report tables, which have an authenticated writer and therefore earn theirs');
 select assert_eq(
   (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
     where t.tgname = 'enforce_participation_gate' and c.relname = 'club_removals'),
@@ -35237,7 +35237,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  23, '128 moved place_search_attempts from this gate to enforce_consent_gate, so one fewer. 113.12: TWENTY-THREE participation-gate triggers — 113 adds no table and gates no new write path; the two added after it are 122''s and 123''s report tables');
+  23, 'TWENTY-THREE since 128 moved place_search_attempts to enforce_consent_gate — the history below stops at 123''s twenty-four. 113.12: TWENTY-FOUR participation-gate triggers — 113 adds no table and gates no new write path; the two added after it are 122''s and 123''s report tables');
 select assert_eq(
   (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
     where t.tgname = 'enforce_participation_gate' and c.relname = 'profiles'),
@@ -40719,8 +40719,8 @@ select assert_rejected(
 select assert_eq(
   error_of($$insert into place_search_attempts (user_id)
               values ('00000000-0000-0000-0000-000001280002')$$)
-    like '%accept the terms%',
-  true, '128.3: ... and it is the consent gate that says so, as 23514, which search-places already maps to `forbidden`');
+    = '23514 accept the terms before writing to place_search_attempts',
+  true, '128.3: ... and it is the consent gate that says so, as 23514, which search-places already maps to `forbidden` — matched whole, because the participation gate''s message ends in the same words');
 
 reset role;
 select set_config('test.uid', '', false);
