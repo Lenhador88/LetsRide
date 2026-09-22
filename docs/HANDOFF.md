@@ -73,9 +73,9 @@ history.
   `docs/ENVIRONMENTS.md` §`send-moderation-digest`'s secrets is the control no test can reach.
 - **PD-385 is open on purpose**: 9 DEV rides have a coordinate and no tile, repairable only by
   their organizers.
-- **Xcode Cloud (PD-474) is `Todo Human`** — #479 merged `ios/App/ci_scripts/`, a shared scheme
-  and the owner checklist (`docs/reference/native-shell.md` §Xcode Cloud). No build can pass until
-  a promotion puts it on `main`; the story closes when a phone installs a TestFlight build.
+- **Xcode Cloud (PD-474) is live and `Todo Human`** — every push to `main` archives and delivers to
+  TestFlight *LetsRide internal*; build 1 (2026-09-22) put `1.0.0 (1)` there
+  (`docs/reference/native-shell.md` §Xcode Cloud). The story closes when a phone installs it.
 
 Re-derive rather than trust it: `list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`
 filtered by status, and `list_pull_requests state=open`.
@@ -97,10 +97,10 @@ body carries its own steps.
 
 ## Next action
 
-**The first TestFlight build, then a phone.** Push (child B), universal links and the camera
-prompt are all built and have never run on a device, because no Xcode archive has ever been made.
-Once PD-474 (§In flight) reaches `main`, the owner creates the Xcode Cloud workflow from its
-checklist, and the first TestFlight build is what the device checks wait on.
+**A phone.** `1.0.0 (1)` is in TestFlight; once the owner installs it, the device-only rows in
+`docs/reference/native-shell.md` §What the first build settled can finally be checked — the camera
+prompt first, then universal links and push (child B, which also wants the Vault and APNs steps in
+§In flight before a push can arrive).
 
 **Then the standing specs' known-stale text**, which no archive could fix because no change owns
 it: the pre-join sheet PD-418 changed, `enforce-creator-membership`'s "no admin row exists today"

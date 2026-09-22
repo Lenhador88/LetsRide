@@ -494,19 +494,26 @@ rather than through a single label on the whole section.
 | Universal links | the entitlement, the association file and the listener all landed 2026-09-18 (PD-205) and **not one of them has been exercised** — Apple fetches the file from its own CDN onto a real device, so a simulator settles nothing. §Universal links has what a device run has to check |
 | The location prompt | not exercised; the string is verified in the bundle, the dialog is not. **The camera prompt joins it as of PD-453** — and it is the one whose absence was a process kill rather than a silent no-op, so it is worth exercising first on the next device run |
 | `clearSessionStore`'s sweep | **still unexercised.** Sign-out was run, but auth-js removes the `sb-` keys by name first, so the sweep had nothing to find |
-| A device build, the archive, TestFlight | none attempted. **The pipeline that would archive every merge to `main` exists since 2026-09-21 and has never run** — §Xcode Cloud; a pipeline existing is not an archive having succeeded |
+| A device install | **none yet.** The archive and TestFlight are settled — Xcode Cloud build 1 (2026-09-22) archived `main` at `e10dcc6` and delivered `1.0.0 (1)` to the internal group, §Xcode Cloud — but no phone has installed it, so every device-only row above still stands |
 
-### Xcode Cloud — every merge to `main` archives to TestFlight, built 2026-09-21 and never run
+### Xcode Cloud — every merge to `main` archives to TestFlight, first build green 2026-09-22
 
 **TestFlight internal testing only.** Nothing submits to App Review; releasing a build to the store
-stays a manual button in App Store Connect. The repo half is three files; the rest is the owner
-checklist below, done by hand in Xcode and App Store Connect.
+stays a manual button in App Store Connect. The repo half is the files below; the rest is the owner
+checklist further down, **done on 2026-09-22**: App ID `social.letsride.app` (Push Notifications,
+Associated Domains), the app record *LetsRide: Motorcycle Clubs* (Apple ID `6814630297`), the
+internal group *LetsRide internal*, and the Xcode Cloud product **App** with one workflow
+(*Default*: Branch Changes on `main`; Archive, scheme App, App Store Connect distribution; post-action
+TestFlight Internal Testing → *LetsRide internal*; the three required variables). Its Manual Start
+condition is any branch, which is harmless — the script refuses everything but `main`. **Build 1
+succeeded**: 6 minutes, 3 compute minutes, `1.0.0 (1)` in TestFlight.
 
 | File | Why it exists |
 |---|---|
 | `ios/App/ci_scripts/ci_post_clone.sh` | Apple runs it after the clone and before `xcodebuild`. A bare clone cannot archive (§The shell has why: three gitignored Copy Bundle Resources inputs, plugins resolved out of `node_modules`), so it installs Node, builds the bundle, syncs it and gates it under `set -eu` — the steps and their order are the script's and the test's `STEPS`, not this cell's |
 | `ios/App/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme` | Xcode Cloud builds only **shared** schemes, and the Capacitor template ships none |
 | `scripts/native/__tests__/xcode-cloud.test.mjs` | Runs the script against stub tools and pins the order, the refusals and the execute bit |
+| `ios/App/App.xcodeproj/xcshareddata/xcodecloud/manifest.json` | Written by Xcode at setup; ties the project to the Xcode Cloud product. Committed so another checkout sees the same product |
 
 **The script refuses, by name and before running anything, on a branch other than `main`, a
 missing required variable, or a canonical origin that is not exactly `RELEASE_ORIGIN`** — that last
@@ -535,7 +542,7 @@ decides Vercel's Node version). Re-read it rather than trusting the date:
 `curl -s https://formulae.brew.sh/api/formula/node@22.json | jq '.deprecation_date, .disable_date'`.
 
 **Compute: 25 hours a month come with the Developer Program membership** (developer.apple.com/xcode-cloud,
-read 2026-09-21). A build's cost is unmeasured until the first one runs.
+read 2026-09-21). Build 1 used 3 of them, so one build per promotion is nowhere near the limit.
 
 **The workflow's environment variables** — every one is `NEXT_PUBLIC_*`, so it ships in the bundle
 and none is a secret; *Keep value redacted* is harmless and buys nothing. Values live where the
@@ -569,10 +576,18 @@ refuse them are their only code mentions.
    fails without them — §Universal links and §Push registration have why.
 4. **An internal tester group**: App Store Connect → TestFlight → Internal Testing → +. Apple
    requires one before the TestFlight post-action can be added.
-5. **Xcode → Product → Xcode Cloud → Create Workflow** on a checkout of `main`, product `App`,
-   team `6V6M44T7KV`. When asked, grant GitHub access to `Lenhador88/LetsRide` — signed in to
-   GitHub as `Lenhador88`, because a personal account's repository can only be granted by its
-   owner; choose *Only select repositories*.
+5. **Create the workflow in Xcode** — in Xcode 27 it is **Integrate → Create Workflow…** (or the
+   Report navigator's Cloud tab → *Get Started*), product `App`, team `6V6M44T7KV`. Grant GitHub
+   access to `Lenhador88/LetsRide` — signed in as `Lenhador88`, *Only select repositories*.
+   **The connect screen then refuses to continue** until `evgenyneu/keychain-swift` and
+   `ionic-team/capacitor-swift-pm` show as connected, which needs Xcode Cloud installed on their
+   owners' accounts. The way past it, used on 2026-09-22: public forks `Lenhador88/keychain-swift`
+   and `Lenhador88/capacitor-swift-pm` added to the Xcode Cloud GitHub install, plus a **local,
+   uncommitted** SwiftPM mirror at
+   `App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/configuration/mirrors.json` (gitignored)
+   mapping each original URL to its fork, then reopen the project. **Only the setup screen needs
+   it** — build 1 resolved the public originals from `Package.resolved` with no mirror — so delete
+   the file afterwards rather than leaving local builds on forks nobody syncs.
 6. **Edit the workflow before its first build:**
    - **Start Conditions** — delete the suggested one: it follows the repository's default branch,
      which is `development`, and adds pull requests. Add **Branch Changes → Custom Branches →
