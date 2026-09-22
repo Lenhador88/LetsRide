@@ -485,7 +485,7 @@ rather than through a single label on the whole section.
 | The app icon renders, correctly masked | white motorcycle on `#3D996B` — generated headlessly in August and never once looked at until now |
 | `LSApplicationCategoryType` reaches the bundle | only after this change: the `INFOPLIST_KEY_*` form was inert |
 | Supabase reads work from the bundle | DEV data, avatars and covers from Storage |
-| The shipped `Info.plist` carries what was written | bundle id, display name, `15.0`, the location string. **The camera and photo-library strings (PD-453) and `PrivacyInfo.xcprivacy` (PD-455) landed 2026-09-18 and are NOT covered by that run** — they are written and unverified, and the next archive is what reads them back out of the bundle |
+| The shipped `Info.plist` carries what was written | bundle id, display name, `15.0`, the location string. **The camera and photo-library strings (PD-453) and `PrivacyInfo.xcprivacy` (PD-455) landed 2026-09-18 and are NOT covered by that run** — they are written and unverified — Xcode Cloud build 1 archived them on 2026-09-22 and App Store Connect accepted the upload, but nothing has read them back out of an installed bundle |
 
 | | Not settled, and why |
 |---|---|
@@ -494,19 +494,26 @@ rather than through a single label on the whole section.
 | Universal links | the entitlement, the association file and the listener all landed 2026-09-18 (PD-205) and **not one of them has been exercised** — Apple fetches the file from its own CDN onto a real device, so a simulator settles nothing. §Universal links has what a device run has to check |
 | The location prompt | not exercised; the string is verified in the bundle, the dialog is not. **The camera prompt joins it as of PD-453** — and it is the one whose absence was a process kill rather than a silent no-op, so it is worth exercising first on the next device run |
 | `clearSessionStore`'s sweep | **still unexercised.** Sign-out was run, but auth-js removes the `sb-` keys by name first, so the sweep had nothing to find |
-| A device build, the archive, TestFlight | none attempted. **The pipeline that would archive every merge to `main` exists since 2026-09-21 and has never run** — §Xcode Cloud; a pipeline existing is not an archive having succeeded |
+| A device install | **none yet.** The archive and TestFlight are settled — Xcode Cloud build 1 (2026-09-22) archived `main` at `e10dcc6` and delivered `1.0.0 (1)` to the internal group, §Xcode Cloud — but no phone has installed it, so every device-only row above still stands |
 
-### Xcode Cloud — every merge to `main` archives to TestFlight, built 2026-09-21 and never run
+### Xcode Cloud — every merge to `main` archives to TestFlight, first build green 2026-09-22
 
 **TestFlight internal testing only.** Nothing submits to App Review; releasing a build to the store
-stays a manual button in App Store Connect. The repo half is three files; the rest is the owner
-checklist below, done by hand in Xcode and App Store Connect.
+stays a manual button in App Store Connect. The repo half is the files below; the rest is the owner
+checklist further down, **done on 2026-09-22**: App ID `social.letsride.app` (Push Notifications,
+Associated Domains), the app record *LetsRide: Motorcycle Clubs* (Apple ID `6814630297`), the
+internal group *LetsRide internal*, and the Xcode Cloud product **App** with one workflow
+(*Default*: Branch Changes on `main`; Archive, scheme App, distribution *App Store Connect*; post-action
+TestFlight Internal Testing → *LetsRide internal*; the three required variables). Its Manual Start
+condition is any branch, which is harmless — the script refuses everything but `main`. **Build 1
+succeeded**: 6 minutes, 3 compute minutes, `1.0.0 (1)` in TestFlight.
 
 | File | Why it exists |
 |---|---|
 | `ios/App/ci_scripts/ci_post_clone.sh` | Apple runs it after the clone and before `xcodebuild`. A bare clone cannot archive (§The shell has why: three gitignored Copy Bundle Resources inputs, plugins resolved out of `node_modules`), so it installs Node, builds the bundle, syncs it and gates it under `set -eu` — the steps and their order are the script's and the test's `STEPS`, not this cell's |
 | `ios/App/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme` | Xcode Cloud builds only **shared** schemes, and the Capacitor template ships none |
 | `scripts/native/__tests__/xcode-cloud.test.mjs` | Runs the script against stub tools and pins the order, the refusals and the execute bit |
+| `ios/App/App.xcodeproj/xcshareddata/xcodecloud/manifest.json` | Written by Xcode at setup; ties the project to the Xcode Cloud product. Committed so another checkout sees the same product |
 
 **The script refuses, by name and before running anything, on a branch other than `main`, a
 missing required variable, or a canonical origin that is not exactly `RELEASE_ORIGIN`** — that last
@@ -535,7 +542,7 @@ decides Vercel's Node version). Re-read it rather than trusting the date:
 `curl -s https://formulae.brew.sh/api/formula/node@22.json | jq '.deprecation_date, .disable_date'`.
 
 **Compute: 25 hours a month come with the Developer Program membership** (developer.apple.com/xcode-cloud,
-read 2026-09-21). A build's cost is unmeasured until the first one runs.
+read 2026-09-21). Build 1 used 3 compute **minutes**, so one build per promotion is nowhere near the limit.
 
 **The workflow's environment variables** — every one is `NEXT_PUBLIC_*`, so it ships in the bundle
 and none is a secret; *Keep value redacted* is harmless and buys nothing. Values live where the
@@ -569,16 +576,24 @@ refuse them are their only code mentions.
    fails without them — §Universal links and §Push registration have why.
 4. **An internal tester group**: App Store Connect → TestFlight → Internal Testing → +. Apple
    requires one before the TestFlight post-action can be added.
-5. **Xcode → Product → Xcode Cloud → Create Workflow** on a checkout of `main`, product `App`,
-   team `6V6M44T7KV`. When asked, grant GitHub access to `Lenhador88/LetsRide` — signed in to
-   GitHub as `Lenhador88`, because a personal account's repository can only be granted by its
-   owner; choose *Only select repositories*.
+5. **Create the workflow in Xcode** — in Xcode 27 it is **Integrate → Create Workflow…** (or the
+   Report navigator's Cloud tab → *Get Started*), product `App`, team `6V6M44T7KV`. Grant GitHub
+   access to `Lenhador88/LetsRide` — signed in as `Lenhador88`, *Only select repositories*.
+   **The connect screen then refuses to continue** until `evgenyneu/keychain-swift` and
+   `ionic-team/capacitor-swift-pm` show as connected, which needs Xcode Cloud installed on their
+   owners' accounts. The way past it, used on 2026-09-22: public forks `Lenhador88/keychain-swift`
+   and `Lenhador88/capacitor-swift-pm` added to the Xcode Cloud GitHub install, plus a **local,
+   uncommitted** SwiftPM mirror at
+   `ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/configuration/mirrors.json` (gitignored)
+   mapping each original URL to its fork, then reopen the project. **Only the setup screen needs
+   it** — build 1 resolved the public originals from `Package.resolved` with no mirror — so delete
+   the file afterwards rather than leaving local builds on forks nobody syncs.
 6. **Edit the workflow before its first build:**
    - **Start Conditions** — delete the suggested one: it follows the repository's default branch,
      which is `development`, and adds pull requests. Add **Branch Changes → Custom Branches →
      `main`**. No Pull Request or Tag condition.
    - **Actions** — **Archive**, platform **iOS**, scheme **App** (Release is the scheme's archive
-     configuration), Deployment Preparation **TestFlight and App Store**. *TestFlight (Internal
+     configuration), Distribution Preparation **App Store Connect** (called *TestFlight and App Store* in older Xcode). *TestFlight (Internal
      Testing Only)* builds can never be released, which would take the manual store button away.
    - **Post-Actions** — **TestFlight Internal Testing**, the group from step 4. Nothing else: no
      external group, no App Store Connect upload for review.
@@ -773,7 +788,7 @@ the words *"stopped being **Owner**"*, so the obvious command counts its own obi
 
 | | Blocker | Why it blocks |
 |---|---|---|
-| 1 | **The shell itself** | **`ios/` is generated and committed — 2026-08-25, from this container** (§The shell has the detail and the reason the old "needs a Mac" answer was wrong: Capacitor 8 uses Swift Package Manager, not CocoaPods). `capacitor.config.ts`, the secure store, a building `out/`, the iOS icon set and the location permission string are all in. **`android/` is still absent**, by choice rather than obstacle. **`ios/` COMPILED AND RAN on 2026-09-08** — the owner's Mac, Xcode 26.6, `iPhone 17 Pro` simulator, 491s and 0 errors, launching into a session read back from the platform keychain. **Not the project's first build** — one from 2026-08-25 sits in DerivedData from a since-deleted checkout — but the first recorded in this repo and the first to link the three-plugin graph. The signing Team (`6V6M44T7KV`), the synced `Package.swift` and `Package.resolved` are committed, so the next build starts from a resolved graph. **What is left needs a signed DEVICE rather than a compiler**: a device run, push registration, universal links, and the archive to TestFlight — §What the first build settled has the row-by-row split, and it is the thing to read rather than this cell |
+| 1 | **The shell itself** | **`ios/` is generated and committed — 2026-08-25, from this container** (§The shell has the detail and the reason the old "needs a Mac" answer was wrong: Capacitor 8 uses Swift Package Manager, not CocoaPods). `capacitor.config.ts`, the secure store, a building `out/`, the iOS icon set and the location permission string are all in. **`android/` is still absent**, by choice rather than obstacle. **`ios/` COMPILED AND RAN on 2026-09-08** — the owner's Mac, Xcode 26.6, `iPhone 17 Pro` simulator, 491s and 0 errors, launching into a session read back from the platform keychain. **Not the project's first build** — one from 2026-08-25 sits in DerivedData from a since-deleted checkout — but the first recorded in this repo and the first to link the three-plugin graph. The signing Team (`6V6M44T7KV`), the synced `Package.swift` and `Package.resolved` are committed, so the next build starts from a resolved graph. **What is left needs a signed DEVICE rather than a compiler**: a device run, push registration and universal links (the archive to TestFlight is done since Xcode Cloud build 1, 2026-09-22) — §What the first build settled has the row-by-row split, and it is the thing to read rather than this cell |
 | 2 | **Account deletion — built, deployed, exercised against that build 2026-08-19, and UNGATED the same day. The row is live on `/profile`** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, groups 3/4/7 and 6.1 landed 2026-08-16 (`PD-102`): `ProfileMenu`'s Delete account row, the `DeleteAccountSheet` confirmation (a second bottom sheet over `/profile`, not a route — the Figma tree says so, `tasks.md` 3.3 used to assume otherwise), `deleteAccount` in `lib/actions/auth.ts`, one shared `not-found.tsx` for the four "content is unavailable" screens, and the route guard's `gone` state destroying local session data the moment a device discovers its own account is gone (`client-session-storage`'s ADDED requirement). **The re-authentication proof (D6/Q7) is deployed** — by hand on 2026-08-17T14:32Z (PROD v9 / DEV v5, `ezbr_sha256` `9793933d…`), and redeployed by the 2026-09-06 catch-up dispatch from `771f650` (**PROD v10 / DEV v6, `11600c52…` on both**). The digest moved and the behaviour did not: every commit under that directory between the two is comment-only, which is the case the currency check cannot distinguish on its own (`list_edge_functions`, against `TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/delete-account/` — and read what that range *contains*, because a comment-only commit lands in it too and reads as stale). That closes the redeploy window three tasks shared (2.2, 2.3a, `add-ride-map-tiles` 8.3), **none of whose boxes reflect it yet** — see PD-249, which also covers `resolve-ride-location` being deployed while four places including the public privacy page say it is not. **The behaviour is now verified too, not just the digest — 2026-08-19, seven cases against DEV, all passing** (`openspec/changes/add-account-deletion/tasks.md` §2.6 carries the table). Both free probes ran: a request with **no** `password` and separately a **wrong non-empty** one both answer `reauth_required` — the second being the one that matters, since an empty password never reaches `signInWithPassword` and so never exercises `classifyAuthError`. Replaying a real token against a deleted account answers `unauthorized`, which was reasoned from GoTrue's docs until this run. DEV's and PROD's digests are equal, which is no currency check but does make the two builds byte-identical, so the run describes PROD's function; PROD's own `SERVICE_ROLE_KEY` is separately proven by PD-86. **Nothing now stands between a rider and this flow.** `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED` and `src/lib/flags.ts` were deleted on 2026-08-19 at the product owner's instruction, once the redeploy they were waiting for had been verified by content — so the row renders on every build, and the promotion to `main` is what puts it in front of real riders. No session can redeploy — there is no `supabase` CLI here, and the MCP server's `deploy_edge_function` is one of the four Supabase operations on `.claude/settings.json`'s `deny` list. Count what is still open rather than enumerating it — `grep -c '^- \[ \]' openspec/changes/add-account-deletion/tasks.md` — because **`1.6b` is still a live, undecided defect** (a club's last member leaving can destroy third-party postcards — PO decision, not built) and **Q4 is still open** (legal, blocking before launch not before build); `2.4` (idempotency under concurrency) and `6.3` (the live walk) are also open — `6.3` doubly so, because every one of 2.6's seven cases is `curl`, which needs no preflight, so the browser path is the untested half — **and the flag removal is what unblocked it**, so walking the sheet on DEV is now the thing owed before the promotion to `main`. `2.6` itself is closed |
 | 3 | ~~**Inbox is a disabled stub**~~ — **resolved 2026-08-07** | The tab is **gone**, not fixed: the owner chose to drop it rather than build the epic before submission (PD-100). `Navbar.tsx` draws four tabs and the `UNBUILT` machinery is deleted — `sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx \| grep -c "href:"` is 4. The Inbox *domain* is still unbuilt; it stopped being a **store** blocker when nothing pointed at it |
 | 4 | ~~**No edit or delete UI for rides or clubs**~~ — **resolved, `PD-101` is in production** | `updateRide`/`deleteRide`/`updateClub`/`deleteClub` are in `src/lib/actions/`, `/rides/detail/edit` and `/clubs/detail/edit` exist, and both delete confirmations enumerate the blast radius. Club delete goes through `delete_owned_club` (`043`), never a bare `.delete()` |
