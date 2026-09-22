@@ -545,10 +545,10 @@ timeout:**
 
 ## Component tests — which ones need jsdom, and why
 
-Under `environment: 'node'`, all but **sixteen** render through `renderToStaticMarkup`, and jsdom is
+Under `environment: 'node'`, all but **seventeen** render through `renderToStaticMarkup`, and jsdom is
 the answer only when something needs a **mounted effect, a layout, an event or a portal**. Check a
 new one's reason against that list rather than against the count,
-because each of the sixteen below is there for a different one. Count them with
+because each of the seventeen below is there for a different one. Count them with
 `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'`.
 
 - `rides/__tests__/filterbar-survives-tap.dom.test.tsx` and
@@ -570,6 +570,10 @@ because each of the sixteen below is there for a different one. Count them with
   `ContextMenu`'s scrim and Escape, which a static render cannot dispatch.
 - `PrivacySheet.dom.test.tsx` — the sheet IS a `ContextMenu` and portals to `document.body`, so a
   static render returns nothing to assert against.
+- `NotificationsSheet.dom.test.tsx` (PD-450) — the same portal, plus a real **click**: the round-up
+  toggle inverts on the way in and again on the way out, and only a click reaches the handler that
+  does the second one. React maps a checkbox's `onChange` onto the native click, so a synthesised
+  `change` event moves the box and calls nothing.
 - `RideAttendanceBar.dom.test.tsx` (PD-404) — a sequence across an async transition: tap, await
   the action, branch on the result. A static render cannot tell *fires on success only* from
   *fires always*.
