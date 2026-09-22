@@ -227,29 +227,23 @@ describe('OWN_PROFILE_COLUMNS matches 025 grant list', () => {
 })
 
 /**
- * `VIEWED_PROFILE_COLUMNS` is a **subset** of the same `025` grant list,
- * unlike `OWN_PROFILE_COLUMNS`'s exact-equality assertion above — this
- * constant is a projection decision for one screen (`/profile/detail`), not
- * the whole grant. `columns.ts`'s own header says why it is not equal: it
- * deliberately omits `bike_model` even though `025` grants it, because the
- * viewed-profile header draws no Motorcycles section.
+ * `VIEWED_PROFILE_COLUMNS` is a **subset** of the grant, unlike
+ * `OWN_PROFILE_COLUMNS`'s exact-equality assertion above — this constant is a
+ * projection decision for one screen (`/profile/detail`), not the whole grant.
+ * `columns.ts`'s own header says why it is not equal: it deliberately omits
+ * `bike_model` even though `025` grants it, because the viewed-profile header
+ * draws no Motorcycles section.
+ *
+ * **Checked against `OWN_PROFILE_COLUMNS`, which the block above proves equals
+ * the union of every migration's grant.** This read `025` alone until `127`
+ * granted `rides_from` in a file of its own — the same one-file blind spot the
+ * block above had until `113`. Going through the proven-equal constant keeps
+ * one union in this file rather than two that can disagree.
  */
-describe('VIEWED_PROFILE_COLUMNS is a subset of the 025 grant list', () => {
-  const migration = readFileSync(
-    path.join(SRC, '..', 'supabase', 'migrations', '025_profile_column_privileges.sql'),
-    'utf8'
-  )
-
-  const granted = (() => {
-    const match = migration.match(
-      /grant\s+select\s*\(([^)]*)\)\s*\n?\s*on\s+public\.profiles\s+to\s+authenticated/i
-    )
-    if (!match) throw new Error('no `grant select (...) on public.profiles` found in 025')
-    return match[1]
-      .split(',')
-      .map((c) => c.replace(/--.*$/gm, '').trim())
-      .filter(Boolean)
-  })()
+describe('VIEWED_PROFILE_COLUMNS is a subset of the profiles grant', () => {
+  const granted = OWN_PROFILE_COLUMNS.split(',')
+    .map((c) => c.trim())
+    .filter(Boolean)
 
   const constant = VIEWED_PROFILE_COLUMNS.split(',')
     .map((c) => c.trim())
@@ -263,9 +257,9 @@ describe('VIEWED_PROFILE_COLUMNS is a subset of the 025 grant list', () => {
     expect(constant.length).toBeGreaterThan(0)
   })
 
-  it('selects only columns 025 actually grants', () => {
+  it('selects only columns the migrations actually grant', () => {
     for (const column of constant) {
-      expect(granted, `${column} is not in 025's grant list`).toContain(column)
+      expect(granted, `${column} is not granted to authenticated`).toContain(column)
     }
   })
 

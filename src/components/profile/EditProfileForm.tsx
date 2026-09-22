@@ -10,26 +10,37 @@ import { emptyActionState } from '@/lib/actions/state'
 import { retaining, seedRetained } from '@/lib/actions/retain'
 
 import type { ActionState } from '@/lib/actions/state'
-import { BIKE_MODEL_MAX_LENGTH, BIO_MAX_LENGTH, profileEditSchema } from '@/lib/validation/profile'
+import {
+  BIKE_MODEL_MAX_LENGTH,
+  BIO_MAX_LENGTH,
+  RIDES_FROM_MAX_LENGTH,
+  profileEditSchema,
+} from '@/lib/validation/profile'
 import type { Profile } from '@/types'
 
 // The edit forms fail differently from the create ones: their `defaultValue` is
 // the *stored* value, so the reset does not blank the form, it silently rolls
 // every edit back to what was already saved — which looks like the save worked.
-const retainProfile = retaining(updateProfile, ['bike_model', 'bio'])
+const retainProfile = retaining(updateProfile, ['bike_model', 'rides_from', 'bio'])
 const initialState = seedRetained(emptyActionState)
 
 /**
- * Editing the two free-text fields a rider owns on their own profile.
+ * Editing the free-text fields a rider owns on their own profile — the bike,
+ * where they ride from (`rides_from`, PD-476) and the bio.
  *
  * **`location` is NOT one of them, since PD-425, and adding it back is the
- * reversal to expect.** It was a plain `<Input>` that accepted any string, and
- * it sat directly above `LocationSetting` — PD-419's picker-backed control —
- * under the *same* heading, "Where you ride from". So one screen carried two
- * controls for one column: the top one stored `asdf` happily and the bottom one
- * then told the rider `asdf` could not be placed. `setRiderTown` is the column's
- * only writer now, and `profileEditSchema` carries no `location` member, so a
- * field re-added here would submit nothing the action reads.
+ * reversal to expect.** The `location` field was a plain `<Input>` that
+ * accepted any string, and it sat directly above `LocationSetting` — PD-419's
+ * picker-backed control — under the *same* heading, "Where you ride from". So
+ * one screen carried two controls for one column: the top one stored `asdf`
+ * happily and the bottom one then told the rider `asdf` could not be placed.
+ * `setRiderTown` is that column's only writer here now, and `profileEditSchema`
+ * carries no `location` member, so a field re-added here would submit nothing
+ * the action reads.
+ *
+ * **`rides_from` (PD-476) is not that field back under another name.** It is a
+ * separate column that nothing reads for a position, and it took the heading
+ * once `LocationSetting` was renamed to what it governs.
  *
  * The v1 version of this called `supabase.from('profiles').update()` from the
  * browser and then `router.refresh()`, validating nothing. It is now
@@ -106,7 +117,7 @@ export function EditProfileForm({ profile }: { profile: Profile }) {
   // state of a form nobody had touched yet, and it left the tab order early for
   // AT. (The sharper version of that argument was about `location`, which
   // arrived pre-filled so the disable only ever fired on a rider who cleared it;
-  // PD-425 moved that field out, and the plain reason still stands for the two
+  // PD-425 moved that field out, and the plain reason still stands for the
   // optional fields left.) `noValidate`
   // below turns off the browser's own bubble, so this moves focus to the
   // schema-rejected field instead, off the same `profileEditSchema` the action
@@ -119,6 +130,7 @@ export function EditProfileForm({ profile }: { profile: Profile }) {
     const parsed = profileEditSchema.safeParse({
       bio: data.get('bio'),
       bike_model: data.get('bike_model'),
+      rides_from: data.get('rides_from'),
     })
     const field = parsed.success ? undefined : parsed.error.issues[0]?.path[0]
     if (typeof field === 'string') {
@@ -144,6 +156,17 @@ export function EditProfileForm({ profile }: { profile: Profile }) {
         placeholder="e.g. Kawasaki Z900"
         defaultValue={state.retained.bike_model ?? profile.bike_model ?? ''}
         maxLength={BIKE_MODEL_MAX_LENGTH}
+      />
+      {/* PD-476. The rider's own words, and NOT the placed town: that is
+          `LocationSetting`'s, two sections down, and it is what the distances
+          are measured from. This field may say anything, because nothing ever
+          reads it for a position. */}
+      <Input
+        name="rides_from"
+        label="Where you ride from"
+        placeholder="e.g. the wrong side of the Maas"
+        defaultValue={state.retained.rides_from ?? profile.rides_from ?? ''}
+        maxLength={RIDES_FROM_MAX_LENGTH}
       />
       <Textarea
         name="bio"
