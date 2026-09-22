@@ -545,10 +545,10 @@ timeout:**
 
 ## Component tests — which ones need jsdom, and why
 
-Under `environment: 'node'`, all but **fifteen** render through `renderToStaticMarkup`, and jsdom is
+Under `environment: 'node'`, all but **sixteen** render through `renderToStaticMarkup`, and jsdom is
 the answer only when something needs a **mounted effect, a layout, an event or a portal**. Check a
 new one's reason against that list rather than against the count,
-because each of the fifteen below is there for a different one. Count them with
+because each of the sixteen below is there for a different one. Count them with
 `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'`.
 
 - `rides/__tests__/filterbar-survives-tap.dom.test.tsx` and
@@ -601,3 +601,6 @@ because each of the fifteen below is there for a different one. Count them with
   behaviour is which transport the click handler reaches and in what order, and a static render
   has nothing to tap. The ordering is the feature — a reversed version shares a login-gated link,
   reports every outcome identically, and is invisible in a diff.
+- `PostcardViewer.dismiss.dom.test.tsx` (PD-475) — an **event** and a real `scrollTop`: the drag
+  gesture lives entirely in `pointerdown`/`pointermove`/`pointerup` handlers and reads the panel's
+  own scroll offset off a live DOM node, neither of which exists under `environment: 'node'`.
