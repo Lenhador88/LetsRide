@@ -102,15 +102,15 @@ export const PUBLIC_PROFILE_COLUMNS = 'id, username, avatar_path, bike_model'
  * to learn to subtract.
  */
 export const OWN_PROFILE_COLUMNS =
-  'id, username, bio, bike_model, created_at, location, home_country, avatar_path, cover_image_path'
+  'id, username, bio, bike_model, created_at, location, rides_from, home_country, avatar_path, cover_image_path'
 
 /**
  * The columns of *another* rider's profile that `/profile/detail` — and only
  * that screen — may read.
  *
  * A **projection** decision, not a permission one: every column below is
- * already granted to `authenticated` by `025` (`columns.test.ts` pins this as
- * a subset check against that grant list), so nothing here changes what the
+ * already granted to `authenticated` — by `025`, and `rides_from` by `127`
+ * (`columns.test.ts` pins this as a subset check against the grant lists), so nothing here changes what the
  * database allows. It states what one screen actually draws, the same reason
  * `PUBLIC_PROFILE_COLUMNS` stays at four columns for every OTHER reach into a
  * rider's identity — a club roster, a ride crew, a postcard byline, a filter
@@ -128,7 +128,7 @@ export const OWN_PROFILE_COLUMNS =
  * read into a bare `42501`.
  */
 export const VIEWED_PROFILE_COLUMNS =
-  'id, username, avatar_path, cover_image_path, bio, location, created_at'
+  'id, username, avatar_path, cover_image_path, bio, location, rides_from, created_at'
 
 /**
  * The club columns an embed needs to draw a club's **avatar** — never its

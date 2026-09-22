@@ -34,6 +34,12 @@ export type Profile = {
   bike_model: string | null
   location: string | null
   /**
+   * Where the rider says they ride from, in their own words (`127`, PD-476).
+   * **Not a position** — `location` is the placed town and the only one;
+   * nothing geocodes this. `profileLocationLine` is its one display rule.
+   */
+  rides_from: string | null
+  /**
    * The rider's home country, ISO 3166-1 alpha-2 (`113`, PD-428). Required at
    * onboarding since PD-428 and **permanently nullable** — every rider who
    * completed onboarding before that keeps NULL, is never re-prompted, and
@@ -115,7 +121,7 @@ export type PublicProfile = Pick<
 
 /**
  * Another rider as `/profile/detail` renders them — `VIEWED_PROFILE_COLUMNS`'
- * seven columns, plus the two signed URLs the screen draws from the two
+ * eight columns, plus the two signed URLs the screen draws from the two
  * Storage paths.
  *
  * Deliberately not `Profile`: that type carries `bike_model`, which this
@@ -139,6 +145,7 @@ export type ViewedProfile = {
   cover_image_url: string | null
   bio: string | null
   location: string | null
+  rides_from: string | null
   created_at: string
 }
 

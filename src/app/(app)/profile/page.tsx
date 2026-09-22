@@ -18,6 +18,7 @@ import { getCurrentProfile, getProfileCountries } from '@/lib/data/profile'
 import { getFeed } from '@/lib/data/postcards'
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
+import { profileLocationLine } from '@/lib/profile-line'
 import type { Profile } from '@/types'
 
 /**
@@ -124,6 +125,8 @@ function ProfileScreen({ profile }: { profile: Profile }) {
 
   const name = profile.username ?? 'Rider'
 
+  const locationLine = profileLocationLine(profile)
+
   return (
     // No `pt-header` here: the shell's `<main>` already applies it, and this
     // screen uses the plain 96px header rather than the ride detail's 120px
@@ -160,9 +163,7 @@ function ProfileScreen({ profile }: { profile: Profile }) {
             className="border-4 border-surface"
           />
         </ProfileImageUpload>
-        {profile.location && (
-          <p className="text-sm font-medium text-muted">{profile.location}</p>
-        )}
+        {locationLine && <p className="text-sm font-medium text-muted">{locationLine}</p>}
         <h2 className="text-2xl font-semibold text-foreground">{name}</h2>
       </div>
 

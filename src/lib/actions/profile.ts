@@ -40,6 +40,7 @@ export async function updateProfile(
   const parsed = profileEditSchema.safeParse({
     bio: formData.get('bio'),
     bike_model: formData.get('bike_model'),
+    rides_from: formData.get('rides_from'),
   })
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 

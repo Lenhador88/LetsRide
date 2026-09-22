@@ -44,20 +44,36 @@ stays the rider's action.
 - **THEN** the field SHALL show that town as a pick, carrying its country code
 - **AND** nothing SHALL be written until the rider presses Continue or Save
 
-#### Scenario: Denied
-- **WHEN** the rider denies the OS dialog
+#### Scenario: Denied, or anything that cannot be told apart from a denial
+- **WHEN** the tap ends with no fix and the permission does not then read `granted`
 - **THEN** the control SHALL disappear with no message and no suggestion to retry in-app
 - **AND** the typeahead and the country fallback SHALL behave exactly as they did before the tap
 
 #### Scenario: The fix or the name never arrives
-- **WHEN** no fix arrives, the reverse geocode fails, or `search-places`' ceiling is spent
-- **THEN** within 20 seconds of the tap the control SHALL return to idle with one non-error status
-  line inviting the rider to type the town
+- **WHEN** the permission reads `granted` but no fix arrives, the reverse geocode fails, or
+  `search-places`' ceiling is spent
+- **THEN** the control SHALL return to idle with one non-error status line inviting the rider to
+  type the town
 - **AND** a coordinate the app cannot name SHALL NOT be stored as a town
 
+#### Scenario: Nothing answers at all
+- **WHEN** 20 seconds pass after the tap with no outcome
+- **THEN** the control SHALL be released to idle with the same status line
+- **AND** a town that arrives later SHALL still be placed in the field, provided the rider has not
+  touched the field since the tap
+
 #### Scenario: The rider answers first
-- **WHEN** the rider types or picks a town while the lookup is in flight
-- **THEN** the lookup's late answer SHALL be dropped and SHALL NOT replace the rider's own pick
+- **WHEN** the rider types, taps or picks in the field while the lookup is in flight
+- **THEN** the lookup's late answer SHALL be dropped and SHALL NOT replace the rider's own answer
+
+#### Scenario: A grant does what the row's grant does
+- **WHEN** the tap returns a fix
+- **THEN** the rider-location cache key SHALL be invalidated and the question row's dismissal
+  record SHALL be cleared, exactly as `LocationQuestionRow`'s own grant does
+
+#### Scenario: It never submits the step
+- **WHEN** the control is tapped on the onboarding step, inside the step's form
+- **THEN** the form SHALL NOT submit
 
 #### Scenario: No geolocation, or already denied
 - **WHEN** the device has no geolocation, or the permission already reads `denied`

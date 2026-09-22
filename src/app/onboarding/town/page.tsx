@@ -2,6 +2,7 @@
 
 import { useActionState, useCallback, useState } from 'react'
 import { AuthScreen } from '@/components/auth/AuthScreen'
+import { TownFromDevice } from '@/components/location/TownFromDevice'
 import { Button } from '@/components/ui/Button'
 import { CountrySelect } from '@/components/ui/CountrySelect'
 import { Pagination } from '@/components/ui/Pagination'
@@ -134,33 +135,39 @@ export default function OnboardingTownPage() {
       footer={<Pagination total={2} current={1} className="justify-center" />}
     >
       <form action={formAction} className="flex flex-col gap-6">
-        <PlaceSearchField
-          // `Town`, not the frame's `City` — the same logged divergence
-          // `TownQuestionSheet` carries, and for the same reason: the action,
-          // the row, the `Near {town}` string and this screen's own body copy
-          // all say town.
-          label="Town"
-          placeholder="Search for your town or city"
-          value={place}
-          onChange={setPlace}
-          // The column's own bound (`018`), so what this writes can always be
-          // stored.
-          maxNameLength={LOCATION_MAX_LENGTH}
-          // **No `names`.** This step writes its own hidden inputs below,
-          // because it submits the town's NAME and its COUNTRY rather than the
-          // four place columns `names` exists to write — the shapes are
-          // different, not a widening of the same one.
-          //
-          // **No `freeText`.** That is the one prop that would turn typed text
-          // into a stored town, and a town the geocoder cannot resolve produces
-          // no position at all — which is the failure this step exists to
-          // remove, and would be indistinguishable on screen from answering
-          // properly.
-          //
-          // **No `recents`.** A rider on this screen has no history to offer.
-          disabled={pending}
-          onLookupFailure={onLookupFailure}
-        />
+        {/* PD-477 — the phone can answer this, on a tap and never unasked. A
+            found town lands as a pick the rider can still change, so every
+            branch below (the country fallback included) reads it exactly as
+            it would a typed one. */}
+        <TownFromDevice onFound={setPlace} disabled={pending}>
+          <PlaceSearchField
+            // `Town`, not the frame's `City` — the same logged divergence
+            // `TownQuestionSheet` carries, and for the same reason: the action,
+            // the row, the `Near {town}` string and this screen's own body copy
+            // all say town.
+            label="Town"
+            placeholder="Search for your town or city"
+            value={place}
+            onChange={setPlace}
+            // The column's own bound (`018`), so what this writes can always be
+            // stored.
+            maxNameLength={LOCATION_MAX_LENGTH}
+            // **No `names`.** This step writes its own hidden inputs below,
+            // because it submits the town's NAME and its COUNTRY rather than the
+            // four place columns `names` exists to write — the shapes are
+            // different, not a widening of the same one.
+            //
+            // **No `freeText`.** That is the one prop that would turn typed text
+            // into a stored town, and a town the geocoder cannot resolve produces
+            // no position at all — which is the failure this step exists to
+            // remove, and would be indistinguishable on screen from answering
+            // properly.
+            //
+            // **No `recents`.** A rider on this screen has no history to offer.
+            disabled={pending}
+            onLookupFailure={onLookupFailure}
+          />
+        </TownFromDevice>
 
         {/* The town's name, and the country ONLY when the pick carried one.
             Rendered conditionally rather than always-with-an-empty-value:

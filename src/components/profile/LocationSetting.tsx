@@ -48,9 +48,10 @@ import { queryKeys } from '@/lib/query/keys'
  *
  * `resolveRiderLocation()` is the silent resolver: its device source answers
  * only where permission is ALREADY granted. Opening the settings screen must
- * not raise an OS dialog, so nothing here calls `requestDeviceLocation` — the
- * one control that may prompt stays `LocationQuestionRow`'s, which is reached from
- * a screen that explains why.
+ * not raise an OS dialog, so nothing here calls `requestDeviceLocation`. The two
+ * controls that may prompt are `LocationQuestionRow` and, since PD-477, the
+ * town sheet's *Use my current location* (`TownFromDevice`) — which this
+ * section reaches only through *Change town*, a tap.
  */
 export function LocationSetting() {
   const position = useQuery(queryKeys.riderLocation(), resolveRiderLocation)
@@ -95,7 +96,11 @@ export function LocationSetting() {
 
   return (
     <section className="mt-6">
-      <SectionHeader title="Where you ride from" />
+      {/* Not "Where you ride from" since PD-476 — that heading is the profile
+          form's free-text `rides_from` field now, and two controls under one
+          heading is PD-425's collision. This section governs the position the
+          distances are measured from, so it says that. */}
+      <SectionHeader title="Distances measured from" />
 
       <div className="flex flex-col gap-3 px-6 pt-2">
         <p className="text-sm font-semibold text-foreground">{described.heading}</p>

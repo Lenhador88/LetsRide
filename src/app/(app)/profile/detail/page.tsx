@@ -17,6 +17,7 @@ import { getCurrentProfile, getProfile, getProfileCountries } from '@/lib/data/p
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
 import { DETAIL_ID_PARAM } from '@/lib/routes'
+import { profileLocationLine } from '@/lib/profile-line'
 import type { ViewedProfile } from '@/types'
 import { useSwipeBack } from '@/lib/actions/navigate'
 
@@ -150,6 +151,8 @@ function ProfileDetailBody({ profile }: { profile: ViewedProfile }) {
     getProfileCountries(profile.id)
   )
 
+  const locationLine = profileLocationLine(profile)
+
   return (
     <div className="flex flex-col gap-4 pb-4 motion-safe:animate-fade-in">
       {/* The 390×200 banner. Read-only here — there is no upload affordance on
@@ -170,9 +173,7 @@ function ProfileDetailBody({ profile }: { profile: ViewedProfile }) {
           size="2xl"
           className="border-4 border-surface"
         />
-        {profile.location && (
-          <p className="text-sm font-medium text-muted">{profile.location}</p>
-        )}
+        {locationLine && <p className="text-sm font-medium text-muted">{locationLine}</p>}
         <h2 className="text-2xl font-semibold text-foreground">{profile.username}</h2>
       </div>
 

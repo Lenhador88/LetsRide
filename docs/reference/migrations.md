@@ -329,8 +329,18 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**126 files. DEV and PROD are both at `126` — measured 2026-09-21.** DEV answers 129 rows, three
-of them file-less (the long-standing hand-applied ones); PROD answers exactly 126.
+**128 files. DEV is at `128` and PROD at `126` — measured 2026-09-22.** DEV answers 131 rows,
+three of them file-less (the long-standing hand-applied ones); PROD answers exactly 126.
+
+**`127` and `128` (PD-476, PD-477) applied to DEV 2026-09-22, ahead of their merge.** `127` adds
+`profiles.rides_from` and is **migration-first** on PROD too: the bundle reads it through both
+profile column lists and writes it on every save, so served ahead of it both profile screens hit
+their error boundary. `128` moves `place_search_attempts` from the participation gate to
+`enforce_consent_gate` and has **no order**; it only widens who may insert a ledger row. Both were
+exercised on DEV as `authenticated` in a rolled-back transaction first. Security advisors
+unchanged (38 `authenticated_*` WARN, one `anon_*`, seven INFO). RLS suite **4245 → 4273**, **+28**
+labels: nineteen `127.x`, nine `128.x`. The twelve participation-gate totals move from 24 to 23
+rather than gaining labels. **Promote both before the merge that carries PD-476/PD-477 to `main`.**
 
 **`117`–`126` promoted to PROD on 2026-09-21 with #476, nine BEFORE the build and one AFTER.**
 `117` and `119`–`126` were applied in filename order between 14:11:35Z and 14:21:52Z, ahead of the
@@ -1896,7 +1906,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 126 — DEV at 126, PROD at 116. The DEV ref runs AHEAD
+ls supabase/migrations/*.sql | wc -l     # 128 — DEV at 128, PROD at 126. The DEV ref runs AHEAD
                                          # of this count whenever a concurrent branch has applied
                                          # its own file: 118 (PD-459) and 122/123 (PD-454) each
                                          # did, so never infer the next free number from wc -l.

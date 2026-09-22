@@ -317,9 +317,13 @@ describe('locationSchema', () => {
 })
 
 describe('profileEditSchema', () => {
-  const valid = { bio: 'Rides at dawn.', bike_model: 'Kawasaki Z900' }
+  const valid = {
+    bio: 'Rides at dawn.',
+    bike_model: 'Kawasaki Z900',
+    rides_from: 'the wrong side of the Maas',
+  }
 
-  it('accepts the two fields the form submits', () => {
+  it('accepts the three fields the form submits', () => {
     expect(profileEditSchema.parse(valid)).toEqual(valid)
   })
 
@@ -337,11 +341,24 @@ describe('profileEditSchema', () => {
     expect('location' in profileEditSchema.shape).toBe(false)
   })
 
-  it('allows bio and bike to be cleared independently', () => {
-    expect(profileEditSchema.parse({ bio: '', bike_model: '' })).toEqual({
+  it('allows bio, bike and rides_from to be cleared independently', () => {
+    expect(profileEditSchema.parse({ bio: '', bike_model: '', rides_from: '' })).toEqual({
       bio: null,
       bike_model: null,
+      rides_from: null,
     })
+  })
+
+  it('takes rides_from as the rider wrote it, bounded like location and nothing more — PD-476', () => {
+    // Free text: nothing geocodes it, so a line no geocoder could place is fine.
+    expect(profileEditSchema.parse({ ...valid, rides_from: '  from the moon  ' }).rides_from).toBe(
+      'from the moon'
+    )
+    // Whitespace of any kind is a cleared field, so 127's `~ '\S'` floor is
+    // never what a form submit meets.
+    expect(profileEditSchema.parse({ ...valid, rides_from: '\t\n' }).rides_from).toBeNull()
+    expect(profileEditSchema.safeParse({ ...valid, rides_from: 'x'.repeat(101) }).success).toBe(false)
+    expect(profileEditSchema.safeParse({ ...valid, rides_from: 'x'.repeat(100) }).success).toBe(true)
   })
 
   it('does not accept a username, so the form cannot smuggle one past the action', () => {

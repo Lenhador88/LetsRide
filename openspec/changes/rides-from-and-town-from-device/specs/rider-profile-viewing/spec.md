@@ -8,8 +8,8 @@
 ### Requirement: The screen SHALL show exactly eight columns of the subject, and SHALL name them
 
 The screen SHALL read `id, username, avatar_path, cover_image_path, bio, location, rides_from,
-created_at` and no others. The first seven are granted to `authenticated` by `025`; `rides_from`
-is granted by `127`. The allowlist is a **projection** decision, not a permission one, and it is
+created_at` and no others. `rides_from` is granted to `authenticated` by `127` and every other
+column by `025`. The allowlist is a **projection** decision, not a permission one, and it is
 written down because nothing in the database would refuse a wider one.
 
 `terms_accepted_at`, `onboarding_completed_at` and `terms_version` SHALL NOT be read. They carry
@@ -76,7 +76,8 @@ No module SHALL read `rides_from` to derive a coordinate, a distance, a proximit
 - **AND** `authenticated` SHALL hold SELECT and UPDATE and SHALL NOT hold INSERT
 
 #### Scenario: The CHECK binds every writer
-- **WHEN** any writer stores an all-whitespace value or more than 100 characters
+- **WHEN** any writer stores a value with no non-whitespace character (spaces, tabs or newlines
+  alike) or more than 100 characters
 - **THEN** the write SHALL fail with `23514`, reported by `profiles_rides_from_length`
 
 #### Scenario: Nothing reads it for a position
