@@ -43,10 +43,13 @@
  * straight at DEV and **this relay never started**: 23/24 screens, 81/81 guard,
  * navigation, sign-out and social-write checks, real reads and real writes.
  *
- * **Two things are still not reachable, and neither is what this file fixes.**
- * WebSocket upgrades are unsupported by the agent proxy, so Realtime fails
- * either way — going direct only moves the failure to an origin `walk.mjs`'s
- * suppression filter does not name, which is why that one screen is not clean.
+ * **Two things are still unproven, and one of them is THIS FILE's doing.**
+ * Realtime does not survive the relay because `DROP` below strips `upgrade`
+ * and `fetch()` cannot upgrade at all — not because the proxy refuses: a WS
+ * upgrade straight to `wss://<ref>.supabase.co/realtime/v1/websocket` tunnels
+ * fine and the origin answers `401 UNAUTHORIZED_MISSING_API_KEY`. So a direct
+ * run's Realtime failure is NOT the relay's known one wearing a new origin,
+ * and `walk.mjs`'s suppression must not be widened to hide it — see PD-480.
  * And Storage `<img>`/XHR was not re-tested, so the photo half of the original
  * justification stands unmeasured.
  *

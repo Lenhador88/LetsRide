@@ -120,8 +120,11 @@ straight at DEV and no relay: 23/24 screens, 81/81 checks.
 
 **The relay is kept anyway and the commands below are unchanged** — one run on one day is not
 grounds for retiring the thing the only rendering gate depends on, Storage `<img>`/XHR was not
-re-tested, and Realtime fails either way (the proxy does not carry WebSocket upgrades; going
-direct only moves that failure to an origin `walk.mjs`'s suppression filter does not name).
+re-tested, and Realtime does not survive the relay — which is the relay's own doing, since it
+strips `upgrade` and `fetch()` cannot upgrade, **not** the proxy's: a WS upgrade straight to
+`wss://<ref>.supabase.co/realtime/v1/websocket` tunnels fine and the origin answers `401`. A
+direct run's Realtime failure is therefore a different failure, not the known one at a new
+origin (PD-480).
 `scripts/supabase-relay.mjs` forwards one origin over the hop that works — real project, real
 RLS, real JWTs, no application change — and its header carries both measurements plus the
 warning that it terminates TLS and must never become a development convenience.

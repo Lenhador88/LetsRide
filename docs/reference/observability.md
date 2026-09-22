@@ -156,12 +156,19 @@ SQL is verified against both projects; its HTTP call was refused 14 runs out of
 
 **What blocks a session here is the token, not the network — and that changed on
 2026-09-20.** `api.supabase.com:443` was a policy denial at the agent proxy for
-the whole life of this file, which is why the paragraph below used to say the
-workflow was the only environment that could execute the script at all. The
-owner opened the policy and the host answers. `SUPABASE_ACCESS_TOKEN` is an
-operator credential (`sbp_…`, account-wide, every project) and must not come
-into a session, so the workflow is still where a fix is exercised — for a
-reason that no longer has anything to do with egress. Re-derive rather than
+the whole life of this file; the owner opened the policy and the host answers,
+so "no session can reach the Management API" is no longer a reason for
+anything. What remains is `SUPABASE_ACCESS_TOKEN`: an operator credential
+(`sbp_…`, account-wide, every project) that no session has been given, which is
+why the workflow is still where a fix is exercised.
+
+**Whether a session may hold one is undecided, and it is now load-bearing.**
+`logs-errors.mjs`'s header says to keep it *"in the shell or in the repository
+secret… never in `.env.local`, and never in the bundle"* — and a session has a
+shell. Nothing enforces either reading: `.claude/settings.json`'s
+`autoMode.hard_deny` names the service-role key and not this one, and no test
+greps for `sbp_`. So a session that is handed one can run this locally today.
+Raise it rather than assuming the stricter reading. Re-derive rather than
 trusting either half, since a network policy changes without announcement:
 
 ```bash

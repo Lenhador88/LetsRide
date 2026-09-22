@@ -154,9 +154,11 @@
  *
  * ## What it cannot cover from this container
  *
- * `app.letsride.social:443` is refused by the agent proxy — `403` to `CONNECT`,
- * in `recentRelayFailures`, measured 2026-08-27 — so the deployed production
- * bundle cannot be driven from a session at all. The app under test is therefore
+ * `app.letsride.social:443` was refused by the agent proxy (`403` to `CONNECT`,
+ * `recentRelayFailures`, measured 2026-08-27) until the owner opened the network
+ * policy on 2026-09-20; it answers 200 now. The deployed bundle is still not
+ * driven from here, for the reasons `docs/reference/signup.md` §Signup carries —
+ * DEV sits behind Vercel SSO, and PROD is never walked. The app under test is therefore
  * the local dev server, and **the deployed bundle remains unexercised against the
  * production auth server.**
  *
