@@ -65,7 +65,7 @@ history.
   nothing yet** — the job is Vault-gated per project and no-ops on both until the owner runs
   `121` §0c's order, whose step 3 wants the gateway `curl` in `docs/ENVIRONMENTS.md`
   §Scheduled jobs first. Child B
-  (#438, #446) is unverified on a device — 2.15–2.19a want a Push-capable provisioning profile.
+  (#438, #446) is unverified on a device — 2.15–2.19a want a phone running the TestFlight build.
   PD-291 stays open until a phone has received one.
 - **The mail rail sends nothing** (PD-457): the owner owes the secrets, one hand invocation, then
   the schedule, in that order. Unset, a tick 500s before it claims — nothing delivered, none lost.
@@ -73,9 +73,10 @@ history.
   `docs/ENVIRONMENTS.md` §`send-moderation-digest`'s secrets is the control no test can reach.
 - **PD-385 is open on purpose**: 9 DEV rides have a coordinate and no tile, repairable only by
   their organizers.
-- **Xcode Cloud (PD-474) is live and `Todo Human`** — every push to `main` archives and delivers to
-  TestFlight *LetsRide internal*; build 1 (2026-09-22) put `1.0.0 (1)` there
-  (`docs/reference/native-shell.md` §Xcode Cloud). The story closes when a phone installs it.
+- **Xcode Cloud (PD-474) is live and `Todo Human`** — a push to `main` archives and delivers to
+  TestFlight *LetsRide internal*. Build 1 (2026-09-22) was a **manual** start that put `1.0.0 (1)`
+  there; the next promotion is the push trigger's first run (`docs/reference/native-shell.md`
+  §Xcode Cloud). The story closes when a phone installs a build.
 
 Re-derive rather than trust it: `list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`
 filtered by status, and `list_pull_requests state=open`.

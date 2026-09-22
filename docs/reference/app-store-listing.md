@@ -52,12 +52,10 @@ shapes and the three traps.
 
 **What is left, and must be settled before upload:**
 
-- **Whether `LetsRide: Motorcycle Clubs` is available as an App Store name.** Two things are now
-  known: the exact string `LetsRide.` is taken (`id1572666713`, read 2026-09-21), and no app
-  carries the decided name. **Neither is permission.** Apple collides on the exact string, so
-  expect the record to be creatable — but only App Store Connect answers it, in ten seconds at
-  app-record creation, and it is still the first thing to do. Read §Two apps already trade under
-  this brand first; availability is the small half of that finding.
+- **Availability is settled: the app record `LetsRide: Motorcycle Clubs` exists** (Apple ID
+  `6814630297`, created 2026-09-22), and App Store Connect creates a record only under a free
+  name. §Two apps already trade under this brand is the half that stays open — availability was
+  the small half of that finding.
 - **Anything about what riders SEARCH FOR.** Still **[unvalidated]**, and no longer for a network
   reason: volume and difficulty need an ASO login, and the iTunes Search API tells you what
   exists, never how a term ranks or how often it is typed.
@@ -564,12 +562,11 @@ reach a human; the guideline asks for the affordance, not for the triage behind 
 
 Owner actions, each blocking in its own way:
 
-1. **Check the name is free** in App Store Connect — the half of this no session can answer.
-   What is already known, read from the stores on 2026-09-21 (§Two apps already trade under this
-   brand): the exact string `LetsRide.` is taken by a taxi app, **no app carries
-   `LetsRide: Motorcycle Clubs`**, and a **motorcycle** app with 1K+ installs trades under the
-   brand on Play. Availability is the small half; the brand-search half is a decision only you
-   can take.
+1. **The brand-search decision.** The name itself is settled — the record
+   `LetsRide: Motorcycle Clubs` exists (Apple ID `6814630297`, 2026-09-22). What stays open, read
+   from the stores on 2026-09-21 (§Two apps already trade under this brand): the exact string
+   `LetsRide.` is taken by a taxi app, and a **motorcycle** app with 1K+ installs trades under the
+   brand on Play — a decision only you can take.
 2. **Supabase Pro.** The free tier auto-pauses after ~7 days idle and serves nothing — a reviewer
    opening a paused app sees a blank screen. `docs/reference/native-shell.md` §Store readiness
    row 6.
