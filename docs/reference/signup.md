@@ -99,10 +99,18 @@ Two consequences, and the second is the one that will bite:
   node scripts/probes/signup-confirmation.mjs signup you+pd252-1@gmail.com
   ```
 
-  **What that run could NOT reach, and it is not the arm.** `app.letsride.social:443` is refused
-  by this container's agent proxy — `403` to `CONNECT`, in `recentRelayFailures`, measured
-  2026-08-27 — so **the deployed bundle cannot be driven from a session at all and remains
-  unexercised**. The app under test is the local dev server on `http://localhost:3000`, an origin
+  **What that run did NOT reach, and it is not the arm. The deployed bundle remains unexercised —
+  but no longer for the reason recorded here.** `app.letsride.social:443` was refused by this
+  container's agent proxy (`403` to `CONNECT`, `recentRelayFailures`, measured 2026-08-27) until
+  the owner opened the network policy on 2026-09-20; it answers now, so do not inherit "a session
+  cannot reach it" from this paragraph. What a session still has to clear is a different
+  obstacle with a different cause — `scripts/supabase-relay.mjs`'s header has it: Chromium in
+  this container stalls on Supabase *inside the browser*, with the CONNECT accepted and nothing
+  in `recentRelayFailures`, and a deployed bundle carries its Supabase URL inlined at build time,
+  so it cannot be pointed at the relay. Re-derive rather than trusting either half:
+  `curl -s -o /dev/null -w '%{http_code}' https://app.letsride.social/` is 200.
+
+  The app under test is the local dev server on `http://localhost:3000`, an origin
   PROD's allowlist deliberately does not carry, so GoTrue **discarded the whole `redirect_to`**
   and substituted the Site URL: the mail linked to `https://app.letsride.social?code=...`, path
   and `next` gone. That is `docs/ENVIRONMENTS.md` §The redirect allowlist working as designed and

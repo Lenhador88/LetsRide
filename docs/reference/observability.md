@@ -102,8 +102,10 @@ same hour, and a bare `select count(*) from logs where source = 'edge_logs'`
 over the same window returns 0. `parseRows` throws on any envelope that is not
 `result`/`error`, so an empty result is a real read.
 
-**No session can re-run it locally** — `api.supabase.com:443` is a policy denial
-at the agent proxy (403 to CONNECT).
+**A session can reach the endpoint now and still cannot re-run this locally.**
+`api.supabase.com` answers since the owner opened the network policy on
+2026-09-20; what stops a local run is the operator token below, which is a
+credential rather than a network rule.
 
 **The four-day claim that the secret was missing is the lesson here.** Nothing
 was red, nothing contradicted it, and the check that would have caught it is the
@@ -150,20 +152,25 @@ SUPABASE_ACCESS_TOKEN=sbp_... npm run logs:errors -- --prod  # PRODUCTION
 `scripts/db/logs-errors.mjs` carries the query and the credential rules. **Its
 SQL is verified against both projects; its HTTP call was refused 14 runs out of
 14 until PD-421 corrected the endpoint, and run 38 confirms the correction**
-(above). **No session can exercise it** —
-`api.supabase.com:443` is a policy denial at the agent proxy, which answers 403
-to CONNECT, so `fetch` reports only "fetch failed" and curl reports status 000 —
-so a fix is tested through the workflow, not from here.
-Re-derive rather than trusting it, since a network policy changes without
-announcement:
+(above).
+
+**What blocks a session here is the token, not the network — and that changed on
+2026-09-20.** `api.supabase.com:443` was a policy denial at the agent proxy for
+the whole life of this file, which is why the paragraph below used to say the
+workflow was the only environment that could execute the script at all. The
+owner opened the policy and the host answers. `SUPABASE_ACCESS_TOKEN` is an
+operator credential (`sbp_…`, account-wide, every project) and must not come
+into a session, so the workflow is still where a fix is exercised — for a
+reason that no longer has anything to do with egress. Re-derive rather than
+trusting either half, since a network policy changes without announcement:
 
 ```bash
-curl -sS "$HTTPS_PROXY/__agentproxy/status"   # look at recentRelayFailures
+curl -sS --max-time 15 -o /dev/null -w '%{http_code}\n' https://api.supabase.com/   # 404 = reachable
+curl -sS "$HTTPS_PROXY/__agentproxy/status"                                          # recentRelayFailures
 ```
 
-A GitHub Actions runner has no such restriction, so the scheduled workflow above
-is not merely the clock — it is the only environment that can execute the script
-at all, and its `workflow_dispatch` trigger exists so the first transport test
+The runner holds the token, so the scheduled workflow above is not merely the
+clock, and its `workflow_dispatch` trigger exists so the first transport test
 can be triggered deliberately rather than waited for.
 
 **Not every 4xx is a defect.** A 401 on `has_password_reset_grant` is the guard
