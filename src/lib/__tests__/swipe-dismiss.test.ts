@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   armsSwipeDismiss,
   declinesSwipeDismiss,
+  isDownwardVertical,
   isSwipeDismiss,
   SWIPE_DISMISS_ARM_PX,
   SWIPE_DISMISS_DISTANCE_PX,
@@ -101,6 +102,21 @@ describe('armsSwipeDismiss', () => {
 
   it('never arms on a mostly-horizontal move', () => {
     expect(armsSwipeDismiss(40, SWIPE_DISMISS_ARM_PX)).toBe(false)
+  })
+})
+
+describe('isDownwardVertical', () => {
+  it('says yes below the arm slop, unlike armsSwipeDismiss', () => {
+    // The whole reason this function exists rather than reusing the other
+    // one: a native touchmove listener has to decide before the slop clears.
+    expect(isDownwardVertical(0, 1)).toBe(true)
+    expect(armsSwipeDismiss(0, 1)).toBe(false)
+  })
+
+  it('refuses an upward or mostly-horizontal move, at any size', () => {
+    expect(isDownwardVertical(0, -1)).toBe(false)
+    expect(isDownwardVertical(0, 0)).toBe(false)
+    expect(isDownwardVertical(50, 1)).toBe(false)
   })
 })
 

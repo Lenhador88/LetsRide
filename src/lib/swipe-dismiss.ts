@@ -19,14 +19,25 @@
  * the scrim strip is still judged as a panel drag, never re-litigated as a
  * scrim tap.
  *
- * ## The scroller owns the gesture whenever it has anywhere to go
+ * ## The scroller owns the gesture whenever it STARTS with anywhere to go
  *
- * The panel's body is `overflow-y-auto overscroll-contain`. A pull-down while
- * `scrollTop > 0` is the rider scrolling back up through the thread, and nothing
- * here may treat it as anything else, however far or fast it travels — that
- * check lives in the component, against the live DOM node, because it is a
- * property of an element's current scroll offset rather than of the gesture's
- * geometry. What lives here is everything that *is* geometry.
+ * The panel's body is `overflow-y-auto overscroll-contain`. A pull-down that
+ * begins while `scrollTop > 0` is the rider scrolling back up through the
+ * thread, and nothing here may treat it as anything else, however far or fast
+ * it travels — that check lives in the component, against the live DOM node,
+ * because it is a property of an element's current scroll offset rather than
+ * of the gesture's geometry. What lives here is everything that *is*
+ * geometry.
+ *
+ * **Decided once, not re-decided as the scroll plays out.** A version that
+ * kept watching `scrollTop` and let the SAME pointer sequence switch into a
+ * dismiss once scrolling reached the top cannot exist on a touch device: the
+ * component deliberately does not suppress the native scroll while
+ * `scrollTop > 0` (that is the whole point of this section), so the browser
+ * claims the touch for its own pan and delivers `pointercancel` — there is no
+ * further `pointermove` left to notice the scroller running out of room.
+ * `scrollTop`'s reading at the *start* of the gesture is therefore the whole
+ * answer, not a value re-sampled on every move.
  *
  * ## Strength is three tests, exactly as `swipe-back.ts` argues for the
  * horizontal gesture — distance, dominance of the vertical axis, and the
@@ -50,14 +61,25 @@
  *   arrow, so `PostcardViewerDialog` decides that exclusion itself rather than
  *   this module hard-coding an input-device policy into a pure geometry test.
  *
- * ## No `preventDefault` and no opt-out attribute in this module
+ * ## No opt-out attribute in this module, and `preventDefault` is a native `touchmove`'s, not a `pointermove`'s
  *
  * Unlike `swipe-back.ts`, this module cannot promise "a declined gesture is a
  * gesture we say nothing about" all by itself, because the component *does*
- * call `preventDefault` and take pointer capture — but only after a gesture
- * has been armed by `armsSwipeDismiss`, and arming already requires the
- * scroller to have nowhere further to give. Nothing here decides that part;
- * this module is pure geometry over a sample and a control chain.
+ * suppress the browser's own default — but only once a gesture qualifies, and
+ * qualifying already requires the scroller to have nowhere further to give.
+ *
+ * **Measured rather than assumed**: calling `preventDefault()` on a
+ * `pointermove` does NOT stop a touch pan. Chromium still fired
+ * `pointercancel` ~20px into an armed drag with only that call in place — the
+ * same PD-224 finding `deck.ts` already carries for the horizontal gesture,
+ * that only `touch-action`, or a **native, non-passive `touchmove` listener's
+ * own** `preventDefault`, decides who owns a touch. `touch-action: none`
+ * cannot be set on the scroller without also disabling the scroll this
+ * capability depends on, and it resets at any element that scrolls even when
+ * set on an ancestor — so the component adds a raw `touchmove` listener
+ * instead, and `isDownwardVertical` below is what that listener asks on every
+ * sample, with no magnitude floor, because the browser commits to the pan
+ * faster than `armsSwipeDismiss`'s slop would otherwise notice.
  */
 
 /** A deliberate pull: far enough that nothing else on the sheet wanted it. */
@@ -80,10 +102,11 @@ export const SWIPE_DISMISS_MAX_MS = 1200
 export const SWIPE_DISMISS_AXIS_RATIO = 2
 
 /**
- * How far a pointer must travel, once the scroller has nowhere further to
- * give, before the panel is drawn as following it. Below this a gesture is
- * still plainly a tap or a wobble — the same slop `DRAG_ARM_THRESHOLD` gives
- * the deck's own horizontal drag, reused here for the vertical one.
+ * How far a pointer must travel, on a gesture that started with nothing for
+ * the scroller to give, before the panel is drawn as following it. Below this
+ * a gesture is still plainly a tap or a wobble — the same slop
+ * `DRAG_ARM_THRESHOLD` gives the deck's own horizontal drag, reused here for
+ * the vertical one.
  */
 export const SWIPE_DISMISS_ARM_PX = 8
 
@@ -104,12 +127,31 @@ export type SwipeDismissSample = {
  * whether tracking ends in a close or a spring-back, via `isSwipeDismiss`.
  * Takes raw deltas rather than a sample: unlike `isSwipeBack`'s one-shot
  * up-front-then-release shape, arming is re-evaluated on every `pointermove`
- * against a start point the component may keep sliding forward for as long as
- * the scroller still has room — see the module header.
+ * against the ONE start point recorded at `pointerdown` — see the module
+ * header for why that point never moves once the gesture has begun.
  */
 export function armsSwipeDismiss(dx: number, dy: number): boolean {
   if (dy <= 0) return false
   if (dy < SWIPE_DISMISS_ARM_PX) return false
+  return dy >= SWIPE_DISMISS_AXIS_RATIO * Math.abs(dx)
+}
+
+/**
+ * Is this raw delta *plausibly* the start of a downward pull, with no
+ * distance floor at all?
+ *
+ * Answers a narrower, earlier question than `armsSwipeDismiss`: not "should
+ * the panel now visibly follow the finger" but "must the browser's own pan be
+ * refused on this sample, before it claims the touch and the question above
+ * never gets asked." `SWIPE_DISMISS_ARM_PX`'s slop exists to keep a tap or a
+ * wobble from nudging the panel — a concern this function has none of, since
+ * calling `preventDefault` one frame early costs nothing when the gesture
+ * turns out to be a tap, while waiting for the slop costs the whole gesture
+ * when it turns out to be a pull (measured: Chromium commits to the native
+ * pan within a few `touchmove` samples, well inside `SWIPE_DISMISS_ARM_PX`).
+ */
+export function isDownwardVertical(dx: number, dy: number): boolean {
+  if (dy <= 0) return false
   return dy >= SWIPE_DISMISS_AXIS_RATIO * Math.abs(dx)
 }
 

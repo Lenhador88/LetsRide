@@ -21,6 +21,7 @@ import { queryKeys } from '@/lib/query/keys'
 import {
   armsSwipeDismiss,
   declinesSwipeDismiss,
+  isDownwardVertical,
   isSwipeDismiss,
   type SwipeDismissNode,
 } from '@/lib/swipe-dismiss'
@@ -365,6 +366,20 @@ function PostcardViewerDialog({
     // A control keeps its own gesture — the comment composer's caret and
     // selection, and a tap or a drag on any button or link on the card.
     if (declinesSwipeDismiss(chain(event.target))) return
+    /**
+     * **The scroller owns the gesture whenever it STARTS with anywhere to
+     * go**, decided once, here, and never re-decided as the gesture plays
+     * out — `swipe-dismiss.ts`'s header has the full argument. In short: this
+     * component deliberately does not suppress the native scroll while
+     * `scrollTop > 0`, so the browser claims the touch for its own pan and
+     * ends this pointer sequence in `pointercancel`. There is no later
+     * `pointermove` in which to notice the scroller running out of room, so
+     * a version that re-read `scrollTop` on every move and let the gesture
+     * arm once it reached zero worked only in jsdom, which has no such
+     * cancellation — measured against real Chromium touch input, not
+     * assumed.
+     */
+    if ((scrollerRef.current?.scrollTop ?? 0) > 0) return
 
     gesture.current = {
       pointerId: event.pointerId,
@@ -380,26 +395,16 @@ function PostcardViewerDialog({
     if (!state || state.pointerId !== event.pointerId) return
 
     if (!state.armed) {
-      /**
-       * **The scroller owns the gesture whenever it has anywhere to go
-       * (PD-339).** While it can still scroll, the start point is slid
-       * forward to here-and-now on every move instead of being tested against
-       * the original `pointerdown` — so the instant the content runs out of
-       * room, the drag that takes over starts its OWN travel from that point
-       * rather than inheriting however far the pull already spent scrolling.
-       * A version that measured from the original `pointerdown` throughout
-       * would arm immediately the moment `scrollTop` reached zero, snapping
-       * the panel to wherever the finger already was.
-       */
-      if ((scrollerRef.current?.scrollTop ?? 0) > 0) {
-        state.startX = event.clientX
-        state.startY = event.clientY
-        return
-      }
-
       if (!armsSwipeDismiss(event.clientX - state.startX, event.clientY - state.startY)) return
 
       state.armed = true
+      // Re-based to the moment of arming rather than left at `pointerdown`'s
+      // timestamp: a thumb that rests on the panel before pulling must not
+      // spend `SWIPE_DISMISS_MAX_MS` on time nobody moved — measured, a
+      // >1.2s rest before an otherwise-qualifying pull was springing back.
+      // The position stays put; only the clock is re-based, since the
+      // distance a rider pulled is unaffected by how long they paused first.
+      state.startAt = event.timeStamp
       setDismissing(true)
       // Taken only now, never at `pointerdown` — exactly `PostcardDeck`'s own
       // reasoning: capturing earlier would retarget every later event to the
@@ -407,11 +412,61 @@ function PostcardViewerDialog({
       event.currentTarget.setPointerCapture(event.pointerId)
     }
 
-    // Stops the caption's text selection and the browser's own rubber-band
-    // now that the gesture is plainly this one's rather than the scroller's.
+    // What this DOES stop: a mouse drag also selecting the caption's text as
+    // it goes, and the phantom `click` a mouse-up would otherwise fire on
+    // whatever the cursor lands over. **It does NOT stop a touch pan** —
+    // `pointermove`'s `preventDefault` has no effect on that; see the native
+    // `touchmove` listener below, which is the one that does.
     event.preventDefault()
     setDismissDy(Math.max(0, event.clientY - state.startY))
   }
+
+  /**
+   * **The touch-pan fix (PD-475, found by the reviewer against real Chromium
+   * touch input).** `event.preventDefault()` inside `onPanelPointerMove`
+   * above suppresses nothing for touch: Chromium still claimed the gesture
+   * for its own pan and delivered `pointercancel` a few samples in, which is
+   * the identical PD-224 finding `deck.ts` already carries for the
+   * horizontal gesture — only `touch-action`, or a **native, non-passive**
+   * `touchmove` listener's own `preventDefault`, decides who owns a touch.
+   *
+   * `touch-action: none` on the panel was the other option and was rejected:
+   * it resets at the scroller (any element that scrolls resets the computed
+   * value to `auto` for itself), so the one area this gesture most needs to
+   * reach — the photo, the caption, the comment thread, all inside the
+   * scroller — would stay unfixed, and a grab area outside the scroller is
+   * only the 56px header.
+   *
+   * Reads `gesture.current` rather than recomputing anything: `onPanelPointerMove`
+   * (React, attached at the root) fires before this native listener for the
+   * same physical move — pointer events precede their touch-compatibility
+   * counterpart — so `state.armed` is already current by the time this runs.
+   * `isDownwardVertical` carries no distance floor, unlike `armsSwipeDismiss`:
+   * Chromium's own pan-claim is faster than that slop, so this has to answer
+   * on the very first sample rather than waiting for a gesture to plainly
+   * qualify.
+   */
+  useEffect(() => {
+    const panel = panelRef.current
+    if (!panel) return
+
+    function onTouchMove(event: TouchEvent) {
+      const state = gesture.current
+      if (!state) return
+      if (state.armed) {
+        event.preventDefault()
+        return
+      }
+      const touch = event.touches[0]
+      if (!touch) return
+      if (isDownwardVertical(touch.clientX - state.startX, touch.clientY - state.startY)) {
+        event.preventDefault()
+      }
+    }
+
+    panel.addEventListener('touchmove', onTouchMove, { passive: false })
+    return () => panel.removeEventListener('touchmove', onTouchMove)
+  }, [])
 
   const onPanelPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
     const state = gesture.current
@@ -490,10 +545,12 @@ function PostcardViewerDialog({
             'top-[calc(max(0.5rem,env(safe-area-inset-top))+2rem)] motion-safe:animate-fade-in',
           // The spring-back (PD-475): only while NOT actively tracked, so an
           // armed drag follows the finger with no lag and an abandoned one
-          // eases back to `dismissDy: 0`. No `touch-action` anywhere on this
-          // panel — the scroller below must keep its native vertical pan for
-          // as long as it has anywhere to go (`onPanelPointerMove`), and a
-          // panel-wide `touch-none` would take that away from underneath it.
+          // eases back to `dismissDy: 0`. No `touch-action` CSS anywhere on
+          // this panel — the scroller below must keep its native vertical
+          // pan for a gesture that starts with room to give, and it resets
+          // to `auto` at any scrolling element regardless of an ancestor's
+          // `touch-none`. The native `touchmove` listener below is what
+          // suppresses the pan instead, only once a gesture qualifies.
           !dismissing && 'motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out'
         )}
         style={dismissDy ? { transform: `translateY(${dismissDy}px)` } : undefined}

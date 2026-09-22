@@ -128,14 +128,17 @@ function isOpen(): boolean {
   return document.querySelector('[role="dialog"][aria-label="Postcard"]') !== null
 }
 
-/** `pointerId` is fixed at 1 throughout — nothing here tests multi-touch. */
+/** `pointerId` is fixed at 1 throughout — nothing here tests multi-touch.
+ * `timeStamp` is not a constructible `PointerEventInit` property, so a caller
+ * wanting to simulate elapsed time overrides it afterwards — see `at`. */
 function pointerEvent(
   type: string,
   x: number,
   y: number,
-  overrides: Partial<PointerEventInit> = {}
+  overrides: Partial<PointerEventInit> & { at?: number } = {}
 ) {
-  return new PointerEvent(type, {
+  const { at, ...init } = overrides
+  const event = new PointerEvent(type, {
     bubbles: true,
     cancelable: true,
     clientX: x,
@@ -143,8 +146,10 @@ function pointerEvent(
     pointerId: 1,
     isPrimary: true,
     pointerType: 'touch',
-    ...overrides,
+    ...init,
   })
+  if (at !== undefined) Object.defineProperty(event, 'timeStamp', { value: at })
+  return event
 }
 
 /** A full down → far move → up sequence, on whichever element the gesture
@@ -165,29 +170,57 @@ describe('PostcardViewerDialog — a downward drag from inside the panel', () =>
     expect(isOpen()).toBe(false)
   })
 
-  it('lets one continuous drag switch from scrolling to dismissing once the scroller runs out of room', () => {
+  // A thumb resting on the panel before it starts pulling must not spend
+  // `SWIPE_DISMISS_MAX_MS` on time nobody moved — the clock is re-based to
+  // the moment of arming, not left at `pointerdown`'s timestamp.
+  it('still closes after a long rest, as long as the pull itself is quick', () => {
+    // `at` starts at `1000` rather than `0`: React's `SyntheticEvent` falls
+    // back to `Date.now()` for a falsy `nativeEvent.timeStamp` (measured —
+    // `0` was silently discarded), so the base has to be non-zero for the
+    // override to survive at all.
+    const header = panel().querySelector('h2')!
+    act(() => {
+      header.dispatchEvent(pointerEvent('pointerdown', 100, 300, { at: 1000 }))
+      // 2 seconds of doing nothing — comfortably past `SWIPE_DISMISS_MAX_MS`
+      // if measured from `pointerdown`.
+      header.dispatchEvent(pointerEvent('pointermove', 100, 440, { at: 3000 }))
+      header.dispatchEvent(pointerEvent('pointerup', 100, 440, { at: 3050 }))
+    })
+    expect(isOpen()).toBe(false)
+  })
+
+  // A real touch device cannot deliver the opposite of this test: once a
+  // gesture starts with `scrollTop > 0`, this component deliberately never
+  // suppresses the native scroll, so Chromium claims the touch for its own
+  // pan and ends the pointer sequence in `pointercancel` — there is no later
+  // `pointermove` in which to notice the scroller reaching its top. An
+  // earlier version of this file asserted the opposite (a continuous drag
+  // switching from scroll to dismiss mid-gesture) and it only ever passed
+  // because jsdom has no such cancellation; `swipe-dismiss.ts`'s header and
+  // `openspec/specs/postcard-viewer-dismissal/spec.md` both carry the
+  // corrected rule this test pins.
+  it('never dismisses a gesture that started while the scroller had room, even if it reaches the top before release', () => {
     const s = scroller()
     s.scrollTop = 30
 
     act(() => {
       s.dispatchEvent(pointerEvent('pointerdown', 100, 300))
-      // Still scrolling: re-baselines the start point rather than arming.
-      s.dispatchEvent(pointerEvent('pointermove', 100, 320))
     })
     expect(isOpen()).toBe(true)
 
-    // The scroller has now reached its top mid-gesture (simulated directly,
-    // as the native scroll this drag would otherwise have driven).
+    // The scroller reaches its top before release — on a real device this
+    // pointer sequence would already be dead (`pointercancel`); here it is
+    // simulated as still receiving events, which is the more generous case
+    // for the behaviour under test and still must not dismiss.
     s.scrollTop = 0
 
     act(() => {
-      // Travel measured from the re-baselined point (100, 320), not from the
-      // original pointerdown — comfortably past `SWIPE_DISMISS_DISTANCE_PX`.
-      s.dispatchEvent(pointerEvent('pointermove', 100, 320 + 150))
-      s.dispatchEvent(pointerEvent('pointerup', 100, 320 + 150))
+      s.dispatchEvent(pointerEvent('pointermove', 100, 300 + 150))
+      s.dispatchEvent(pointerEvent('pointerup', 100, 300 + 150))
     })
 
-    expect(isOpen()).toBe(false)
+    expect(isOpen()).toBe(true)
+    expect(panel().style.transform).toBe('')
   })
 
   it('springs back to rest when an armed drag is abandoned short of the threshold', () => {
@@ -228,7 +261,10 @@ describe('PostcardViewerDialog — a downward drag from inside the panel', () =>
     expect(isOpen()).toBe(false)
   })
 
-  it('dismisses nothing underneath a topmost overlay (the postcard menu, PD-339s isTopmost rule)', () => {
+  // Named for `isTopmost`'s own nesting rule, which Escape already follows —
+  // not PD-339, which is the separate scrim-tap-vs-panel-drag rule the next
+  // test pins.
+  it('dismisses nothing underneath a topmost overlay (the postcard menu, the same nesting rule Escape follows)', () => {
     const overlay = document.createElement('div')
     overlay.setAttribute('role', 'dialog')
     overlay.setAttribute('aria-modal', 'true')
@@ -252,6 +288,65 @@ describe('PostcardViewerDialog — a downward drag from inside the panel', () =>
   it('closes nothing on a mostly-horizontal drag over the postcard card', () => {
     const article = panel().querySelector('article')!
     drag(article, 140, 20)
+    expect(isOpen()).toBe(true)
+  })
+
+  // The case above alone stays green if the axis-ratio check is deleted
+  // entirely: `dy: 20` is under `SWIPE_DISMISS_FLICK_PX` regardless of
+  // dominance, so removing dominance cannot make it dismiss. This one is
+  // long enough on its own (`dy` clears `SWIPE_DISMISS_DISTANCE_PX`) that
+  // only the axis check stands between it and closing.
+  it('closes nothing on a long horizontal drag, even though its vertical travel alone would qualify', () => {
+    const article = panel().querySelector('article')!
+    drag(article, 400, 100)
+    expect(isOpen()).toBe(true)
+  })
+
+  it('never dismisses on a mouse-driven drag', () => {
+    act(() => {
+      const target = panel().querySelector('h2')!
+      target.dispatchEvent(pointerEvent('pointerdown', 100, 300, { pointerType: 'mouse' }))
+      target.dispatchEvent(pointerEvent('pointermove', 100, 440, { pointerType: 'mouse' }))
+      target.dispatchEvent(pointerEvent('pointerup', 100, 440, { pointerType: 'mouse' }))
+    })
+    expect(isOpen()).toBe(true)
+  })
+
+  it('a cancel never closes the popup and always springs back', () => {
+    const header = panel().querySelector('h2')!
+    act(() => {
+      header.dispatchEvent(pointerEvent('pointerdown', 100, 300))
+      // Far enough to arm — the panel is now following the finger.
+      header.dispatchEvent(pointerEvent('pointermove', 100, 440))
+    })
+    expect(panel().style.transform).not.toBe('')
+
+    act(() => {
+      header.dispatchEvent(pointerEvent('pointercancel', 100, 440))
+    })
+
+    expect(isOpen()).toBe(true)
+    expect(panel().style.transform).toBe('')
+  })
+
+  // PD-339: the scrim only dismisses a gesture whose OWN `pointerdown` landed
+  // on it. A drag that began inside the panel must never be re-judged as a
+  // scrim tap merely because it is released over the strip of scrim PD-339
+  // leaves above the panel.
+  it('does not retrigger the scrim tap-to-dismiss for a panel drag released over the scrim strip', () => {
+    const scrim = panel().previousElementSibling as HTMLElement
+    const header = panel().querySelector('h2')!
+
+    act(() => {
+      // Too weak to qualify as a dismiss on its own — the point is only that
+      // the scrim's own click handler must not additionally fire.
+      header.dispatchEvent(pointerEvent('pointerdown', 100, 300))
+      header.dispatchEvent(pointerEvent('pointerup', 100, 300))
+      // The browser's own synthetic click after a release "over" the scrim,
+      // which `scrimArmed` is what makes inert for a gesture that began here.
+      scrim.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
     expect(isOpen()).toBe(true)
   })
 

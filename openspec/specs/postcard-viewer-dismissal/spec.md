@@ -26,24 +26,34 @@ panel's own scroller is doing decide the outcome; where the gesture ends does no
 - **THEN** the popup SHALL remain open
 - **AND** the panel SHALL return to its resting position
 
-### Requirement: The panel's own scroller owns a downward drag while it has anywhere to go
+### Requirement: The panel's own scroller owns a downward drag that STARTS with anywhere to go
 
-The panel's content scrolls (`overflow-y-auto`, `overscroll-contain`, per PD-339). A downward pull
-that starts, or passes through, a moment where that scroller is not already at its own top SHALL
-be read as scrolling and SHALL NOT dismiss the popup, however far or fast it is dragged. Only once
-the scroller has reached its top does further downward travel become a candidate dismissal.
+The panel's content scrolls (`overflow-y-auto`, `overscroll-contain`, per PD-339). Whether the
+scroller or the dismiss owns a gesture is decided once, from the scroller's position at the start
+of that gesture, and is never re-decided as the gesture plays out. A pull that begins while the
+scroller is not at its own top SHALL be read as scrolling for the gesture's whole duration and
+SHALL NOT dismiss the popup, however far or fast it is dragged and even if the scroller reaches
+its top before release. Only a pull that begins with the scroller already at its top is a
+candidate dismissal.
 
-#### Scenario: Pulling down through unread content scrolls first
+This is a platform constraint, not a design preference: suppressing the browser's own default is
+what lets a gesture become a dismiss at all (see the sibling requirement on controls), and this
+capability deliberately does not suppress the platform's native scroll for a gesture that starts
+with the scroller not at its top. Once the platform has taken the gesture for its own scroll, it
+does not hand it back mid-gesture, so there is no point at which "the scroller just reached its
+top" can be observed and answered.
+
+#### Scenario: Pulling down through unread content scrolls, and only scrolls
 - **WHEN** a rider drags down while the panel's scroller is not at its top
-- **THEN** the popup SHALL NOT close, whatever the distance or speed of the drag
+- **THEN** the popup SHALL NOT close, whatever the distance or speed of the drag, and whether or
+  not the scroller reaches its top before the rider releases
 - **AND** the scroller SHALL move as an ordinary scroll
 
-#### Scenario: Reaching the top mid-gesture allows the same continuous drag to dismiss
-- **WHEN** a rider's single continuous downward drag scrolls the panel's content to its top and
-  then keeps travelling downward, far enough or fast enough past that point
-- **THEN** the popup SHALL close
-- **AND** the distance and speed that qualify it SHALL be measured from the point the scroller
-  reached its top, not from where the drag began
+#### Scenario: A pull that starts at the top is a candidate dismissal from the first pixel
+- **WHEN** a rider drags down and the panel's scroller is already at its top at the moment the
+  drag begins
+- **THEN** the drag SHALL be judged as a candidate dismissal by this capability's other
+  requirements, measured from where it began
 
 ### Requirement: A gesture that begins on a control keeps that control's own behaviour
 
