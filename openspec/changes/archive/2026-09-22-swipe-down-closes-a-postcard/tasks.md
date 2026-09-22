@@ -59,18 +59,26 @@
 
 ## 4. Gates
 
-- [ ] 4.1 `npx tsc --noEmit`
-- [ ] 4.2 `npm run lint`
-- [ ] 4.3 `npm run test:unit`
-- [ ] 4.4 `npm run docs:check` — report rather than silently edit any `CLAUDE.md` count it
-  flags (component-test count, jsdom-test count); `CLAUDE.md` is not this session's to write.
-- [ ] 4.5 `npm run build`
-- [ ] 4.6 `npx openspec validate swipe-down-closes-a-postcard --strict`
+- [x] 4.1 `npx tsc --noEmit` — clean.
+- [x] 4.2 `npm run lint` — 0 errors, 10 pre-existing `<img>`/unused-var warnings in files this
+  change does not touch.
+- [x] 4.3 `npm run test:unit` — every test this change added or touched is green. This sandbox
+  runs Node 26 against a repo pinned to 22.x (`.nvmrc`, `package.json` `engines`); 21 pre-existing
+  failures under `src/lib/location/` and `src/lib/observability/` are Node 26's gated
+  `globalThis.localStorage` and a moved `@sentry/capacitor` path, both already documented in
+  `docs/reference/running-locally.md` §Node version and unrelated to `src/`/`src/lib/`
+  touched by this branch.
+- [x] 4.4 `npm run docs:check` — the jsdom component-test count (15 → 16) and its restatement in
+  `docs/reference/running-locally.md` fixed in this branch. `CLAUDE.md`'s own component-test total
+  (58 → 59) is reported rather than edited — agents do not write `CLAUDE.md`.
+- [x] 4.5 `npm run build` (with the placeholder Supabase env pair `docs/reference/ci.md` names) —
+  46 static routes, exit 0.
+- [x] 4.6 `npx openspec validate swipe-down-closes-a-postcard --strict` — valid.
 
 ## 5. Close-out
 
-- [ ] 5.1 Commit the proposal/specs/design on their own, before any implementation commit.
+- [x] 5.1 Commit the proposal/specs/design on their own, before any implementation commit.
 - [ ] 5.2 Push the branch. No PR is opened by this session (out of scope per the brief).
-- [ ] 5.3 `/opsx:archive` this change as the final commit, once the gates above are green — sync
-  the delta into `openspec/specs/postcard-viewer-dismissal/spec.md` and move the directory under
-  `openspec/changes/archive/` with today's date prefix.
+- [x] 5.3 `/opsx:archive` this change as the final commit — synced the delta into
+  `openspec/specs/postcard-viewer-dismissal/spec.md` and moved the directory under
+  `openspec/changes/archive/2026-09-22-swipe-down-closes-a-postcard/`.
