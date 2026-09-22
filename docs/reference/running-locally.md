@@ -110,18 +110,21 @@ with `--replace` swaps in real ones the day the owner has some.
 resolves to nothing and "Loolaan 554, Apeldoorn" renders both sizes — measured 2026-09-08. The
 function fails open, so the only symptom is a missing picture.
 
-**Chromium in this container cannot reach Supabase at all.** Measured 2026-08-06, and it is not
-a flake or a flag: `curl -x $HTTPS_PROXY .../auth/v1/health` returns 401 — tunnel open, host
-allowed — while the same fetch from a Chromium page launched with `--proxy-server=$HTTPS_PROXY`
-hangs until aborted, with no response, no `requestfailed`, and no entry in the agent proxy's own
-`recentRelayFailures`, where a genuinely blocked host *does* appear. Bare,
-`--ignore-certificate-errors`, `--disable-quic` and `--disable-http2` all hang identically.
+**Chromium in this container could not reach Supabase at all, and on 2026-09-22 that reversed.**
+The original measurement (2026-08-06) was not a flake or a flag: `curl -x $HTTPS_PROXY
+.../auth/v1/health` returned 401 — tunnel open, host allowed — while the same fetch from a
+Chromium page hung until aborted, with no response, no `requestfailed` and no entry in
+`recentRelayFailures`. Re-run today with the same discriminator it answers **401 without a key
+and 200 with one**, and a full walk has since run with `NEXT_PUBLIC_SUPABASE_URL` pointed
+straight at DEV and no relay: 23/24 screens, 81/81 checks.
 
-Now that the *browser* is the Supabase client rather than the dev server, that costs sign-in and
-therefore the entire walk. `scripts/supabase-relay.mjs` forwards one origin over the hop that
-works — real project, real RLS, real JWTs, no application
-change. Its header carries the full measurement and the warning that it terminates TLS and must
-never become a development convenience.
+**The relay is kept anyway and the commands below are unchanged** — one run on one day is not
+grounds for retiring the thing the only rendering gate depends on, Storage `<img>`/XHR was not
+re-tested, and Realtime fails either way (the proxy does not carry WebSocket upgrades; going
+direct only moves that failure to an origin `walk.mjs`'s suppression filter does not name).
+`scripts/supabase-relay.mjs` forwards one origin over the hop that works — real project, real
+RLS, real JWTs, no application change — and its header carries both measurements plus the
+warning that it terminates TLS and must never become a development convenience.
 
 `NODE_USE_ENV_PROXY=1` is separately not optional: Node's `fetch` ignores `HTTPS_PROXY`, so the
 relay itself cannot reach Supabase without it.

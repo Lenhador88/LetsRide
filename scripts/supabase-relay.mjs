@@ -30,6 +30,30 @@
  * to cost photos, and now it costs sign-in, so **it takes the whole walk with
  * it** — the only gate in this repo that renders anything.
  *
+ * ## The hang REVERSED on 2026-09-22, and this file may no longer be needed
+ *
+ * Re-measured with the discriminator above, in Chromium launched exactly as
+ * `walk.mjs` launches it: `fetch('https://<dev ref>.supabase.co/auth/v1/health')`
+ * from inside a page answers **401 in 773ms** without a key and **200 with real
+ * GoTrue JSON** with the publishable key. It does not hang. `recentRelayFailures`
+ * holds nothing for `supabase.co` either way, so this is the same clean result
+ * `curl` got in 2026-08-06 — now reproduced in the browser that used to stall.
+ *
+ * A full `npm run walk` then ran with `NEXT_PUBLIC_SUPABASE_URL` pointed
+ * straight at DEV and **this relay never started**: 23/24 screens, 81/81 guard,
+ * navigation, sign-out and social-write checks, real reads and real writes.
+ *
+ * **Two things are still not reachable, and neither is what this file fixes.**
+ * WebSocket upgrades are unsupported by the agent proxy, so Realtime fails
+ * either way — going direct only moves the failure to an origin `walk.mjs`'s
+ * suppression filter does not name, which is why that one screen is not clean.
+ * And Storage `<img>`/XHR was not re-tested, so the photo half of the original
+ * justification stands unmeasured.
+ *
+ * **So this file is kept, not retired.** The measurement above is one run on one
+ * day; retiring the relay is a decision with its own story, and the cost of
+ * keeping it is a process nobody has to start.
+ *
  * ## What this is, and what it is not
  *
  * It is a byte-for-byte forward of one origin, over a hop that works. The

@@ -100,15 +100,18 @@ Two consequences, and the second is the one that will bite:
   ```
 
   **What that run did NOT reach, and it is not the arm. The deployed bundle remains unexercised —
-  but no longer for the reason recorded here.** `app.letsride.social:443` was refused by this
-  container's agent proxy (`403` to `CONNECT`, `recentRelayFailures`, measured 2026-08-27) until
-  the owner opened the network policy on 2026-09-20; it answers now, so do not inherit "a session
-  cannot reach it" from this paragraph. What a session still has to clear is a different
-  obstacle with a different cause — `scripts/supabase-relay.mjs`'s header has it: Chromium in
-  this container stalls on Supabase *inside the browser*, with the CONNECT accepted and nothing
-  in `recentRelayFailures`, and a deployed bundle carries its Supabase URL inlined at build time,
-  so it cannot be pointed at the relay. Re-derive rather than trusting either half:
-  `curl -s -o /dev/null -w '%{http_code}' https://app.letsride.social/` is 200.
+  and the reason has changed twice, so take it from here rather than from a fresh curl.**
+  `app.letsride.social:443` was refused by this container's agent proxy (`403` to `CONNECT`,
+  `recentRelayFailures`, measured 2026-08-27) until the owner opened the network policy on
+  2026-09-20. Both app hosts answer now. **What blocks the DEV bundle is Vercel SSO**, which is
+  deliberate — `docs/ENVIRONMENTS.md` §`app-dev` inherits Vercel SSO: every route on
+  `app-dev.letsride.social` `302`s to `vercel.com/sso-api`, so an automated browser lands on a
+  Vercel login chooser with no `input[name="password"]` and the Next app never runs. PROD serves
+  real HTML and is never walked. Measured 2026-09-22:
+
+  ```bash
+  curl -sS -D - -o /dev/null https://app-dev.letsride.social/auth/login | head -2   # 302 → vercel.com/sso-api
+  ```
 
   The app under test is the local dev server on `http://localhost:3000`, an origin
   PROD's allowlist deliberately does not carry, so GoTrue **discarded the whole `redirect_to`**
