@@ -545,10 +545,10 @@ timeout:**
 
 ## Component tests — which ones need jsdom, and why
 
-Under `environment: 'node'`, all but **sixteen** render through `renderToStaticMarkup`, and jsdom is
+Under `environment: 'node'`, all but **seventeen** render through `renderToStaticMarkup`, and jsdom is
 the answer only when something needs a **mounted effect, a layout, an event or a portal**. Check a
 new one's reason against that list rather than against the count,
-because each of the sixteen below is there for a different one. Count them with
+because each of the seventeen below is there for a different one. Count them with
 `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'`.
 
 - `rides/__tests__/filterbar-survives-tap.dom.test.tsx` and
