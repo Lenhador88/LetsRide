@@ -18,6 +18,13 @@ import { getCurrentProfile } from '@/lib/data/profile'
 import { getPostcard } from '@/lib/data/postcards'
 import { combineQueries, useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
+import {
+  armsSwipeDismiss,
+  declinesSwipeDismiss,
+  isSwipeDismiss,
+  type SwipeDismissNode,
+} from '@/lib/swipe-dismiss'
+import { cn } from '@/lib/utils'
 import { postcardIdSchema } from '@/lib/validation/postcards'
 
 /**
@@ -141,8 +148,38 @@ function PostcardViewerDialog({
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const scrimRef = useRef<HTMLDivElement>(null)
+  // The body's own scroller — see `onPanelPointerMove` for why the dismiss
+  // gesture reads its `scrollTop` directly rather than walking to it the way
+  // `declinesSwipeDismiss` walks to a control: there is exactly one scroller
+  // on this sheet, and it is this ref.
+  const scrollerRef = useRef<HTMLDivElement>(null)
   // Where focus was before the dialog opened, so it can go back there on close.
   const triggerRef = useRef<Element | null>(null)
+
+  /**
+   * **Whether this dialog is the one on top.**
+   *
+   * Shared between the keyboard trap below and the drag gesture (PD-475): the
+   * postcard's own overflow menu opens a `ContextMenu` from inside here, and a
+   * drag that started here would have to be judged before that sheet existed —
+   * this dialog's own `pointerdown` runs before `ContextMenu` ever mounts. So
+   * the guard is checked again, the same way Escape already is, rather than
+   * assumed from the fact that `ContextMenu`'s scrim happens to paint on top.
+   *
+   * The z-index half of this nesting was reasoned about and got the right
+   * answer (55/56 under the sheet's 60/70); the keyboard and gesture halves are
+   * the same nesting and need the same thought. Both portal to `document.body`,
+   * so document order is open order and the last modal is the topmost one.
+   *
+   * `useCallback` with no dependencies — it closes over `panelRef` alone,
+   * which is a ref and therefore stable, so a fresh identity every render
+   * would buy nothing and would re-arm the effect below on every pass if it
+   * were ever added to that effect's dependency array.
+   */
+  const isTopmost = useCallback(() => {
+    const modals = document.querySelectorAll('[role="dialog"][aria-modal="true"]')
+    return modals.length === 0 || modals[modals.length - 1] === panelRef.current
+  }, [])
   /**
    * Whether the gesture in progress STARTED on the scrim — see the scrim's own
    * comment below (PD-339). Written from a capture-phase `pointerdown` on the
@@ -175,28 +212,13 @@ function PostcardViewerDialog({
   useEffect(() => {
     triggerRef.current = document.activeElement
 
-    /**
-     * **Whether this dialog is the one on top.**
-     *
-     * The postcard's own overflow menu opens a `ContextMenu` from inside here,
-     * and both listen for Escape on `document` with no `stopPropagation`
-     * anywhere. This one is registered first, so it also *runs* first: a single
-     * Escape aimed at the sheet tore the whole popup down underneath it.
-     *
-     * The z-index half of this nesting was reasoned about and got the right
-     * answer (55/56 under the sheet's 60/70); the keyboard half is the same
-     * nesting and needed the same thought. Both portal to `document.body`, so
-     * document order is open order and the last modal is the topmost one.
-     *
-     * It guards Tab as well as Escape, and must: while the sheet is open its
-     * own trap owns the focus ring, and two traps fighting over it is the same
-     * defect in a slower shape.
-     */
-    function isTopmost() {
-      const modals = document.querySelectorAll('[role="dialog"][aria-modal="true"]')
-      return modals.length === 0 || modals[modals.length - 1] === panelRef.current
-    }
-
+    // `isTopmost` guards Tab as well as Escape, and must: while the sheet is
+    // open its own trap owns the focus ring, and two traps fighting over it
+    // is the same defect in a slower shape. The postcard's own overflow menu
+    // opens a `ContextMenu` from inside here, and both listen for Escape on
+    // `document` with no `stopPropagation` anywhere — this one is registered
+    // first, so it also *runs* first, and a single Escape aimed at the sheet
+    // would otherwise tear the whole popup down underneath it.
     function onKeyDown(event: KeyboardEvent) {
       if (!isTopmost()) return
 
@@ -274,8 +296,157 @@ function PostcardViewerDialog({
     // Keyed on the postcard rather than on nothing: opening a second postcard
     // from inside the first (a byline tap cannot, but a future control might)
     // must re-run the trap against the new content rather than leave it pointing
-    // at an unmounted subtree.
-  }, [postcardId])
+    // at an unmounted subtree. `isTopmost` is stable (see its own comment) so
+    // naming it here does not add a second reason to re-run.
+  }, [postcardId, isTopmost])
+
+  /**
+   * A downward drag that begins inside the panel closes it — PD-475, the
+   * gesture every sheet on a phone answers. `swipe-dismiss.ts` carries the
+   * geometry; everything DOM-specific — the control chain, the scroller's own
+   * `scrollTop`, and `isTopmost` above — lives here, the same split
+   * `swipe-back.ts`/`navigate.ts` already draw.
+   *
+   * `gesture` is a ref rather than state for the reason `PostcardDeck`'s own
+   * drag state is: `pointermove` is continuous, so a `pointerup` closing over
+   * `useState` could read a value one move stale. `dismissDy` mirrors it into
+   * state purely for the transform — the ref stays authoritative.
+   */
+  const gesture = useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    startAt: number
+    armed: boolean
+  } | null>(null)
+  const [dismissDy, setDismissDy] = useState(0)
+  // True only once armed — suppresses the spring-back transition while the
+  // panel is following the finger, exactly as `PostcardDeck`'s `dragging` does
+  // for its own transform.
+  const [dismissing, setDismissing] = useState(false)
+
+  /**
+   * The chain from the gesture's target up to the document root, in the shape
+   * `declinesSwipeDismiss` needs. Built fresh at each `pointerdown` rather than
+   * kept around: the target is different on every gesture and the chain is
+   * cheap — a handful of ancestors on a 390-wide sheet, never the whole page.
+   */
+  function chain(node: EventTarget | null): SwipeDismissNode | null {
+    if (!(node instanceof Element)) return null
+
+    let head: SwipeDismissNode | null = null
+    let tail: SwipeDismissNode | null = null
+    for (let el: Element | null = node; el; el = el.parentElement) {
+      const link: SwipeDismissNode = {
+        tagName: el.tagName,
+        isContentEditable: el instanceof HTMLElement && el.isContentEditable,
+        parent: null,
+      }
+      if (tail) tail.parent = link
+      else head = link
+      tail = link
+    }
+    return head
+  }
+
+  const onPanelPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    // A mouse has no equivalent gesture to give up — a drag with the button
+    // held is a text selection over the caption or the comments, and unlike
+    // `useSwipeBack`'s edge swipe there is no visible arrow standing in for it,
+    // but there is a Close button and Escape, so nothing is lost by leaving
+    // the mouse to its selection.
+    if (event.pointerType === 'mouse') return
+    // A second finger is a pinch or a two-handed hold, not this.
+    if (!event.isPrimary) return
+    // The postcard's own overflow menu, open over this sheet — see
+    // `isTopmost`'s own comment. A drag while it is up must dismiss nothing
+    // underneath it, the same nesting rule Escape already follows.
+    if (!isTopmost()) return
+    // A control keeps its own gesture — the comment composer's caret and
+    // selection, and a tap or a drag on any button or link on the card.
+    if (declinesSwipeDismiss(chain(event.target))) return
+
+    gesture.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startAt: event.timeStamp,
+      armed: false,
+    }
+  }
+
+  const onPanelPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const state = gesture.current
+    if (!state || state.pointerId !== event.pointerId) return
+
+    if (!state.armed) {
+      /**
+       * **The scroller owns the gesture whenever it has anywhere to go
+       * (PD-339).** While it can still scroll, the start point is slid
+       * forward to here-and-now on every move instead of being tested against
+       * the original `pointerdown` — so the instant the content runs out of
+       * room, the drag that takes over starts its OWN travel from that point
+       * rather than inheriting however far the pull already spent scrolling.
+       * A version that measured from the original `pointerdown` throughout
+       * would arm immediately the moment `scrollTop` reached zero, snapping
+       * the panel to wherever the finger already was.
+       */
+      if ((scrollerRef.current?.scrollTop ?? 0) > 0) {
+        state.startX = event.clientX
+        state.startY = event.clientY
+        return
+      }
+
+      if (!armsSwipeDismiss(event.clientX - state.startX, event.clientY - state.startY)) return
+
+      state.armed = true
+      setDismissing(true)
+      // Taken only now, never at `pointerdown` — exactly `PostcardDeck`'s own
+      // reasoning: capturing earlier would retarget every later event to the
+      // panel before a tap on a control could be told apart from a drag.
+      event.currentTarget.setPointerCapture(event.pointerId)
+    }
+
+    // Stops the caption's text selection and the browser's own rubber-band
+    // now that the gesture is plainly this one's rather than the scroller's.
+    event.preventDefault()
+    setDismissDy(Math.max(0, event.clientY - state.startY))
+  }
+
+  const onPanelPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    const state = gesture.current
+    if (!state || state.pointerId !== event.pointerId) return
+    gesture.current = null
+    if (!state.armed) return
+
+    setDismissing(false)
+
+    const shouldClose = isSwipeDismiss({
+      startX: state.startX,
+      startY: state.startY,
+      endX: event.clientX,
+      endY: event.clientY,
+      elapsedMs: event.timeStamp - state.startAt,
+    })
+
+    if (shouldClose) onCloseRef.current()
+    else setDismissDy(0)
+  }
+
+  /**
+   * A cancel aborts the gesture; it never completes it — the same rule
+   * `PostcardDeck`'s own `onPointerCancel` states, and for the same reason: a
+   * touch the platform took away mid-drag is not a release the rider chose.
+   */
+  const onPanelPointerCancel = (event: React.PointerEvent<HTMLDivElement>) => {
+    const state = gesture.current
+    if (!state || state.pointerId !== event.pointerId) return
+    gesture.current = null
+    if (!state.armed) return
+
+    setDismissing(false)
+    setDismissDy(0)
+  }
 
   if (typeof document === 'undefined') return null
 
@@ -310,14 +481,26 @@ function PostcardViewerDialog({
         aria-modal="true"
         aria-label="Postcard"
         tabIndex={-1}
-        className={
+        className={cn(
           // Not `inset-0`: the strip of scrim left at the top is what says this
           // is drawn over the screen rather than being a new one, and it is
           // where a thumb reaches to dismiss. Below `env(safe-area-inset-top)`
           // so the notch never eats the dialog's own header.
           'fixed inset-x-0 bottom-0 z-[56] flex flex-col overflow-hidden rounded-t-2xl bg-background outline-none ' +
-          'top-[calc(max(0.5rem,env(safe-area-inset-top))+2rem)] motion-safe:animate-fade-in'
-        }
+            'top-[calc(max(0.5rem,env(safe-area-inset-top))+2rem)] motion-safe:animate-fade-in',
+          // The spring-back (PD-475): only while NOT actively tracked, so an
+          // armed drag follows the finger with no lag and an abandoned one
+          // eases back to `dismissDy: 0`. No `touch-action` anywhere on this
+          // panel — the scroller below must keep its native vertical pan for
+          // as long as it has anywhere to go (`onPanelPointerMove`), and a
+          // panel-wide `touch-none` would take that away from underneath it.
+          !dismissing && 'motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out'
+        )}
+        style={dismissDy ? { transform: `translateY(${dismissDy}px)` } : undefined}
+        onPointerDown={onPanelPointerDown}
+        onPointerMove={onPanelPointerMove}
+        onPointerUp={onPanelPointerUp}
+        onPointerCancel={onPanelPointerCancel}
       >
         <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-2">
           <h2 className="flex-1 pl-2 text-base font-semibold text-foreground">Post</h2>
@@ -343,8 +526,16 @@ function PostcardViewerDialog({
             .overflow = 'hidden'` above does NOT prevent that in the native
             shell, where PD-317 records it as a no-op. `contain` keeps the
             overscroll here without `none`'s cost, which would also kill the
-            platform's own pull-to-refresh everywhere this pattern is copied. */}
-        <div className="min-h-0 flex-1 overscroll-contain overflow-y-auto px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            platform's own pull-to-refresh everywhere this pattern is copied.
+
+            **`ref={scrollerRef}`, read by `onPanelPointerMove` (PD-475)**: the
+            dismiss drag only takes over once this scroller's own `scrollTop`
+            is back to zero, so a rider pulling down through an unread thread
+            scrolls it first and dismisses second, never the other way round. */}
+        <div
+          ref={scrollerRef}
+          className="min-h-0 flex-1 overscroll-contain overflow-y-auto px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
+        >
           <PostcardViewerBody postcardId={postcardId} onClose={onClose} />
         </div>
       </div>
