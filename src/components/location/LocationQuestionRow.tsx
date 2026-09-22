@@ -46,9 +46,11 @@ import { cn } from '@/lib/utils'
  * `resolveRiderLocation()` is deliberately silent: its device source returns
  * early unless the permission ALREADY reads `granted`, so it can be called from
  * an effect on every screen without ever raising a dialog.
- * `requestDeviceLocation()` is the one function that may prompt, and this row is
- * still its only caller anywhere in `src/`. The sheet behind it is what makes
- * spending the device's one-shot prompt a deliberate act.
+ * `requestDeviceLocation()` is the one function that may prompt. This row is one
+ * of its two callers; the other is `TownFromDevice` (PD-477), the town
+ * question's *Use my current location*, whose own label is the explanation.
+ * `request-callers.test.ts` holds it to those two. The sheet behind this row is
+ * what makes spending the device's one-shot prompt a deliberate act.
  *
  * ## Geometry is `ExploreClubsStrip`'s, deliberately
  *

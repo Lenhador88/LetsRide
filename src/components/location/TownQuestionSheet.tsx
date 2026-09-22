@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { Button } from '@/components/ui/Button'
 import { ContextMenu } from '@/components/ui/ContextMenu'
 import { PlaceSearchField, type PlaceValue } from '@/components/ui/PlaceSearchField'
+import { TownFromDevice } from '@/components/location/TownFromDevice'
 import { LocationFilledIcon } from '@/components/icons/generated'
 import { setRiderTown } from '@/lib/actions/profile'
 import { LOCATION_MAX_LENGTH } from '@/lib/validation/profile'
@@ -32,8 +33,10 @@ import { LOCATION_MAX_LENGTH } from '@/lib/validation/profile'
  * bundle never sees its own IP, so it would take an Edge Function; and in the
  * Netherlands mobile traffic geolocates to the carrier's gateway rather than to
  * the rider, so it would often be confidently wrong. **Nothing here may quietly
- * derive a position from anything the rider did not type** — not their IP, not
- * their postcards' locations, not the clubs they have joined.
+ * derive a position from anything the rider did not type or tap for** — not
+ * their IP, not their postcards' locations, not the clubs they have joined.
+ * PD-477's *Use my current location* is the one tap: it fills the field with a
+ * pick the rider can still change, and Save stays theirs.
  *
  * ## The picked town's NAME is what gets stored, not its coordinate
  *
@@ -131,7 +134,7 @@ export function TownQuestionSheet({
       // start of the next attempt — so it is exactly "the rider tried and it did
       // not land" at the moment they close.
       onClose={pending ? () => {} : () => onClose({ saveFailed: error !== null })}
-      label="Where you ride from"
+      label="Your town"
     >
       <div className="flex flex-col gap-4 pb-2">
         <span className="flex h-12 w-12 items-center justify-center rounded-full bg-background">
@@ -145,27 +148,32 @@ export function TownQuestionSheet({
           remove it at any time on your profile.
         </p>
 
-        <PlaceSearchField
-          // **`Town`, NOT the frame's `City`, and this is a deliberate logged
-          // divergence rather than an oversight.** The frame predates the town
-          // rung entirely — it is the onboarding step `075` deleted, built when
-          // there was no `setRiderTown` — so it is not evidence about which
-          // word this app uses. `town` is: the action, the row's own label, the
-          // `Near {town}` string and the paragraph directly above this field.
-          // Taking `City` here would put a fifth noun for one concept two lines
-          // under body copy that says "town".
-          label="Town"
-          placeholder="Search for your town or city"
-          value={place}
-          onChange={setPlace}
-          // The column's own bound, so what this writes can always be stored —
-          // see `PlaceSearchField`'s `maxNameLength`. `018` is the CHECK behind
-          // it and `setRiderTown` parses against the same constant.
-          maxNameLength={LOCATION_MAX_LENGTH}
-          disabled={pending}
-          // No `names`: this is a controlled field with no form behind it, and
-          // `setRiderTown` takes an argument rather than a `FormData`.
-        />
+        {/* PD-477: the same control as the onboarding step, so the profile's
+            *Change town* gets it through this sheet rather than as a second
+            button on `LocationSetting`, which only reads on open. */}
+        <TownFromDevice onFound={setPlace} disabled={pending}>
+          <PlaceSearchField
+            // **`Town`, NOT the frame's `City`, and this is a deliberate logged
+            // divergence rather than an oversight.** The frame predates the town
+            // rung entirely — it is the onboarding step `075` deleted, built when
+            // there was no `setRiderTown` — so it is not evidence about which
+            // word this app uses. `town` is: the action, the row's own label, the
+            // `Near {town}` string and the paragraph directly above this field.
+            // Taking `City` here would put a fifth noun for one concept two lines
+            // under body copy that says "town".
+            label="Town"
+            placeholder="Search for your town or city"
+            value={place}
+            onChange={setPlace}
+            // The column's own bound, so what this writes can always be stored —
+            // see `PlaceSearchField`'s `maxNameLength`. `018` is the CHECK behind
+            // it and `setRiderTown` parses against the same constant.
+            maxNameLength={LOCATION_MAX_LENGTH}
+            disabled={pending}
+            // No `names`: this is a controlled field with no form behind it, and
+            // `setRiderTown` takes an argument rather than a `FormData`.
+          />
+        </TownFromDevice>
 
         {/* The region has to exist before its content changes, or a screen
             reader announces nothing — the same rule `JoinClubButton` follows. */}
