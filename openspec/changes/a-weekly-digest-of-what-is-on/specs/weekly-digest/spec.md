@@ -1,478 +1,326 @@
-## Purpose
-
-The one message this app sends that no other rider caused: a weekly "what's on this weekend",
-assembled by a schedule rather than by an event. This capability owns who receives it and — far
-more importantly — **who must not**; what it may name and what it must never name; the rule that
-an empty digest is not sent at all; exactly-once-per-week; quiet hours in the rider's own zone;
-and its own consent, which is not any other consent.
-
-**Every requirement below is a statement about a role and a resource, so each maps onto an
-assertion in `supabase/tests/rls_test.sql`.** Two exceptions are named as such: the
-security-advisor sweep, and any assertion about a **grant**, which must name the role via
-`has_table_privilege` / `has_function_privilege` rather than attempt a statement, because the
-suite runs as the table owner for whom neither RLS nor the `private` USAGE barrier exists
-(`031`'s lesson).
-
 ## ADDED Requirements
 
-### Requirement: A rider with nothing to show SHALL receive NOTHING — no row, no notification, no push
+### Requirement: The weekend digest SHALL be defined by one candidate-relative body that no client role can reach
 
-Where `private.weekend_digest_for(candidate, at)` returns an empty content set, the assembly
-SHALL insert **no** `public.rider_digests` row, and therefore no outbox row and no push. There
-SHALL be no empty-state digest, no "quiet week" message, no "nothing near you — widen your
-radius" prompt and no zero-count summary.
+The content of the weekend digest SHALL be computed in exactly one place:
+`private.weekend_digest_for(candidate uuid, at timestamptz, near_lat double precision, near_lon
+double precision)`. It SHALL be `security definer` with `search_path` pinned empty, and every
+reference in it SHALL be schema-qualified. EXECUTE SHALL be revoked from `public`, `anon`,
+`authenticated` and `service_role`.
 
-**This is the requirement most likely to be softened into a feature by someone who means well.**
-An empty digest is the fastest route to an uninstall: it costs the rider a notification and gives
-them nothing, and it does so *weekly*, which is the one cadence at which an unrewarding
-interruption compounds. A rider with nothing to show has not failed and does not need telling.
+The body SHALL be candidate-relative:
 
-Emptiness SHALL be an **ordinary outcome**, not an error: the assembly SHALL NOT raise, log a
-warning, or record an attempt. Nothing anywhere SHALL count the riders who were skipped, because
-a table of "riders with nothing near them" is a location-derived record about people with no
-purpose that justifies keeping it.
+- It SHALL NOT call `auth.uid()`, `private.is_club_member(` or `private.is_ride_crew(`.
+- Every audience decision SHALL be a call to an existing pinned helper: `private.can_read_ride`,
+  `private.can_read_club_thread`, `private.is_club_member_for` or `private.is_blocked`.
+- It SHALL test blocking itself, in both directions, and SHALL NOT rely on a caller's RLS.
 
-#### Scenario: A rider with no qualifying rides and no club activity gets no row
-- **WHEN** assembly evaluates a rider for whom the content set is empty
-- **THEN** zero `rider_digests` rows SHALL exist for that rider and that period
-- **AND** zero `push_deliveries` rows SHALL exist
-- **AND** the assembly SHALL complete normally, and the next rider SHALL be evaluated
+It SHALL NOT read:
 
-#### Scenario: Emptiness is re-evaluated every run, never cached as a verdict
-- **WHEN** a rider is empty at 18:00 and a qualifying ride is created at 19:00, both inside their
-  send window
-- **THEN** the 20:00 run SHALL send them a digest
-- **AND** nothing SHALL have recorded the earlier emptiness in a way that suppresses it
+- `profiles.rides_from`, which is never a position;
+- `profiles.digest_opt_out_at`, which is a preference and not a content rule.
 
-#### Scenario: A rider with club activity but no nearby rides still qualifies
-- **WHEN** the rides half is empty and the club half is not
-- **THEN** a digest SHALL be sent naming only what there is
-- **AND** the absent half SHALL be omitted entirely rather than rendered as "0 rides near you"
+A NULL `candidate` SHALL yield zero rows.
 
-#### Scenario: The in-app screen is the one place emptiness IS rendered
-- **WHEN** a rider opens the digest screen themselves and the content set is empty
-- **THEN** a designed empty state SHALL be drawn, because the rider asked
-- **AND** this SHALL NOT be read as permission to send that state
+#### Scenario: No client role can execute the body
+- **WHEN** EXECUTE on `private.weekend_digest_for` is checked for `authenticated`, `anon` and
+  `service_role`
+- **THEN** `has_function_privilege` SHALL be false for each
+- **AND** the assertion SHALL name the role rather than attempt the call, because the suite runs
+  as the owner
 
-### Requirement: The digest SHALL be a marker row and SHALL hold no copy of what it contained
+#### Scenario: The body is checkably candidate-relative
+- **WHEN** the body's `prosrc` is read with `--` comments stripped
+- **THEN** it SHALL contain none of `auth.uid(`, `private.is_club_member(`,
+  `private.is_ride_crew(`, `rides_from` or `digest_opt_out_at`
+- **AND** the assertion SHALL be verified both ways: it SHALL fail against a scratch body that
+  names one of them
 
-`public.rider_digests` SHALL carry exactly `id`, `user_id`, `period_start`, `created_at` and
-`read_at`. It SHALL carry **no** ride id, club id, count, title, body, rendered string or any
-other description of its content.
+#### Scenario: No subject, no content
+- **WHEN** the body is called with a NULL candidate
+- **THEN** it SHALL return zero rows and SHALL NOT raise
 
-The content SHALL be produced at read time and at send time by
-`private.weekend_digest_for(candidate, at)` and SHALL never be written to any table. This is
-`database-enforced-integrity`'s standing rule — a derived row SHALL NOT hold a copy of a
-visibility decision — and `121 §1`'s first condition, applied one table over.
+### Requirement: "This weekend" SHALL be decided in each ride's own zone
 
-**A stored list is a second copy of a visibility decision and nothing re-checks it.** A ride id
-pinned on Friday and rendered on Sunday names a ride whose club may since have gone private, whose
-organiser may since have blocked the reader, or from which the reader may since have been removed.
-The row would look correct to any reviewer, because the value in it was true when it was written.
+A ride SHALL be in "this weekend" at instant `at` only when all three conditions below hold,
+where `Z` is `coalesce(rides.timezone, 'Europe/Amsterdam')`:
 
-#### Scenario: No column can hold a name, a title or a count
-- **WHEN** the table is created
-- **THEN** it SHALL carry no `ride_ids`, `club_ids`, `ride_count`, `title`, `body`, `summary`,
-  `payload` or equivalent column
-- **AND** the assertion SHALL be a column-list comparison, so a column added later fails it
+1. its `departure_at` is after `at`;
+2. its local date in `Z` is a Saturday or a Sunday;
+3. that local date falls in the same ISO week (Monday to Sunday) as `at`'s local date in the same
+   `Z`.
 
-#### Scenario: The screen and the push read the same body
-- **WHEN** the in-app digest and the push copy are produced
-- **THEN** both SHALL resolve through `private.weekend_digest_for`
-- **AND** a second, separately-written content query SHALL NOT exist, because two bodies drift and
-  the drift is invisible from either side
+No rider zone SHALL be consulted, and the database server's zone SHALL NOT be used.
 
-#### Scenario: A digest read after its subject changed shows the change
-- **WHEN** a ride named in a rider's digest is cancelled, made private, or its club left, and the
-  rider then opens the digest screen
-- **THEN** that ride SHALL NOT be listed
-- **AND** no gap, placeholder or count discrepancy SHALL indicate that something was removed
+#### Scenario: A weekday means the coming weekend
+- **WHEN** `at` is a Wednesday in the ride's zone and the ride departs that week's Saturday
+- **THEN** the ride SHALL be in this weekend
+- **AND** a ride departing the following week's Saturday SHALL NOT be
 
-### Requirement: Exactly one digest per rider per period SHALL be a property of the schema
+#### Scenario: A weekend day means what is left of it
+- **WHEN** `at` is Saturday afternoon in the ride's zone
+- **THEN** a ride departing that Sunday SHALL be in this weekend
+- **AND** a ride that departed that Saturday morning SHALL NOT be
 
-`public.rider_digests` SHALL carry `unique (user_id, period_start)`. Exactly-once SHALL NOT rest
-on the assembly job running once, on a `where not exists` the author remembered, or on a cron
-expression firing weekly.
+#### Scenario: The ride's own zone decides, not Amsterdam's
+- **WHEN** a ride's `timezone` is `America/Los_Angeles` and it departs Friday 20:00 local, which
+  is Saturday in `Europe/Amsterdam`
+- **THEN** it SHALL NOT be in this weekend
 
-The assembly job runs **hourly** (quiet hours require it — see the zone requirement below), so it
-evaluates every rider up to 168 times per period. The unique key is what makes that safe.
+### Requirement: "Near" SHALL be measured from a position the caller passes, rounded by the body
 
-#### Scenario: A second assembly run in the same period writes nothing
-- **WHEN** assembly runs again for a rider who already holds a row for this `period_start`
-- **THEN** the insert SHALL be a no-op — `on conflict do nothing` — and SHALL NOT raise
-- **AND** no second outbox row SHALL be created
+A ride SHALL be near only when it has a start coordinate and lies within `NEARBY_RADIUS_KM` =
+100 km of the position passed as `near_lat` and `near_lon`. The comparison is inclusive. The
+distance SHALL be computed with the haversine formula and the 6371.0088 km mean radius that
+`src/lib/location/distance.ts` uses.
 
-#### Scenario: Two overlapping runs cannot both insert
-- **WHEN** two assembly invocations evaluate the same rider concurrently
-- **THEN** at most one row SHALL exist afterwards
-- **AND** the guarantee SHALL be the unique index, asserted directly by attempting the duplicate
-  insert as the table owner and observing the conflict
+The body SHALL round the position to 2 decimal places before it uses it, whoever the caller is:
 
-#### Scenario: A new period is a new row
-- **WHEN** the next period begins
-- **THEN** the same rider SHALL be eligible again
-- **AND** `period_start` SHALL be derived from a fixed rule rather than from "seven days since the
-  last one", so a rider missed one week is not permanently shifted off the weekly rhythm
+- Both arguments NULL SHALL mean "no position".
+- Exactly one NULL, or a value outside `[-90, 90]` × `[-180, 180]` (including `NaN` and
+  infinities), SHALL raise `22023`.
 
-### Requirement: The digest SHALL NOT stack with transactional push about the same events
+A ride with NULL coordinates SHALL NOT be near anything.
 
-A rider SHALL NOT be pushed a digest naming an event they were already pushed about in the same
-period, and SHALL NOT be pushed a digest they have already read in the app.
+#### Scenario: A ride past the radius is not near
+- **WHEN** a qualifying ride lies 101 km from the passed position
+- **THEN** it SHALL NOT appear, and one at 99 km SHALL
 
-Two mechanisms, and they are separate:
+#### Scenario: A ride with no coordinate is not near
+- **WHEN** a qualifying ride has NULL `latitude` and `longitude`
+- **THEN** it SHALL NOT appear in the rides section
 
-1. **Already-read suppression** — `rider_digests.read_at` exists for this. `121 §7`'s claim-time
-   filter (a) SHALL apply to a digest exactly as it applies to a notification: a rider who was in
-   the app when the row landed, opened the digest and read it must not be pushed about it a minute
-   later. At `121`'s one-minute interval this is the ordinary case, not an edge one.
-2. **Event overlap** — a ride the rider was *already notified about* through `ride_invited`,
-   `ride_created_in_club` or any other transactional type in the same period SHALL be excluded
-   from the digest's ride list.
+#### Scenario: No position empties the rides section only
+- **WHEN** both position arguments are NULL
+- **THEN** no ride row SHALL be returned
+- **AND** the clubs section SHALL still be computed and returned
 
-#### Scenario: A ride the rider was already told about is not repeated
-- **WHEN** a rider received a `ride_created_in_club` notification for a ride this period, and that
-  ride also qualifies as "near you this weekend"
-- **THEN** the digest SHALL NOT list it
-- **AND** if it was the only qualifying ride, the digest SHALL NOT be sent at all, by the
-  emptiness rule
+#### Scenario: A malformed position is refused
+- **WHEN** exactly one position argument is NULL, or either is `NaN` or out of range
+- **THEN** the call SHALL raise `22023`
 
-#### Scenario: A digest read in-app before the push tick is suppressed, not sent
-- **WHEN** `rider_digests.read_at` is set before the claim
-- **THEN** the outbox row SHALL be marked `suppressed` and never retried
-- **AND** `suppressed` SHALL NOT be counted as a failure anywhere
+### Requirement: The rides section SHALL exclude what the rider cannot read, organises, has answered or shares a block with
 
-#### Scenario: A ride the rider RSVP'd to is not offered to them
-- **WHEN** a rider already holds a `ride_members` row for a qualifying ride, of either status
-- **THEN** that ride SHALL NOT appear in their digest
-- **AND** a rider who has RSVP'd to **every** qualifying ride SHALL fall into the emptiness rule
-  and receive nothing
+A ride SHALL appear in the rides section only when it is in this weekend, near the position, and
+meets all of the following for the candidate:
 
-#### Scenario: A ride the rider organises is not offered to them
-- **WHEN** a rider is the `organizer_id` of a qualifying ride
-- **THEN** it SHALL NOT appear in their own digest, whether or not they hold a `ride_members` row
-- **AND** the exclusion SHALL be by rider id rather than by role, matching
-  `event-fanout-integrity`'s self-suppression rule
+- `private.can_read_ride(candidate, ride)` is true;
+- the candidate is not its `organizer_id`;
+- the candidate holds no `ride_members` row for it (neither `going` nor `maybe`);
+- `private.is_blocked(candidate, organizer_id)` is false.
 
-### Requirement: Blocking SHALL be tested explicitly inside the digest, in both directions
+The section SHALL be ordered by `departure_at`, then distance, then `id`, and SHALL hold at most
+5 rides.
 
-The assembly runs outside any rider's session, so `auth.uid()` is NULL and **RLS does none of this
-work for free**. Every candidate row SHALL be tested against `private.is_blocked(recipient,
-other)`, which is symmetric — its body is `blocker_id = a and blocked_id = b` **or**
-`blocker_id = b and blocked_id = a` — so one call covers both directions of a directional row.
+#### Scenario: A blocked organiser's ride is absent in both directions
+- **WHEN** the candidate has blocked a qualifying ride's organiser, and separately when that
+  organiser has blocked the candidate
+- **THEN** the ride SHALL NOT appear in either case
 
-`private.is_club_member` and `private.is_ride_crew` read `auth.uid()` internally and answer only
-for the caller. **Neither SHALL appear anywhere in the assembly or in
-`private.weekend_digest_for`.** The candidate-relative forms — `private.can_read_ride(candidate,
-ride)`, `private.can_read_club(candidate, club)`, `private.is_club_member_for(candidate, club)` —
-are the only permitted shapes.
+#### Scenario: A public ride in a private club is absent for a non-member
+- **WHEN** a qualifying ride has `is_public = true` in a private club the candidate is not a member
+  of, and the candidate holds no live invite to it
+- **THEN** it SHALL NOT appear
+- **AND** it SHALL appear for a member of that club
 
-**`can_read_ride`'s own block arm is NOT sufficient and stating otherwise is the trap.** It
-block-dominates the **organiser** alone. A club-activity line summarising threads, messages or
-postcards authored by other riders is a disclosure about *those* riders, so the count SHALL be
-filtered per author against `is_blocked(recipient, author)`.
+#### Scenario: A live ride invite makes the ride eligible, and a declined one does not
+- **WHEN** the candidate holds a `pending` `ride_invites` row for a qualifying ride in a private club
+- **THEN** the ride SHALL appear, because `083`'s arm already lets the candidate read it
+- **AND** after the invite is declined it SHALL NOT appear
 
-#### Scenario: A ride organised by a blocked rider is absent
-- **WHEN** a qualifying ride's organiser is blocked with the recipient in either direction
-- **THEN** it SHALL NOT appear, and the assertion SHALL be run with the two riders exchanged,
-  because the row is directional and the effect symmetric
+#### Scenario: A ride the rider organises or answered is absent
+- **WHEN** the candidate organises a qualifying ride, or holds a `going` or `maybe` row for one
+- **THEN** that ride SHALL NOT appear
 
-#### Scenario: A club activity count excludes blocked authors
-- **WHEN** a club the recipient belongs to gained five threads this period, two of them by a rider
-  blocked with the recipient
-- **THEN** the count SHALL be three
-- **AND** it SHALL NOT be five with two rows filtered afterwards by a screen, which is decision
-  #2's forbidden shape
+### Requirement: The clubs section SHALL name only the rider's own clubs and SHALL count only rows the rider can read from riders they share no block with
 
-#### Scenario: The digest cannot be used as a block oracle
-- **WHEN** a rider compares what their digest names against what a screen shows them
-- **THEN** no gap, count or marker SHALL disclose that a block exists, because a blocked rider's
-  content is absent from **both** by the same predicate
+A club SHALL appear in the clubs section only when `private.is_club_member_for(candidate, club)` is
+true. For each club, two counts are computed.
 
-#### Scenario: No caller-relative helper appears in the assembly
-- **WHEN** the assembly and content functions are reviewed
-- **THEN** `private.is_club_member(`, `private.is_ride_crew(` and `auth.uid()` SHALL appear in
-  neither
-- **AND** this SHALL be checkable by inspecting `prosrc`, not inferred from behaviour
+`new_rides` SHALL count rides that meet all of these:
 
-### Requirement: A private club's name and a private ride's title SHALL NOT reach a rider through the digest
+- the ride is in that club;
+- it was created in the 7 days before `at`;
+- it departs after `at`;
+- the candidate did not organise it;
+- its organiser is not blocked with the candidate;
+- `private.can_read_ride(candidate, ride)` is true.
 
-The digest SHALL name a ride only where `private.can_read_ride(recipient, ride)` is true, and a
-club only where `private.can_read_club(recipient, club)` is true. There SHALL be no arm by which
-a non-member learns a private club's name, its member count, its activity level or that it exists.
+`new_threads` SHALL count `club_threads` that meet all of these:
 
-`is_public = true` on a ride or club means "visible to any signed-in rider" and never "visible to
-the internet" (decision #1). The digest reaches signed-in riders only, so a public ride in a
-public club is in scope; **a public ride in a private club is not**, which is `can_read_ride`'s
-`r.is_public and (r.club_id is null or private.is_club_public(r.club_id))` arm and the reason
-the helper is used rather than a hand-written `is_public` filter.
+- the thread is in that club;
+- it was created in the 7 days before `at`;
+- the candidate did not write it;
+- its author is not blocked with the candidate;
+- `private.can_read_club_thread(candidate, thread)` is true.
 
-#### Scenario: A non-member is told nothing about a private club
-- **WHEN** a private club near the recipient gains rides and threads this period
-- **THEN** the recipient's digest SHALL name neither the club, its rides, nor any count derived
-  from them
-- **AND** the digest SHALL NOT differ in any observable way from the digest of a rider for whom
-  that club does not exist
+A club SHALL appear only when the two counts sum to more than zero. The section SHALL be ordered
+by that sum descending, then club name, then club id, and SHALL hold at most 5 clubs.
 
-#### Scenario: A private club's ride is not rescued by `is_public`
-- **WHEN** a ride in a private club carries `is_public = true` and the recipient is not a member
-- **THEN** it SHALL NOT appear, because ride visibility is the conjunction and not the column
+The body SHALL read no admin-only table, so owner, admin and member receive identical counts for
+the same club.
 
-#### Scenario: A rider removed from a club loses its activity immediately
-- **WHEN** a rider is removed from, or leaves, a private club between one run and the next
-- **THEN** the following run SHALL name nothing from it
-- **AND** a digest row already written SHALL render nothing from it either, because the content is
-  re-derived at read time and never stored
+#### Scenario: A private club's activity never reaches a non-member
+- **WHEN** a private club gains rides and threads this week and the candidate is not a member
+- **THEN** no row SHALL name that club, and no count SHALL include its rows
 
-#### Scenario: A rider holding a pending club invite gains nothing
-- **WHEN** a rider holds a `pending` `club_invites` row for a private club
-- **THEN** the digest SHALL name nothing from that club, because a pending invite grants no read
-  of the roster, threads, messages, rides or postcards — only of `notifications`
+#### Scenario: A pending club invite grants nothing
+- **WHEN** the candidate holds a `pending` `club_invites` row for a private club
+- **THEN** the clubs section SHALL NOT name that club
 
-### Requirement: A digest SHALL be readable by its rider and by nobody else
+#### Scenario: A removed member loses the club on the next read
+- **WHEN** the candidate is removed from a club (a `club_removals` row, no `club_members` row)
+- **THEN** the next call SHALL NOT name that club, or count anything from it
 
-`public.rider_digests` SHALL be readable only by the rider named in `user_id`. `authenticated`
-SHALL hold **no INSERT grant** and the table SHALL carry **no INSERT policy**; **no DELETE grant**
-and no DELETE policy. UPDATE SHALL be confined to `read_at`, on the caller's own rows, and the
-UPDATE policy's predicate SHALL be **identical** to the SELECT policy's in both `using` and
-`with check`.
+#### Scenario: Blocked authors are not counted, in either direction
+- **WHEN** a club the candidate belongs to gained five threads this week, two of them by a rider
+  blocked with the candidate in either direction
+- **THEN** `new_threads` SHALL be 3
+- **AND** the same SHALL hold for `new_rides` and a blocked organiser
 
-The absence of the INSERT grant is what makes the assembly the only writer. A rider who could
-insert could award themselves a digest; one who could delete could erase the record that they
-were sent one, which is the same objection `036` records for notifications.
+#### Scenario: The rider's own activity is not news to them
+- **WHEN** the candidate created a ride or a thread in their club this week
+- **THEN** neither SHALL be counted
 
-#### Scenario: Another rider reads nothing
-- **WHEN** any signed-in rider other than the row's owner reads `rider_digests` by any filter,
-  including a known row id
-- **THEN** zero rows SHALL be returned
+#### Scenario: An admin sees what a member sees
+- **WHEN** an admin and a plain member of the same club, with no blocks, are evaluated at one `at`
+- **THEN** their rows for that club SHALL be identical
 
-#### Scenario: A rider cannot insert or delete one
-- **WHEN** a rider attempts to insert a `rider_digests` row, for themselves or anyone else, or to
-  delete their own
-- **THEN** the statement SHALL be refused
-- **AND** the refusal SHALL be backed by the **absent grant** as well as the absent policy, and the
-  assertion SHALL name the role via `has_table_privilege('authenticated', …)`
+### Requirement: A rider with nothing to show SHALL get zero rows, and nothing SHALL synthesise an empty digest
 
-#### Scenario: A rider may mark their own digest read and nothing else
-- **WHEN** a rider updates any column other than `read_at`, or updates `read_at` on a row whose
-  `user_id` is not their own
-- **THEN** the write SHALL be refused by the absence of a column grant in the first case and match
-  zero rows in the second
+When both sections are empty, the body SHALL return zero rows. It SHALL NOT return a row with a
+zero count, a placeholder or a "quiet week" marker. Zero rows is the whole signal. The in-app
+screen renders its empty state from it, and no consumer SHALL turn it into content.
+
+#### Scenario: Nothing to show is zero rows
+- **WHEN** the candidate has no qualifying ride and no club with activity
+- **THEN** the body SHALL return zero rows
+
+#### Scenario: A club with no activity gets no row
+- **WHEN** a club the candidate belongs to had nothing new this week
+- **THEN** no row SHALL name it, rather than a row with both counts at zero
+
+### Requirement: The reader SHALL answer only for its caller, and SHALL return identifiers, order and counts rather than content
+
+`public.my_weekend_digest(near_lat double precision default null, near_lon double precision default
+null)` SHALL be `security definer` with `search_path` pinned empty. Its body SHALL be exactly a
+delegation: `private.weekend_digest_for((select auth.uid()), pg_catalog.now(), near_lat,
+near_lon)`. That text SHALL be pinned by equality. EXECUTE SHALL be revoked from `public` and
+`anon` and granted to `authenticated`.
+
+It SHALL return only `section`, `ordinal`, `ride_id`, `club_id`, `new_rides` and `new_threads`. The
+client SHALL read the ride and club rows for those ids under its own RLS. An id the caller's RLS
+does not return SHALL be dropped without a gap. RLS remains the last gate on everything that
+renders.
 
 #### Scenario: A signed-out visitor reaches nothing
-- **WHEN** a request for `rider_digests` arrives with no session
-- **THEN** zero rows SHALL be returned and every write SHALL be refused, because `anon` holds no
-  grant on the table
-- **AND** this change SHALL add none, per decision #1
+- **WHEN** EXECUTE on `my_weekend_digest` is checked for `anon`
+- **THEN** it SHALL be false
+- **AND** a signed-out visit to `/rides/weekend` SHALL be redirected to `/auth/login`, reaching the
+  shell and no data
 
-#### Scenario: `service_role`'s grants are decided rather than defaulted
-- **WHEN** the table's `service_role` grants are reviewed
-- **THEN** the decision SHALL be recorded explicitly against `076 §3`'s criterion — are these rows
-  ones the credential that bypasses RLS must not be able to enumerate — and the outcome SHALL be
-  stated in the migration rather than inherited
-- **AND** whichever way it goes, the assertion SHALL be **grantee-scoped**, because `postgres` and
-  `service_role` hold everything by default
+#### Scenario: A call with no subject is empty
+- **WHEN** the reader is called with no JWT subject, as by `service_role` or in the RLS suite
+- **THEN** it SHALL return zero rows
 
-### Requirement: The send hour SHALL be decided in the rider's own zone, and the server's zone SHALL never be the answer
+#### Scenario: The wrapper cannot grow an arm unnoticed
+- **WHEN** the wrapper's `prosrc` is compared with the delegation text
+- **THEN** it SHALL be equal, and a `like` match SHALL NOT be accepted in its place
 
-A digest SHALL be assembled for a rider only when the **rider's own local** time falls inside the
-send window on their own local Thursday or Friday. The zone SHALL be resolved as
-`profiles.home_timezone`, falling back to `APP_TIME_ZONE` (`Europe/Amsterdam`) where it is NULL.
-The database server's zone (UTC on Supabase) SHALL never be used, and there is no device zone to
-read because there is no device.
+#### Scenario: An id RLS withholds renders nothing
+- **WHEN** the reader names a ride id the caller's `rides` SELECT does not return
+- **THEN** the data function SHALL omit it, keep the others in the reader's order, and render no
+  placeholder
 
-This is `rides.timezone`'s existing rule applied to a rider rather than to a meeting point: `null`
-means *"we do not know"* and the fallback is named at the site rather than assumed.
+#### Scenario: No column is returned that the rider cannot already read
+- **WHEN** the reader's result columns are listed
+- **THEN** they SHALL be exactly the six above, and a column added later SHALL fail the assertion
 
-Because riders are in different zones, **the assembly job SHALL run hourly** and each run SHALL
-select only the riders whose local hour is inside the window. A weekly cron expression fires at one
-instant, which is 19:00 for one rider and 03:00 for another.
+### Requirement: The digest SHALL have its own opt-out, readable and writable by that rider alone, and it SHALL NOT be a gate
 
-#### Scenario: A rider is not woken
-- **WHEN** the assembly runs at an hour that is outside a rider's local send window
-- **THEN** that rider SHALL NOT be assembled a digest in that run
-- **AND** no row and no outbox entry SHALL be created for them
+`profiles.digest_opt_out_at` SHALL be nullable, with no default and no backfill. The migration
+SHALL issue no `grant` or `revoke` on `public.profiles`, so `authenticated` holds no SELECT,
+INSERT or UPDATE on the column. `096.1`'s widths stay 10/8/8.
 
-#### Scenario: Two riders in different zones are each sent in their own evening
-- **WHEN** two riders carry `home_timezone` values eight hours apart and both qualify
-- **THEN** each SHALL be assembled in the run matching their own local window
-- **AND** both SHALL hold exactly one row for the period
+The only reach SHALL be two own-row `security definer` RPCs, each taking no rider id, with
+EXECUTE revoked from `public` and `anon` and granted to `authenticated`:
 
-#### Scenario: A NULL zone falls back and the fallback is stated rather than hidden
-- **WHEN** a rider's `home_timezone` is NULL
-- **THEN** `APP_TIME_ZONE` SHALL be used
-- **AND** the limit SHALL be recorded: a rider physically far from that zone receives the digest at
-  an hour that is wrong for them, self-correcting the moment they pick a town
-- **AND** the fallback window SHALL be chosen so that it is never the small hours **in the fallback
-  zone itself**, so the worst case is a badly-timed digest and never a 03:00 one
+- `public.my_digest_opt_out()` returns the stamp;
+- `public.set_digest_opt_out(p_opt_out boolean)` records it:
+  - `true` stamps `now()` and keeps an existing stamp;
+  - `false` sets NULL.
 
-#### Scenario: An unrecognised zone does not strand the rider
-- **WHEN** `home_timezone` holds a string Postgres cannot resolve
-- **THEN** the rider SHALL be evaluated in `APP_TIME_ZONE` rather than skipped or raised on
-- **AND** a run SHALL NOT be taken down by one rider's bad value
+The column SHALL be independent of `analytics_opt_out_at` in both directions. The stamp SHALL NOT
+change what the reader returns or what any screen shows.
 
-### Requirement: The digest SHALL have its own opt-out, and it SHALL NOT be the analytics opt-out
+#### Scenario: Another rider cannot read or write it
+- **WHEN** grants on `profiles.digest_opt_out_at` are checked for `authenticated`
+- **THEN** `has_column_privilege` SHALL be false for select, insert and update
+- **AND** the RPCs' identity arguments SHALL be `''` and `'p_opt_out boolean'`, so a foreign stamp
+  is unrepresentable
 
-`profiles.digest_opt_out_at` SHALL be a separate column from `profiles.analytics_opt_out_at`,
-written by a separate RPC, surfaced by a separate control, and read by the assembly as a conjunct.
-Neither SHALL be read, written or rendered as though it covered the other, **in either direction**.
+#### Scenario: Setting it twice keeps the first stamp
+- **WHEN** a rider calls `set_digest_opt_out(true)` twice
+- **THEN** the stamp SHALL equal the first call's
+- **AND** `set_digest_opt_out(false)` SHALL then return and store NULL
 
-They are two different consents about two different things, and the mechanisms differ in the way
-that matters: `096` records that the database **cannot** enforce the analytics preference, because
-PostHog is a client-side SDK and nothing in Postgres is in its path. The digest opt-out is the
-opposite — the assembly runs in Postgres, so the preference is genuinely enforced.
-
-The opt-out SHALL remain a **preference and never an authorization gate**: an opted-out rider
-loses no capability, and SHALL still be able to open the in-app digest screen whenever they choose.
-
-#### Scenario: An opted-out rider is assembled nothing
-- **WHEN** `digest_opt_out_at` is not null
-- **THEN** no `rider_digests` row SHALL be written for that rider, in any period
-- **AND** the exclusion SHALL be a conjunct of the assembly query, asserted directly
-
-#### Scenario: Opting out of analytics does not opt out of the digest
-- **WHEN** a rider sets `analytics_opt_out_at` and leaves `digest_opt_out_at` null
-- **THEN** they SHALL continue to receive digests
-- **AND** the converse SHALL also hold, and both SHALL be asserted, because one assertion cannot
-  say which column did the work
+#### Scenario: Opting out of one does not opt out of the other
+- **WHEN** a rider sets the digest opt-out
+- **THEN** `analytics_opt_out_at` SHALL be unchanged
+- **AND** the converse SHALL be asserted separately
 
 #### Scenario: An opted-out rider keeps the screen
-- **WHEN** an opted-out rider opens the digest screen
-- **THEN** the content SHALL be rendered normally
-- **AND** nothing SHALL be gated, hidden or refused, because this is a preference about being
-  *interrupted* and not about what may be seen
+- **WHEN** an opted-out rider and an otherwise identical rider who is not opted out call the reader
+- **THEN** both SHALL receive the same rows
 
-#### Scenario: The stamp is the caller's own and a foreign one is unrepresentable
-- **WHEN** the opt-out is written
-- **THEN** it SHALL be through an own-row `security definer` RPC taking **no rider id**
-- **AND** setting it twice SHALL keep the first stamp, and clearing it SHALL set NULL
+### Requirement: The opt-out control SHALL NOT promise a send that does not exist
 
-#### Scenario: Another rider cannot read the stamp
-- **WHEN** any signed-in rider selects all columns of another rider's profile
-- **THEN** `digest_opt_out_at` SHALL NOT be returned, and the assertion SHALL be
-  `has_column_privilege('authenticated', 'public.profiles', 'digest_opt_out_at', 'select')` being
-  false rather than a narrowed projection
+While no digest is delivered, the opt-out control's copy SHALL say that the round-up arrives
+once push notifications are switched on, and that it can be turned off now. It SHALL NOT state or
+imply that anything is assembled or sent today.
 
-### Requirement: Riders who have not completed onboarding, or who are mid-deletion, SHALL be excluded
+#### Scenario: The copy is honest about today
+- **WHEN** `NotificationsSheet` renders
+- **THEN** its copy SHALL name what the round-up will contain and that it depends on push being
+  switched on
+- **AND** it SHALL NOT claim that a round-up is put together or sent now
 
-Assembly SHALL exclude any rider whose `onboarding_completed_at` is NULL and any rider whose
-`deletion_started_at` is not NULL.
+### Requirement: The weekend screen SHALL define every state, and SHALL be entered by a tap from outside a tab root's strip slot
 
-An un-onboarded rider is redirected back into the wizard by the route guard (decision #5) and
-`023` refuses their content writes regardless, so a digest would be an interruption inviting them
-to a screen they cannot reach. A rider mid-deletion has asked to leave; `119` stamps
-`deletion_started_at` before anything else in the deletion path, and pushing them a digest during
-that window is the worst possible moment to reappear.
+`/rides/weekend` SHALL read the position and the digest in effects, never during render. It
+SHALL gate on data, never on `isLoading`, and SHALL render a decided answer for each state:
 
-A rider who has not accepted the terms SHALL likewise be excluded, by the same conjunct — consent
-is gated ahead of the wizard, so `terms_accepted_at` NULL implies incomplete onboarding.
+- skeleton;
+- content;
+- empty, which reads "Nothing near you this weekend";
+- no position, which is distinct from empty;
+- error with retry;
+- offline.
 
-#### Scenario: An un-onboarded rider is assembled nothing
-- **WHEN** `onboarding_completed_at` is NULL
-- **THEN** no row SHALL be written for them
+Ride times SHALL be formatted by the `formatRide*` helpers with `rides.timezone`.
 
-#### Scenario: A rider mid-deletion is assembled nothing
-- **WHEN** `deletion_started_at` is not NULL
-- **THEN** no row SHALL be written for them
-- **AND** this SHALL hold for the whole window, including a stamp older than `119`'s fifteen
-  minutes, because a stale marker means a *failed* deletion run and not a rider who changed
-  their mind
+The screen SHALL be reached from a single row that is not in the strip slot of `/rides` or
+`/clubs`. Nothing SHALL open the town question on the rider's behalf.
 
-#### Scenario: A rider whose deletion completes leaves nothing behind
-- **WHEN** a rider's profile row is deleted
-- **THEN** every `rider_digests` row SHALL be removed by `ON DELETE CASCADE`
-- **AND** the outbox rows referencing them SHALL be removed by their own cascade, so account
-  deletion needs no new step in the `delete-account` Edge Function
+#### Scenario: Empty and no position are different screens
+- **WHEN** the position is known and both sections are empty
+- **THEN** the empty state SHALL render
+- **AND** when the position is `null` the no-position state SHALL render instead, with the clubs
+  section beneath it when that is non-empty
 
-#### Scenario: A rider with no anchor is excluded and is not prompted
-- **WHEN** a rider holds a town, or no town, and no `home_latitude`/`home_longitude`
-- **THEN** the rides half SHALL be empty for them
-- **AND** if the club half is also empty they SHALL receive nothing, with **no** "tell us where you
-  ride from" push, because a digest is not a prompt and an interruption asking for data is the
-  worst version of the empty digest this capability refuses
+#### Scenario: The town question opens only on a tap
+- **WHEN** the no-position state renders
+- **THEN** `TownQuestionSheet` SHALL NOT open until the rider taps the row
 
-### Requirement: Assembly SHALL be gated so a replicated migration does not fire on DEV
+#### Scenario: An error is not emptiness
+- **WHEN** the reader or either hydration read fails
+- **THEN** an error state with a retry SHALL render, and the empty state SHALL NOT
 
-The schedule SHALL be created in a migration, and it SHALL be gated on a per-project Vault secret,
-`weekly_digest_enabled`, which the migration chain cannot replicate. A project where the owner has
-not created it SHALL run the job and do nothing.
+#### Scenario: Offline shows the last answer and says so
+- **WHEN** the device is offline and a previous answer is cached
+- **THEN** the cached answer SHALL render beneath the offline banner
 
-`docs/ENVIRONMENTS.md` §Scheduled jobs: *"If that is written as `pg_cron`, it lives in a migration,
-and the chain replicates it to DEV — where it will also fire."* `121 §10` decided to gate in the
-chain rather than schedule outside it, because a job outside the chain is invisible to
-`db:drift`, to the RLS suite and to `reviewer`. **That decision is reapplied, not reopened.**
-
-`121`'s gate is its three **network** secrets, and assembly has no network hop, so it would
-otherwise be ungated. It therefore gets its own secret rather than borrowing one that describes a
-different thing.
-
-The migration SHALL apply cleanly with `pg_cron`, `pg_net` and `supabase_vault` **all absent**,
-because none is installed on either project and the RLS suite runs the chain against a plain
-Postgres 17 where none exists.
-
-#### Scenario: A project with no secret assembles nothing
-- **WHEN** `private.weekly_digest_tick()` runs where `weekly_digest_enabled` is absent
-- **THEN** it SHALL return without writing a row
-- **AND** it SHALL NOT raise
-
-#### Scenario: The migration applies with no extensions present
-- **WHEN** the chain is replayed against a plain Postgres 17
-- **THEN** every `vault.`, `cron.` and `net.` reference SHALL be inside dynamic SQL behind a
-  catalogue check, so no name is resolved that does not exist
-- **AND** the `pg_cron` check SHALL be a `pg_proc`/`pg_namespace` lookup rather than
-  `to_regproc('cron.schedule')`, which **raises** on pg_cron's ambiguous overload instead of
-  returning NULL
-
-#### Scenario: The block is re-runnable
-- **WHEN** the owner installs `pg_cron` and re-runs the schedule block
-- **THEN** it SHALL unschedule-if-present and then schedule, so running it twice is safe
-
-#### Scenario: Assembly needs no sender of its own
-- **WHEN** the delivery path is reviewed
-- **THEN** assembly SHALL make no outbound call of any kind
-- **AND** `121 §10`'s existing one-minute tick SHALL be the only thing that reaches a provider,
-  so the digest inherits its age cut, its reclaim window and its at-most-once claim unchanged
-
-### Requirement: The digest screen SHALL define every state it can be in
-
-The in-app surface SHALL name an answer for each of: empty, loading (first paint and refetch),
-error with a retry, offline, permission-denied, partial, and stale.
-
-**Permission-denied and empty are indistinguishable from the client and need different UI** — RLS
-returning zero rows looks exactly like there being no rows. For this screen the resolution is
-stated rather than left to the implementer: `my_weekend_digest()` is an own-row RPC that the
-caller can always execute, so a zero-length result is **always** "nothing to show" and never "not
-allowed". There is no permission-denied state on this screen, and that is a property of the RPC's
-shape rather than an assumption.
-
-#### Scenario: Loading is gated on data, never on a loading flag
-- **WHEN** the screen first renders
-- **THEN** it SHALL gate on the data being `undefined`, not on `isLoading`, because on the first
-  render there is no data *and* no fetch in flight
-
-#### Scenario: `null` and `undefined` mean different things
-- **WHEN** the read resolves
-- **THEN** `undefined` SHALL render a skeleton and a decided empty answer SHALL render the empty
-  state; only a decided "this does not exist" SHALL reach `notFound()`
-
-#### Scenario: Offline degrades to the last answer, and says so
-- **WHEN** the device has no connection
-- **THEN** the screen SHALL render the last cached answer with a stale marker rather than an error,
-  because riders lose signal constantly
-- **AND** it SHALL NOT present a cached list as live
-
-#### Scenario: A failed read offers a retry
-- **WHEN** the read errors
-- **THEN** an error state with a retry affordance SHALL be drawn, and the error SHALL NOT be
-  rendered as emptiness
-
-#### Scenario: Opening the screen marks the digest read
-- **WHEN** a rider opens the digest for a period in which they hold a `rider_digests` row
-- **THEN** `read_at` SHALL be stamped, and the cache entry SHALL be invalidated through a key
-  spelled in `src/lib/query/keys.ts`
-- **AND** a rider with no row for the period SHALL still be able to open the screen, stamping
-  nothing
-
-#### Scenario: The content read is not issued during a server render
-- **WHEN** the screen is server-rendered on first load
-- **THEN** the read SHALL be issued from an effect, never during render, because that pass is
-  anonymous and the RPC would fail closed
+#### Scenario: A tab root keeps one row
+- **WHEN** `src/__tests__/one-question-row.test.ts` runs
+- **THEN** it SHALL pass unchanged, and neither tab root SHALL render the weekend row in its strip
+  slot
