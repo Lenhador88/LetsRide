@@ -41,14 +41,6 @@ with the scroller not at its top. Once the platform has taken the gesture for it
 does not hand it back mid-gesture, so there is no point at which "the scroller just reached its
 top" can be observed and answered.
 
-**Corrected 2026-09-22, before this change's first merge**: the original text here claimed the
-opposite — that reaching the top mid-gesture let the same continuous drag switch into a dismiss.
-That is undeliverable on a real touch device (a `pointercancel` ends the pointer sequence the
-instant the platform claims the touch for its own scroll, so there is no later `pointermove` in
-which to notice the scroller running out of room) and was only ever passing because the
-component test exercising it drove `pointermove` events directly rather than through a real touch
-stack. Caught by the reviewer against real Chromium touch input before this shipped.
-
 #### Scenario: Pulling down through unread content scrolls, and only scrolls
 - **WHEN** a rider drags down while the panel's scroller is not at its top
 - **THEN** the popup SHALL NOT close, whatever the distance or speed of the drag, and whether or

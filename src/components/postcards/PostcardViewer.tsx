@@ -149,10 +149,10 @@ function PostcardViewerDialog({
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const scrimRef = useRef<HTMLDivElement>(null)
-  // The body's own scroller — see `onPanelPointerMove` for why the dismiss
-  // gesture reads its `scrollTop` directly rather than walking to it the way
-  // `declinesSwipeDismiss` walks to a control: there is exactly one scroller
-  // on this sheet, and it is this ref.
+  // The body's own scroller — see `onPanelPointerDown` for why the dismiss
+  // gesture reads its `scrollTop` directly, and once, rather than walking to
+  // it the way `declinesSwipeDismiss` walks to a control: there is exactly one
+  // scroller on this sheet, and it is this ref.
   const scrollerRef = useRef<HTMLDivElement>(null)
   // Where focus was before the dialog opened, so it can go back there on close.
   const triggerRef = useRef<Element | null>(null)
@@ -412,11 +412,15 @@ function PostcardViewerDialog({
       event.currentTarget.setPointerCapture(event.pointerId)
     }
 
-    // What this DOES stop: a mouse drag also selecting the caption's text as
-    // it goes, and the phantom `click` a mouse-up would otherwise fire on
-    // whatever the cursor lands over. **It does NOT stop a touch pan** —
-    // `pointermove`'s `preventDefault` has no effect on that; see the native
-    // `touchmove` listener below, which is the one that does.
+    // **It does NOT stop a touch pan** — `pointermove`'s `preventDefault` has
+    // no effect on that; the native `touchmove` listener below is the one that
+    // does. And it stops nothing for a MOUSE either, which an earlier version
+    // of this comment claimed: `onPanelPointerDown` returns for
+    // `pointerType === 'mouse'`, so `gesture.current` is null and this line is
+    // unreachable for one (measured: a mouse drag is byte-identical to the
+    // build without this file's changes). What is left is a touch drag that
+    // has armed, where it suppresses the text selection the drag would
+    // otherwise make.
     event.preventDefault()
     setDismissDy(Math.max(0, event.clientY - state.startY))
   }
@@ -585,10 +589,13 @@ function PostcardViewerDialog({
             overscroll here without `none`'s cost, which would also kill the
             platform's own pull-to-refresh everywhere this pattern is copied.
 
-            **`ref={scrollerRef}`, read by `onPanelPointerMove` (PD-475)**: the
-            dismiss drag only takes over once this scroller's own `scrollTop`
-            is back to zero, so a rider pulling down through an unread thread
-            scrolls it first and dismisses second, never the other way round. */}
+            **`ref={scrollerRef}`, read ONCE at `onPanelPointerDown` (PD-475)**:
+            a pull that begins while this scroller still has room is the
+            scroller's for the whole gesture, even if it reaches the top before
+            the finger lifts. It is not re-sampled per move, and a rider
+            wanting to dismiss an already-scrolled thread pulls again from the
+            top. The browser decides the first half of that anyway: once it is
+            scrolling, the touch is no longer cancellable. */}
         <div
           ref={scrollerRef}
           className="min-h-0 flex-1 overscroll-contain overflow-y-auto px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]"

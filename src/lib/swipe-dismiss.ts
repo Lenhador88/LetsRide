@@ -77,9 +77,9 @@
  * cannot be set on the scroller without also disabling the scroll this
  * capability depends on, and it resets at any element that scrolls even when
  * set on an ancestor — so the component adds a raw `touchmove` listener
- * instead, and `isDownwardVertical` below is what that listener asks on every
- * sample, with no magnitude floor, because the browser commits to the pan
- * faster than `armsSwipeDismiss`'s slop would otherwise notice.
+ * instead, and `isDownwardVertical` below is what that listener asks on a
+ * sample the gesture has not armed on yet — see that function for what did and
+ * did not reproduce about the timing.
  */
 
 /** A deliberate pull: far enough that nothing else on the sheet wanted it. */
@@ -146,9 +146,17 @@ export function armsSwipeDismiss(dx: number, dy: number): boolean {
  * never gets asked." `SWIPE_DISMISS_ARM_PX`'s slop exists to keep a tap or a
  * wobble from nudging the panel — a concern this function has none of, since
  * calling `preventDefault` one frame early costs nothing when the gesture
- * turns out to be a tap, while waiting for the slop costs the whole gesture
- * when it turns out to be a pull (measured: Chromium commits to the native
- * pan within a few `touchmove` samples, well inside `SWIPE_DISMISS_ARM_PX`).
+ * turns out to be a tap, while waiting for it risks the whole gesture.
+ *
+ * **The margin is smaller than an earlier version of this paragraph claimed,
+ * and that claim — that Chromium commits to its pan "well inside
+ * `SWIPE_DISMISS_ARM_PX`" — did not reproduce.** Measured in Chromium with
+ * raw touch: arming at 8px happened BEFORE the pan claim at about 20px, and
+ * Chromium's own touch slop swallows sub-slop samples entirely, so a +2px
+ * first move is never delivered to this function at all. So this is
+ * belt-and-braces, and the listener's `armed` branch is what carries the
+ * gesture — kept because an early `preventDefault` is free and a late one is
+ * not.
  */
 export function isDownwardVertical(dx: number, dy: number): boolean {
   if (dy <= 0) return false

@@ -163,6 +163,73 @@ function drag(target: Element, dx: number, dy: number) {
   })
 }
 
+/** One moving finger, dispatched on the panel the native listener is bound to. */
+function touchMove(x: number, y: number) {
+  const event = new Event('touchmove', { bubbles: true, cancelable: true })
+  Object.assign(event, { touches: [{ clientX: x, clientY: y }] })
+  act(() => {
+    panel().dispatchEvent(event)
+  })
+  return event
+}
+
+/**
+ * **The native `touchmove` listener, which is the entire fix and had no gate.**
+ *
+ * The first review measured the shipped gesture dying on touch: Chromium takes
+ * the pull as a pan and sends `pointercancel` about 20px in, so `pointerup`
+ * never arrives. Only a non-passive `touchmove` listener's own
+ * `preventDefault` stops that. Deleting the effect left every other test in
+ * this file green, which is what these cases close.
+ *
+ * jsdom cannot pan, so what is pinned here is the CALL — the thing a refactor
+ * drops. The browser measurement lives in the PR.
+ */
+describe('PostcardViewerDialog — claiming the touch from the browser', () => {
+  it('claims a downward sample before the gesture has even armed', () => {
+    act(() => {
+      panel().querySelector('h2')!.dispatchEvent(pointerEvent('pointerdown', 100, 300))
+    })
+    // Two pixels: below `SWIPE_DISMISS_ARM_PX`, and still claimed, because the
+    // browser commits to its pan without waiting for that slop.
+    expect(touchMove(100, 302).defaultPrevented).toBe(true)
+  })
+
+  it('keeps claiming once armed, including a sample that drifts sideways', () => {
+    act(() => {
+      panel().querySelector('h2')!.dispatchEvent(pointerEvent('pointerdown', 100, 300))
+      panel().querySelector('h2')!.dispatchEvent(pointerEvent('pointermove', 100, 340))
+    })
+    expect(touchMove(130, 380).defaultPrevented).toBe(true)
+  })
+
+  it('claims nothing when the gesture was declined at pointerdown', () => {
+    const s = scroller()
+    s.scrollTop = 30
+    act(() => {
+      s.dispatchEvent(pointerEvent('pointerdown', 100, 300))
+    })
+    // The scroller had room, so this pull is its own — and the listener must
+    // not take it, or the thread stops scrolling.
+    expect(touchMove(100, 340).defaultPrevented).toBe(false)
+  })
+
+  it('claims nothing on an upward sample', () => {
+    act(() => {
+      panel().querySelector('h2')!.dispatchEvent(pointerEvent('pointerdown', 100, 300))
+    })
+    expect(touchMove(100, 260).defaultPrevented).toBe(false)
+  })
+
+  it('claims nothing after the gesture has ended', () => {
+    act(() => {
+      panel().querySelector('h2')!.dispatchEvent(pointerEvent('pointerdown', 100, 300))
+      panel().querySelector('h2')!.dispatchEvent(pointerEvent('pointerup', 100, 302))
+    })
+    expect(touchMove(100, 340).defaultPrevented).toBe(false)
+  })
+})
+
 describe('PostcardViewerDialog — a downward drag from inside the panel', () => {
   it('closes on a strong, dominant, downward pull starting on ordinary content, at scrollTop 0', () => {
     expect(isOpen()).toBe(true)
