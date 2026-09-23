@@ -126,26 +126,34 @@ export function useBack(): () => void {
  * works over the fixed header and the RSVP bar, which sit outside the scrolling
  * content.
  *
- * **Nothing is ever `preventDefault`ed and no `touch-action` is set.** A
- * declined swipe is a swipe this hook says nothing about, so the deck, the
- * strips and the page scroll exactly as they did — see `swipe-back.ts`.
+ * **A gesture this hook ADMITS is taken from the browser, on a native
+ * `touchmove` — PD-341.** Without that the gesture never fires on a phone at
+ * all: the pan claim cancels the pointer stream before the release is judged.
+ * A DECLINED swipe is still a swipe this hook says nothing about — the deck,
+ * the strips, a text field and the page behave exactly as they did, because
+ * `declinesSwipeBack` runs before anything is claimed. What changed is that an
+ * admitted one is no longer free: the claim is one-way, so a gesture that
+ * looks sideways and then turns vertical costs the rider that scroll. The
+ * residual is measured and bounded in `isClaimingSwipeBack`; a screen whose
+ * vertical axis matters should read it before mounting this.
  *
  * ## `chain` is the unmeasured part of this feature, and it is not the numbers
  *
  * `declinesSwipeBack` has **six** cases over hand-built nodes — six, not the
- * fifteen in that file, which is its whole suite including `startsInEdgeZone`
- * and `isSwipeBack` — and by construction none of them can fail if `chain` feeds
- * it the wrong shape.
+ * twenty-one in that file, which is its whole suite including
+ * `startsInEdgeZone`, `isSwipeBack` and `isClaimingSwipeBack` — and by
+ * construction none of them can fail if `chain` feeds it the wrong shape.
  *
  * **Re-derive it with the filter, not without.** The bare `vitest list` prints
- * fifteen lines, which is exactly the number this sentence exists to correct — a
- * command that returns the wrong answer reads as measured and is worse than
- * none:
+ * twenty-one lines, which is exactly the number this sentence exists to
+ * correct — a command that returns the wrong answer reads as measured and is
+ * worse than none:
  *
  * ```
  * npx vitest list --run src/lib/__tests__/swipe-back.test.ts | grep -c "declinesSwipeBack >"
- * ``` Every
- * decline rests on two DOM facts nothing here has executed: that
+ * ```
+ *
+ * Every decline rests on two DOM facts nothing here has executed: that
  * `getComputedStyle(el).overflowX` answers `'auto'` for a Tailwind
  * `overflow-x-auto` element, and that `scrollWidth > clientWidth` is true for a
  * strip wider than its box. Both are ordinary and both are believed rather than
@@ -219,6 +227,9 @@ export function useSwipeBack(back: string | (() => void) | null): void {
 
       return head
     }
+
+    const claimTouches = () => window.addEventListener('touchmove', onTouchMove, { passive: false })
+    const releaseTouches = () => window.removeEventListener('touchmove', onTouchMove)
 
     const onDown = (event: PointerEvent) => {
       gesture = null
@@ -336,8 +347,6 @@ export function useSwipeBack(back: string | (() => void) | null): void {
      * the handler existing. `pointerdown` always precedes the first
      * `touchmove` of the same touch, so arming here loses no sample.
      */
-    const claimTouches = () => window.addEventListener('touchmove', onTouchMove, { passive: false })
-    const releaseTouches = () => window.removeEventListener('touchmove', onTouchMove)
 
     window.addEventListener('pointerdown', onDown, { passive: true })
     window.addEventListener('pointerup', onUp, { passive: true })

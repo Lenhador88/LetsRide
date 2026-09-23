@@ -203,7 +203,7 @@ export const SWIPE_BACK_OPT_OUT = 'data-swipe-back'
  * the release: claiming the touch only buys the gesture the chance to be
  * judged.
  *
- * **The residual, measured and accepted.** A gesture that pulls a clean 20px
+ * **The residual, measured and accepted.** A gesture that pulls a clean 18px
  * sideways and only then turns vertical IS claimed, so that scroll is lost —
  * the rider lifts and scrolls again. It cannot be given back: the engine will
  * not start a scroll for a touch whose `touchmove` was cancelled, so there is
