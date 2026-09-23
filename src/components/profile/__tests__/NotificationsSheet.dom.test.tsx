@@ -25,18 +25,20 @@ import { NotificationsSheet } from '@/components/profile/NotificationsSheet'
  * against both mutations, which is the failure mode this file exists to avoid.
  *
  * The second property is a copy one and it is about honesty rather than taste:
- * **this sheet must not promise a push.** `121`'s delivery chain is deployed
- * and inert — two provider credentials, `pg_cron`/`pg_net` and the Vault trio,
- * all owner-held (PD-303) — so a sentence mentioning a phone is a promise the
- * build cannot keep, which is exactly what `CLAUDE.md` says to audit
- * user-facing copy for. The pin is negative *and* positive, so that a future
- * trim cannot satisfy it by going silent: it must still say what the round-up
- * contains.
+ * **this sheet must not claim a round-up is put together or sent today.**
+ * `121`'s delivery chain is deployed and inert — two provider credentials,
+ * `pg_cron`/`pg_net` and the Vault trio, all owner-held (PD-303) — and no part-2
+ * assembler exists yet either, so a sentence claiming present-tense activity is
+ * a promise this build cannot keep, which is exactly what `CLAUDE.md` says to
+ * audit user-facing copy for. **This is a NARROWER rule than "never mention
+ * push" — PD-450 part 1 names push as the condition on purpose** (*"once push
+ * notifications are switched on"*), so the pin is positive on that phrase as
+ * well as negative on present-tense claims, which is what stops a future trim
+ * from satisfying it by going silent about what the round-up needs.
  *
  * Verified both ways per `CLAUDE.md` §Working Principles. Four mutations were
  * run against `NotificationsSheet.tsx` on this 5-test file, and the counts
- * below are MEASURED rather than predicted — two of the four broke more cases
- * than the obvious reading says they should. **Re-measure rather than adjust
+ * below are MEASURED rather than predicted. **Re-measure rather than adjust
  * these if the file changes.**
  *
  * - **drop the `!` at `subscribed`** (`override ?? optOut.data`) → **3 failed,
@@ -51,12 +53,17 @@ import { NotificationsSheet } from '@/components/profile/NotificationsSheet'
  *   assertions are pinned to the ARGUMENT rather than riding on the render —
  *   a file asserting only *the box is checked* would have shipped this
  *   mutation, and a rider unticking the box would have stayed subscribed.
- * - **add "and we’ll send it to your phone" to the intro** → **1 failed, 4
- *   passed** — only *does not promise a push the delivery chain cannot send*.
- * - **replace the empty-week sentence** with "We put it together on Thursday
- *   evening." → **1 failed, 4 passed** — only *tells the rider a quiet week
- *   means nothing arrives*. Replaced rather than deleted, so the mutation
- *   tests the CLAIM rather than the paragraph's existence.
+ * - **delete "once push notifications are switched on" from the intro**,
+ *   leaving the round-up's content unconditional → **1 failed, 4 passed** —
+ *   only *names push as the condition…*, on its positive half. A trim that
+ *   drops the condition silently turns "will, once push is on" into what reads
+ *   as an active claim, which is exactly what the positive pin exists to catch.
+ * - **replace the empty-week sentence** with "We put together a round-up every
+ *   Friday evening, whether there’s anything in it or not." → **1 failed, 4
+ *   passed** — only *tells the rider a quiet week means nothing arrives*.
+ *   Replaced rather than deleted, so the mutation tests the CLAIM rather than
+ *   the paragraph's existence, and the present tense ("We put together") is
+ *   exactly the honesty violation part 1 refuses.
  *
  * jsdom, not `renderToStaticMarkup`: `ContextMenu` portals its sheet to
  * `document.body`, so a static render returns nothing at all — and two of the
@@ -71,7 +78,7 @@ vi.mock('next/navigation', () => ({
   notFound: () => {},
 }))
 
-const setDigestOptOut = vi.fn(async () => ({ error: null }))
+const setDigestOptOut = vi.fn(async (_optOut: boolean) => ({ error: null }))
 
 vi.mock('@/lib/actions/profile', () => ({
   setDigestOptOut: (optOut: boolean) => setDigestOptOut(optOut),
@@ -171,17 +178,22 @@ describe('NotificationsSheet', () => {
     expect(setDigestOptOut).toHaveBeenLastCalledWith(false)
   })
 
-  it('does not promise a push the delivery chain cannot send', () => {
+  it('names push as the condition for the round-up, without claiming one is sent today', () => {
     // `121` is deployed and INERT — no APNs key, no FCM service account, no
     // `pg_cron`/`pg_net`, no Vault trio, and every one of those is owner-held
-    // (PD-303). So this sheet describes the in-app round-up and says nothing
-    // about a phone. Asserted negatively AND positively: a trim that simply
-    // deletes the description would satisfy the first half while leaving a
-    // rider with a checkbox and no idea what it turns on.
+    // (PD-303) — and no part-2 assembler exists yet either. So this sheet
+    // NAMES push as the condition the round-up waits on, rather than hiding
+    // the word the way the earlier draft did, and it must not claim the
+    // round-up is already being put together or sent. Asserted positively AND
+    // negatively: a trim that deletes the condition would satisfy the second
+    // half while promising a push this build cannot send, and a trim that
+    // deletes the content description would leave a rider with a checkbox and
+    // no idea what it turns on.
     const markup = html()
 
-    expect(markup).not.toMatch(/phone|push notification/i)
     expect(markup).toContain('rides near you this weekend')
+    expect(markup).toMatch(/push notifications are switched on/i)
+    expect(markup).not.toMatch(/(is|are) put together|assembled (now|today)|sent (now|today)/i)
   })
 
   it('tells the rider a quiet week means nothing arrives', () => {
@@ -190,7 +202,8 @@ describe('NotificationsSheet', () => {
     // digest is worse than silence. Saying so here is what stops a rider
     // reading a quiet week as the feature being broken — and it is the sentence
     // most likely to be trimmed as filler by someone who has not read the
-    // issue.
-    expect(html()).toContain('only send it when there’s something in it')
+    // issue. Future tense (`Once it starts …`), matching the file's honesty
+    // rule: nothing may claim this is already happening.
+    expect(html()).toContain('only get a round-up when there’s something in it')
   })
 })

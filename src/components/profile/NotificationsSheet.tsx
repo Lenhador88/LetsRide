@@ -13,7 +13,7 @@ import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 
 /**
- * The weekly round-up's opt-out — PD-450.
+ * The weekly round-up's opt-out — PD-450, part 1.
  *
  * ## Why this is a second sheet and not a second checkbox in `PrivacySheet`
  *
@@ -24,21 +24,21 @@ import { queryKeys } from '@/lib/query/keys'
  * question about being measured; the round-up is a question about being
  * contacted, and a rider can reasonably want opposite answers.
  *
- * ## The copy describes the IN-APP round-up, and that is not a hedge
+ * ## Nothing is assembled or sent today, and the copy says so
  *
- * A weekly push cannot be sent today — `121`'s delivery chain is deployed and
- * inert, waiting on two provider credentials, `pg_cron`/`pg_net` and the Vault
- * trio, none of which a session can supply (PD-303). So a sentence promising
- * one would be a promise this build cannot keep, which `CLAUDE.md` names as the
- * thing to audit user-facing copy for.
- *
- * What ships now genuinely exists: the round-up is assembled weekly and is
- * readable in the app. **The toggle is therefore honest as written and needs no
- * edit when delivery lands** — turning it off already stops the assembly at the
- * source (`125`'s job reads `digest_opt_out_at` when it builds), so it stops
- * the push too, for free, on the day the push starts working. The one sentence
- * that would have to change is the one this file deliberately does not write:
- * any mention of a phone.
+ * **Part 1 ships the content rule, the reader and this opt-out — not the
+ * send.** `129`'s `digest_opt_out_at` is a preference with no reader but its
+ * own accessor; no job exists yet that looks at it, because a weekly send
+ * needs push delivery (PD-303, deployed and inert pending two provider
+ * credentials, `pg_cron`/`pg_net` and the Vault trio, none of which a session
+ * can supply) and the scheduled assembler this proposal defers to part 2. A
+ * sentence claiming a round-up is "put together" or delivered now would be a
+ * promise this build cannot keep, which `CLAUDE.md` names as the thing to
+ * audit user-facing copy for — so this component says what the round-up
+ * *will* contain and that it depends on push being switched on, and commits to
+ * nothing that has already happened. When part 2 ships the assembler, setting
+ * this preference is what will stop it at the source; there is nothing to
+ * flip in this file when that day comes.
  *
  * ## Phrased as the ON state, like `PrivacySheet`
  *
@@ -98,14 +98,13 @@ function NotificationControls({ onClose }: { onClose: () => void }) {
       <div className="flex max-h-[60vh] flex-col gap-6 overflow-y-auto">
         <div className="flex flex-col gap-1">
           <h2 className="text-2xl font-semibold text-foreground">Notifications</h2>
-          {/* What it is, in one sentence, from the rider's side. It names the
-              two things the round-up actually contains — rides near them this
-              weekend, and what moved in their clubs — because those are the
-              two the assembly job selects, and a rider deciding whether to
-              keep it needs to know what they would be giving up. */}
+          {/* Names what the round-up will contain — rides near them this
+              weekend, and what's moved in their clubs — and ties it to the
+              one thing that is not built yet, so nothing here reads as
+              already happening. See the file header. */}
           <p className="text-sm text-muted">
-            Once a week we put together what’s coming up — rides near you this weekend, and
-            what’s moved in your clubs since the last one.
+            A Friday-evening round-up of rides near you this weekend, and what’s moved in your
+            clubs, once push notifications are switched on. You can turn it off now.
           </p>
         </div>
 
@@ -128,13 +127,14 @@ function NotificationControls({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="flex flex-col gap-2">
-          {/* The empty-week rule, said out loud. PD-450 makes it a requirement
-              rather than an implementation detail — "a rider with nothing to
-              show gets NOTHING", because an empty digest is worse than silence
-              — and a rider who is told the rule up front does not read a quiet
-              week as the feature being broken. */}
+          {/* The empty-week rule, said out loud and in the future tense — PD-450
+              makes it a requirement rather than an implementation detail: "a
+              rider with nothing to show gets NOTHING", so a rider who reads
+              this before the round-up ever exists still knows a quiet week
+              means silence rather than a broken feature. */}
           <p className="text-xs text-muted">
-            We only send it when there’s something in it. A quiet week means nothing arrives.
+            Once it starts, a quiet week means nothing arrives — you’ll only get a round-up when
+            there’s something in it.
           </p>
         </div>
       </div>

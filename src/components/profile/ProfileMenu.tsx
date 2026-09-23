@@ -41,7 +41,7 @@ import { useSignOut } from '@/lib/actions/navigate'
  * **The frame's `Preferences` row is now built, as `Notifications` (PD-450).**
  * It stayed unbuilt while there was nothing behind it — a row that links
  * nowhere is the dead-row failure this file's rule refuses ("either work or not
- * be drawn") — and what changed is that `125` gave it exactly one setting to
+ * be drawn") — and what changed is that `129` gave it exactly one setting to
  * carry: the weekly round-up's opt-out. It is named for that setting rather
  * than for the frame's label, because `Preferences` over a sheet holding one
  * checkbox promises a screen this app still does not have.
