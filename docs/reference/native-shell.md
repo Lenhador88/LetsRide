@@ -494,12 +494,12 @@ rather than through a single label on the whole section.
 | Universal links | the entitlement, the association file and the listener all landed 2026-09-18 (PD-205) and **not one of them has been exercised** — Apple fetches the file from its own CDN onto a real device, so a simulator settles nothing. §Universal links has what a device run has to check |
 | The location prompt | not exercised; the string is verified in the bundle, the dialog is not. **The camera prompt joins it as of PD-453** — and it is the one whose absence was a process kill rather than a silent no-op, so it is worth exercising first on the next device run |
 | `clearSessionStore`'s sweep | **still unexercised.** Sign-out was run, but auth-js removes the `sb-` keys by name first, so the sweep had nothing to find |
-| A device install | **done — and not of the build that matters.** App Store Connect → TestFlight → *LetsRide internal* → the tester's **Devices** lists two (2026-09-23): an **iPad Air 11-inch (M4)** on iOS 26.6.2 carrying `1.0.0 (2)`, and an **iPhone 17** on iOS 27.0 carrying `1.0.0 (1)`. So the pipeline reaches a phone and the phone is a build behind — `(1)` is Xcode Cloud build 1, `main` at `e10dcc6`, which predates both gesture fixes. **An install is not an exercise**: App Store Connect reports sessions and crashes, never which of the rows above anyone touched, so each stands until a person reports it |
+| A device install | **done — and not of the build that matters.** App Store Connect → TestFlight → *LetsRide internal* → the **owner's** Devices lists two (2026-09-23): an **iPad Air 11-inch (M4)** on iOS 26.6.2 carrying `1.0.0 (2)`, and an **iPhone 17** on iOS 27.0 carrying `1.0.0 (1)`. So the pipeline reaches a phone and the phone is a build behind — `(1)` is Xcode Cloud build 1, `main` at `e10dcc6`, which predates both gesture fixes. **An install is not an exercise**: each row above stands until a person reports it |
 
 ### Xcode Cloud — every merge to `main` archives to TestFlight, first build green 2026-09-22
 
-**TestFlight internal testing only.** Nothing submits to App Review; releasing a build to the store
-stays a manual button in App Store Connect. The repo half is the files below; the rest is the owner
+**The workflow delivers to internal testing only.** Nothing submits to App Review; releasing a
+build to the store stays a manual button in App Store Connect. The repo half is the files below; the rest is the owner
 checklist further down, **done on 2026-09-22**: App ID `social.letsride.app` (Push Notifications,
 Associated Domains), the app record *LetsRide: Motorcycle Clubs* (Apple ID `6814630297`), the
 internal group *LetsRide internal*, and the Xcode Cloud product **App** with one workflow
@@ -507,6 +507,13 @@ internal group *LetsRide internal*, and the Xcode Cloud product **App** with one
 TestFlight Internal Testing → *LetsRide internal*; the three required variables). Its Manual Start
 condition is any branch, which is harmless — the script refuses everything but `main`. **Build 1
 succeeded**: 6 minutes, 3 compute minutes, `1.0.0 (1)` in TestFlight.
+
+**A build number identifies no commit, and the trap is live**: the Manual Start condition is any
+branch, so a hand-started build on `main` takes the same next number as a pushed one. App Store
+Connect → Xcode Cloud → *App* → Builds → the build → **Details** is where `START CONDITION`,
+`LAST COMMIT` and the post-action's outcome are read. **Build 2, 2026-09-23 10:53**: start
+condition **Code push**, last commit `c6f64af` — the promotion — 5 minutes, 3 compute minutes,
+Archive and *TestFlight Internal Testing* both succeeded, `1.0.0 (2)`.
 
 **An external group exists and nothing feeds it.** *External testers* (created 2026-09-23 —
 Florina Finaru, Dave Kok) receives no build from the post-action, which names *LetsRide internal*
