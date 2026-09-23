@@ -25,6 +25,10 @@ why the runs alone are not evidence. If it returns it is an **owner action**:
 
 **The hand-gate, which is what to run when CI is unavailable:**
 
+**`129`'s 4361 is counted from the diff, not measured** — `+88` `129.x` labels over `127`/`128`'s
+4273 — because the Mac that wrote it has no Postgres. CI's RLS job on Postgres 17 is what confirms
+it; if that job reports another number, compare label SETS rather than counts.
+
 ```bash
 npm ci
 npx tsc --noEmit                      # exit 0
@@ -34,7 +38,7 @@ npm run test:unit                     # 4110/4110 across 184 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 45 static routes
 node scripts/native/assert-web-build.mjs   # that build was the web app, not the bundle
-PGPASSWORD=postgres npm test          # 4273 assertions, 0 failures
+PGPASSWORD=postgres npm test          # 4361 assertions, 0 failures
 ```
 
 **And the second build shape, which nothing above covers** — PD-142 left the repo with two, and
