@@ -40726,6 +40726,752 @@ reset role;
 select set_config('test.uid', '', false);
 rollback to savepoint consent_gate_128;
 
+-- ===========================================================================
+\echo '# 129 — the weekend digest: one content rule, one reader, one opt-out (PD-450)'
+-- ===========================================================================
+-- `design.md` §Roles and negative cases, numbered the same. The content rule is
+-- asserted against `private.weekend_digest_for` as the OWNER with a PINNED `at`,
+-- because the suite's own clock is whenever CI runs: Wednesday 2035-06-06 12:00
+-- and Saturday 2035-06-09 15:00, Amsterdam. Nothing outside this block departs
+-- in June 2035 or was created within 7 days of it, so nothing else can enter a
+-- list. Only 129.19 goes through the reader, at now().
+--
+-- Fixture — riders 0000012900xx, clubs 0000012901xx, rides 0000012902xx,
+-- threads 0000012903xx. `dg129_names` maps each id to the name used below.
+--   owner        owns C1 (private)          admin     admin of C1
+--   member       C1, Cpub, CQ               outsider  in nothing
+--   clubinvitee  pending club invite to C1  removed   C1 member until 129.11
+--   rideinvitee  pending invite, g4_invited declined  declined invite, same ride
+--   blocker      C1; has blocked b1         blockee   C1; b2 has blocked them
+--   b1, b2       C1 members                 writer    C1; organises most rides
+--   quiet        CQ only                    capper    K1-K7 only
+--   twinout, twinin  CT only (129.19)       optout    the opt-out RPCs
+-- Positions, hundreds of km apart so no group's rides reach another's list:
+--   G1 Utrecht (52.09, 5.12)  the window, the radius, the order and the cap
+--   G2 Paris   (48.86, 2.35)  blocks
+--   G3 Munich  (48.14, 11.58) answered rides and the organiser's own
+--   G4 Berlin  (52.52, 13.40) club audience and ride invites
+-- C1 this week: rides by owner, writer, b1, b2 (next Tuesday) plus g4_smuggled
+-- and g4_invited = 6; threads by owner, writer, b1 (two) and b2 = 5. One ride
+-- and one thread 8 days old, and one ride already departed, never count.
+savepoint weekend_digest_129;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000001290001', 'dg129owner@example.com'),
+  ('00000000-0000-0000-0000-000001290002', 'dg129admin@example.com'),
+  ('00000000-0000-0000-0000-000001290003', 'dg129member@example.com'),
+  ('00000000-0000-0000-0000-000001290004', 'dg129outsider@example.com'),
+  ('00000000-0000-0000-0000-000001290005', 'dg129clubinvitee@example.com'),
+  ('00000000-0000-0000-0000-000001290006', 'dg129removed@example.com'),
+  ('00000000-0000-0000-0000-000001290007', 'dg129rideinvitee@example.com'),
+  ('00000000-0000-0000-0000-000001290008', 'dg129declined@example.com'),
+  ('00000000-0000-0000-0000-000001290009', 'dg129blocker@example.com'),
+  ('00000000-0000-0000-0000-00000129000a', 'dg129blockee@example.com'),
+  ('00000000-0000-0000-0000-00000129000b', 'dg129b1@example.com'),
+  ('00000000-0000-0000-0000-00000129000c', 'dg129b2@example.com'),
+  ('00000000-0000-0000-0000-00000129000d', 'dg129writer@example.com'),
+  ('00000000-0000-0000-0000-00000129000e', 'dg129quiet@example.com'),
+  ('00000000-0000-0000-0000-00000129000f', 'dg129capper@example.com'),
+  ('00000000-0000-0000-0000-000001290010', 'dg129twinout@example.com'),
+  ('00000000-0000-0000-0000-000001290011', 'dg129twinin@example.com'),
+  ('00000000-0000-0000-0000-000001290012', 'dg129optout@example.com');
+reset role;
+
+create temp table dg129_names (id uuid primary key, name text not null unique);
+insert into dg129_names (id, name) values
+  ('00000000-0000-0000-0000-000001290001', 'owner'),
+  ('00000000-0000-0000-0000-000001290002', 'admin'),
+  ('00000000-0000-0000-0000-000001290003', 'member'),
+  ('00000000-0000-0000-0000-000001290004', 'outsider'),
+  ('00000000-0000-0000-0000-000001290005', 'clubinvitee'),
+  ('00000000-0000-0000-0000-000001290006', 'removed'),
+  ('00000000-0000-0000-0000-000001290007', 'rideinvitee'),
+  ('00000000-0000-0000-0000-000001290008', 'declined'),
+  ('00000000-0000-0000-0000-000001290009', 'blocker'),
+  ('00000000-0000-0000-0000-00000129000a', 'blockee'),
+  ('00000000-0000-0000-0000-00000129000b', 'b1'),
+  ('00000000-0000-0000-0000-00000129000c', 'b2'),
+  ('00000000-0000-0000-0000-00000129000d', 'writer'),
+  ('00000000-0000-0000-0000-00000129000e', 'quiet'),
+  ('00000000-0000-0000-0000-00000129000f', 'capper'),
+  ('00000000-0000-0000-0000-000001290010', 'twinout'),
+  ('00000000-0000-0000-0000-000001290011', 'twinin'),
+  ('00000000-0000-0000-0000-000001290012', 'optout'),
+  ('00000000-0000-0000-0000-000001290101', 'C1'),
+  ('00000000-0000-0000-0000-000001290102', 'Cpub'),
+  ('00000000-0000-0000-0000-000001290103', 'CQ'),
+  ('00000000-0000-0000-0000-000001290104', 'CT'),
+  ('00000000-0000-0000-0000-000001290111', 'K1'),
+  ('00000000-0000-0000-0000-000001290112', 'K2'),
+  ('00000000-0000-0000-0000-000001290113', 'K3'),
+  ('00000000-0000-0000-0000-000001290114', 'K4'),
+  ('00000000-0000-0000-0000-000001290115', 'K5'),
+  ('00000000-0000-0000-0000-000001290116', 'K6'),
+  ('00000000-0000-0000-0000-000001290117', 'K7'),
+  ('00000000-0000-0000-0000-000001290201', 'g1_satmorning'),
+  ('00000000-0000-0000-0000-000001290202', 'g1_sat'),
+  ('00000000-0000-0000-0000-000001290203', 'g1_tie'),
+  ('00000000-0000-0000-0000-000001290204', 'g1_99'),
+  ('00000000-0000-0000-0000-000001290205', 'g1_sun'),
+  ('00000000-0000-0000-0000-000001290206', 'g1_sun2'),
+  ('00000000-0000-0000-0000-000001290207', 'g1_101'),
+  ('00000000-0000-0000-0000-000001290208', 'g1_edge'),
+  ('00000000-0000-0000-0000-000001290209', 'g1_nocoord'),
+  ('00000000-0000-0000-0000-00000129020a', 'g1_fri'),
+  ('00000000-0000-0000-0000-00000129020b', 'g1_nextsat'),
+  ('00000000-0000-0000-0000-00000129020c', 'g1_la'),
+  ('00000000-0000-0000-0000-000001290211', 'g2_b1'),
+  ('00000000-0000-0000-0000-000001290212', 'g2_b2'),
+  ('00000000-0000-0000-0000-000001290213', 'g2_ctl'),
+  ('00000000-0000-0000-0000-000001290221', 'g3_going'),
+  ('00000000-0000-0000-0000-000001290222', 'g3_maybe'),
+  ('00000000-0000-0000-0000-000001290223', 'g3_own'),
+  ('00000000-0000-0000-0000-000001290224', 'g3_ctl'),
+  ('00000000-0000-0000-0000-000001290231', 'g4_smuggled'),
+  ('00000000-0000-0000-0000-000001290232', 'g4_invited'),
+  ('00000000-0000-0000-0000-000001290233', 'g4_ctl'),
+  ('00000000-0000-0000-0000-000001290241', 'c1_owner'),
+  ('00000000-0000-0000-0000-000001290242', 'c1_writer'),
+  ('00000000-0000-0000-0000-000001290243', 'c1_b1'),
+  ('00000000-0000-0000-0000-000001290244', 'c1_b2'),
+  ('00000000-0000-0000-0000-000001290245', 'c1_old'),
+  ('00000000-0000-0000-0000-000001290246', 'c1_departed'),
+  ('00000000-0000-0000-0000-000001290251', 'cpub_ride');
+
+update profiles p set username = 'dg129' || n.name
+  from dg129_names n
+ where p.id = n.id and n.id::text like '%-0000012900%';
+
+-- A misspelt name must not read as "nobody", or an assertion expecting an
+-- empty list would pass against a candidate that does not exist.
+create function pg_temp.dg129_uid(who text) returns uuid
+language plpgsql as $$
+declare v uuid;
+begin
+  select n.id into strict v from pg_temp.dg129_names n where n.name = who;
+  return v;
+end;
+$$;
+
+-- The rides section as names in ordinal order; an id with no name prints as
+-- itself, so a stray ride fails the comparison rather than vanishing.
+create function pg_temp.dg129_rides(who text, at_ timestamptz, lat double precision, lon double precision)
+returns text[] language sql as $$
+  select coalesce(array_agg(coalesce(n.name, d.ride_id::text) order by d.ordinal), '{}')
+    from private.weekend_digest_for(pg_temp.dg129_uid(who), at_, lat, lon) d
+    left join pg_temp.dg129_names n on n.id = d.ride_id
+   where d.section = 'rides'
+$$;
+
+-- The clubs section as 'name:new_rides/new_threads' in ordinal order.
+create function pg_temp.dg129_clubs(who text, at_ timestamptz, lat double precision, lon double precision)
+returns text[] language sql as $$
+  select coalesce(array_agg(coalesce(n.name, d.club_id::text) || ':' || d.new_rides || '/' || d.new_threads
+                            order by d.ordinal), '{}')
+    from private.weekend_digest_for(pg_temp.dg129_uid(who), at_, lat, lon) d
+    left join pg_temp.dg129_names n on n.id = d.club_id
+   where d.section = 'clubs'
+$$;
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-000001290101', 'Digest 129 private', false, '00000000-0000-0000-0000-000001290001'),
+  ('00000000-0000-0000-0000-000001290102', 'Digest 129 public',  true,  '00000000-0000-0000-0000-00000129000d'),
+  ('00000000-0000-0000-0000-000001290103', 'Digest 129 quiet',   true,  '00000000-0000-0000-0000-00000129000d'),
+  ('00000000-0000-0000-0000-000001290104', 'Digest 129 twins',   true,  '00000000-0000-0000-0000-00000129000d'),
+  ('00000000-0000-0000-0000-000001290111', 'Digest 129 cap one',   true, '00000000-0000-0000-0000-00000129000d'),
+  ('00000000-0000-0000-0000-000001290112', 'Digest 129 cap b',     true, '00000000-0000-0000-0000-00000129000d'),
+  ('00000000-0000-0000-0000-000001290113', 'Digest 129 cap three', true, '00000000-0000-0000-0000-00000129000d'),
+  ('00000000-0000-0000-0000-000001290114', 'Digest 129 cap four',  true, '00000000-0000-0000-0000-00000129000d'),
+  ('00000000-0000-0000-0000-000001290115', 'Digest 129 cap five',  true, '00000000-0000-0000-0000-00000129000d'),
+  ('00000000-0000-0000-0000-000001290116', 'Digest 129 cap six',   true, '00000000-0000-0000-0000-00000129000d'),
+  ('00000000-0000-0000-0000-000001290117', 'Digest 129 cap a',     true, '00000000-0000-0000-0000-00000129000d');
+
+insert into club_members (club_id, user_id, role)
+select c.id, m.id, case when m.name = 'admin' then 'admin' else 'member' end
+  from dg129_names c
+  join dg129_names m on (c.name, m.name) in (
+    ('C1', 'admin'), ('C1', 'member'), ('C1', 'removed'), ('C1', 'blocker'),
+    ('C1', 'blockee'), ('C1', 'b1'), ('C1', 'b2'), ('C1', 'writer'),
+    ('Cpub', 'member'), ('CQ', 'member'), ('CQ', 'quiet'),
+    ('CT', 'twinout'), ('CT', 'twinin'),
+    ('K1', 'capper'), ('K2', 'capper'), ('K3', 'capper'), ('K4', 'capper'),
+    ('K5', 'capper'), ('K6', 'capper'), ('K7', 'capper'));
+
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000001290009', '00000000-0000-0000-0000-00000129000b'),  -- blocker -> b1
+  ('00000000-0000-0000-0000-00000129000c', '00000000-0000-0000-0000-00000129000a');  -- b2 -> blockee
+
+-- Every ride carries an explicit created_at inside C1's counting window, so
+-- only c1_old sits outside it. A coordinate needs a start_place_id (`067`).
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id,
+                   latitude, longitude, start_place_id, timezone, created_at)
+select n.id, 'Digest ' || n.name, 'The Bridge', v.dep, v.pub, c.id, o.id,
+       v.lat, v.lon, case when v.lat is null then null else 'digest-129' end, v.tz,
+       coalesce(v.created, timestamptz '2035-06-04 12:00:00 Europe/Amsterdam')
+  from (values
+    ('g1_satmorning', timestamptz '2035-06-09 09:00:00 Europe/Amsterdam', true, null, 'writer', 52.09::float8, 5.12::float8, null::text, null::timestamptz),
+    ('g1_sat',        timestamptz '2035-06-09 10:00:00 Europe/Amsterdam', true, null, 'writer', 52.37, 4.90, null, null),
+    ('g1_tie',        timestamptz '2035-06-09 12:00:00 Europe/Amsterdam', true, null, 'writer', 52.18, 5.12, null, null),
+    ('g1_99',         timestamptz '2035-06-09 12:00:00 Europe/Amsterdam', true, null, 'writer', 52.09 + 99    / (6371.0088 * pi() / 180), 5.12, null, null),
+    ('g1_sun',        timestamptz '2035-06-10 10:00:00 Europe/Amsterdam', true, null, 'writer', 52.09, 5.12, null, null),
+    ('g1_sun2',       timestamptz '2035-06-10 14:00:00 Europe/Amsterdam', true, null, 'writer', 52.09, 5.12, null, null),
+    ('g1_101',        timestamptz '2035-06-09 12:00:00 Europe/Amsterdam', true, null, 'writer', 52.09 + 101   / (6371.0088 * pi() / 180), 5.12, null, null),
+    ('g1_edge',       timestamptz '2035-06-09 12:30:00 Europe/Amsterdam', true, null, 'writer', 52.09 + 100.3 / (6371.0088 * pi() / 180), 5.12, null, null),
+    ('g1_nocoord',    timestamptz '2035-06-09 11:00:00 Europe/Amsterdam', true, null, 'writer', null, null, null, null),
+    ('g1_fri',        timestamptz '2035-06-08 18:00:00 Europe/Amsterdam', true, null, 'writer', 52.09, 5.12, null, null),
+    ('g1_nextsat',    timestamptz '2035-06-16 10:00:00 Europe/Amsterdam', true, null, 'writer', 52.09, 5.12, null, null),
+    -- Friday 20:00 in its own zone, which is Saturday 05:00 in Amsterdam.
+    ('g1_la',         timestamptz '2035-06-08 20:00:00 America/Los_Angeles', true, null, 'writer', 52.09, 5.12, 'America/Los_Angeles', null),
+    ('g2_b1',         timestamptz '2035-06-09 10:00:00 Europe/Amsterdam', true, null, 'b1',     48.86, 2.35, null, null),
+    ('g2_b2',         timestamptz '2035-06-09 11:00:00 Europe/Amsterdam', true, null, 'b2',     48.86, 2.35, null, null),
+    ('g2_ctl',        timestamptz '2035-06-09 12:00:00 Europe/Amsterdam', true, null, 'writer', 48.86, 2.35, null, null),
+    ('g3_going',      timestamptz '2035-06-09 10:00:00 Europe/Amsterdam', true, null, 'writer', 48.14, 11.58, null, null),
+    ('g3_maybe',      timestamptz '2035-06-10 10:00:00 Europe/Amsterdam', true, null, 'writer', 48.14, 11.58, null, null),
+    ('g3_own',        timestamptz '2035-06-09 11:00:00 Europe/Amsterdam', true, null, 'owner',  48.14, 11.58, null, null),
+    ('g3_ctl',        timestamptz '2035-06-09 12:00:00 Europe/Amsterdam', true, null, 'writer', 48.14, 11.58, null, null),
+    ('g4_invited',    timestamptz '2035-06-09 11:00:00 Europe/Amsterdam', false, 'C1', 'writer', 52.52, 13.40, null, null),
+    ('g4_ctl',        timestamptz '2035-06-09 12:00:00 Europe/Amsterdam', true, null, 'writer', 52.52, 13.40, null, null),
+    ('c1_owner',      timestamptz '2035-06-12 10:00:00 Europe/Amsterdam', false, 'C1', 'owner',  null, null, null, null),
+    ('c1_writer',     timestamptz '2035-06-12 10:00:00 Europe/Amsterdam', false, 'C1', 'writer', null, null, null, null),
+    ('c1_b1',         timestamptz '2035-06-12 10:00:00 Europe/Amsterdam', false, 'C1', 'b1',     null, null, null, null),
+    ('c1_b2',         timestamptz '2035-06-12 10:00:00 Europe/Amsterdam', false, 'C1', 'b2',     null, null, null, null),
+    ('c1_old',        timestamptz '2035-06-12 10:00:00 Europe/Amsterdam', false, 'C1', 'writer', null, null, null, timestamptz '2035-05-29 12:00:00 Europe/Amsterdam'),
+    ('c1_departed',   timestamptz '2035-06-05 10:00:00 Europe/Amsterdam', false, 'C1', 'writer', null, null, null, null),
+    ('cpub_ride',     timestamptz '2035-06-12 10:00:00 Europe/Amsterdam', true, 'Cpub', 'writer', null, null, null, null)
+  ) as v(name, dep, pub, club, organizer, lat, lon, tz, created)
+  join dg129_names n on n.name = v.name
+  join dg129_names o on o.name = v.organizer
+  left join dg129_names c on c.name = v.club;
+
+-- A PUBLIC ride in the PRIVATE club, seeded past `022`'s trigger on purpose —
+-- the "Smuggled Run" precedent above. `enforce_ride_club_audience` makes the
+-- row unwritable today; the body must still not hand it to a non-member.
+alter table public.rides disable trigger enforce_ride_club_audience;
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id,
+                   latitude, longitude, start_place_id, created_at)
+values ('00000000-0000-0000-0000-000001290231', 'Digest g4_smuggled', 'The Bridge',
+        timestamptz '2035-06-09 10:00:00 Europe/Amsterdam', true,
+        '00000000-0000-0000-0000-000001290101', '00000000-0000-0000-0000-00000129000d',
+        52.52, 13.40, 'digest-129', timestamptz '2035-06-04 12:00:00 Europe/Amsterdam');
+alter table public.rides enable trigger enforce_ride_club_audience;
+
+-- `ride_members.status` is going or maybe and nothing else, so these two are
+-- the whole of "answered".
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-000001290221', '00000000-0000-0000-0000-000001290003', 'going'),
+  ('00000000-0000-0000-0000-000001290222', '00000000-0000-0000-0000-000001290003', 'maybe');
+
+insert into ride_invites (ride_id, invitee_id, inviter_id, status, responded_at) values
+  ('00000000-0000-0000-0000-000001290232', '00000000-0000-0000-0000-000001290007',
+   '00000000-0000-0000-0000-00000129000d', 'pending', null),
+  ('00000000-0000-0000-0000-000001290232', '00000000-0000-0000-0000-000001290008',
+   '00000000-0000-0000-0000-00000129000d', 'declined', timestamptz '2035-06-05 09:00:00+00');
+
+insert into club_invites (club_id, invitee_id, inviter_id, status) values
+  ('00000000-0000-0000-0000-000001290101', '00000000-0000-0000-0000-000001290005',
+   '00000000-0000-0000-0000-000001290001', 'pending');
+
+insert into club_threads (id, club_id, author_id, title, created_at)
+select t.id::uuid, c.id, a.id, 'Digest thread', t.created
+  from (values
+    ('00000000-0000-0000-0000-000001290301', 'C1',   'owner',  timestamptz '2035-06-04 12:00:00 Europe/Amsterdam'),
+    ('00000000-0000-0000-0000-000001290302', 'C1',   'writer', timestamptz '2035-06-04 12:00:00 Europe/Amsterdam'),
+    ('00000000-0000-0000-0000-000001290303', 'C1',   'b1',     timestamptz '2035-06-04 12:00:00 Europe/Amsterdam'),
+    ('00000000-0000-0000-0000-000001290304', 'C1',   'b1',     timestamptz '2035-06-05 12:00:00 Europe/Amsterdam'),
+    ('00000000-0000-0000-0000-000001290305', 'C1',   'b2',     timestamptz '2035-06-04 12:00:00 Europe/Amsterdam'),
+    ('00000000-0000-0000-0000-000001290306', 'C1',   'writer', timestamptz '2035-05-29 12:00:00 Europe/Amsterdam'),
+    ('00000000-0000-0000-0000-000001290307', 'Cpub', 'writer', timestamptz '2035-06-04 12:00:00 Europe/Amsterdam'),
+    ('00000000-0000-0000-0000-000001290308', 'CQ',   'writer', timestamptz '2035-05-29 12:00:00 Europe/Amsterdam')
+  ) as t(id, club, author, created)
+  join dg129_names c on c.name = t.club
+  join dg129_names a on a.name = t.author;
+
+-- K1..K7 get 1, 2, 3, 4, 5, 6 and 2 new threads.
+insert into club_threads (club_id, author_id, title, created_at)
+select c.id, '00000000-0000-0000-0000-00000129000d', 'Digest cap thread',
+       timestamptz '2035-06-04 12:00:00 Europe/Amsterdam'
+  from (values ('K1', 1), ('K2', 2), ('K3', 3), ('K4', 4), ('K5', 5), ('K6', 6), ('K7', 2)) as k(name, n)
+  join dg129_names c on c.name = k.name
+  cross join lateral generate_series(1, k.n);
+
+-- CT's one thread is created NOW, for 129.19's reader, which reads at now().
+insert into club_threads (id, club_id, author_id, title) values
+  ('00000000-0000-0000-0000-000001290309', '00000000-0000-0000-0000-000001290104',
+   '00000000-0000-0000-0000-00000129000d', 'Digest twins thread');
+
+-- ---------------------------------------------------------------------------
+-- 129.1  The column: in none of 025's lists, and the widths do not move
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from pg_attribute
+    where attrelid = 'public.profiles'::regclass and attname = 'digest_opt_out_at'
+      and not attisdropped and not attnotnull and not atthasdef),
+  1, '129.1: profiles.digest_opt_out_at exists, nullable, with no default — every existing rider reads as not opted out');
+select assert_eq(has_column_privilege('authenticated', 'public.profiles', 'digest_opt_out_at', 'select'),
+  false, '129.1: authenticated holds no SELECT on digest_opt_out_at — the SELECT policy admits every non-blocked rider''s row, so a grant would publish the preference');
+select assert_eq(has_column_privilege('authenticated', 'public.profiles', 'digest_opt_out_at', 'insert'),
+  false, '129.1: ... no INSERT');
+select assert_eq(has_column_privilege('authenticated', 'public.profiles', 'digest_opt_out_at', 'update'),
+  false, '129.1: ... and no UPDATE, so set_digest_opt_out() is the only write path');
+select assert_eq(has_column_privilege('anon', 'public.profiles', 'digest_opt_out_at', 'select'),
+  false, '129.1: anon reads nothing of it (decision #1)');
+select assert_eq(
+  (select count(*) filter (where has_column_privilege('authenticated', 'public.profiles', attname, 'select'))
+          || '/' || count(*) filter (where has_column_privilege('authenticated', 'public.profiles', attname, 'insert'))
+          || '/' || count(*) filter (where has_column_privilege('authenticated', 'public.profiles', attname, 'update'))
+     from pg_attribute
+    where attrelid = 'public.profiles'::regclass and attnum > 0 and not attisdropped),
+  '10/8/8', '129.1: 096.1''s widths still read 10/8/8 — 129 issued no grant and no revoke on profiles');
+
+-- ---------------------------------------------------------------------------
+-- 129.2  The opt-out RPCs: own row, no rider id, idempotent, refusing NULL
+-- ---------------------------------------------------------------------------
+select assert_eq(pg_get_function_identity_arguments('public.my_digest_opt_out()'::regprocedure),
+  '', '129.2: my_digest_opt_out takes no argument, so there is no row to choose but your own');
+select assert_eq(pg_get_function_identity_arguments('public.set_digest_opt_out(boolean)'::regprocedure),
+  'p_opt_out boolean', '129.2: set_digest_opt_out takes exactly (p_opt_out boolean) — the NAME is the JSON key setDigestOptOut sends');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001290012', false);
+select assert_eq(public.my_digest_opt_out(), null::timestamptz,
+  '129.2: a rider who never opted out reads NULL');
+select assert_eq(public.set_digest_opt_out(true) is not null, true,
+  '129.2: set_digest_opt_out(true) stamps and returns the effective value');
+select assert_eq(public.my_digest_opt_out() is not null, true,
+  '129.2: ... and the reader sees it');
+
+-- Against a KNOWN PAST stamp, as 096.6 does: now() is fixed for this whole
+-- transaction, so two calls in a row would agree even if the stamp moved.
+reset role;
+update profiles set digest_opt_out_at = timestamptz '2026-02-02 09:00:00+00'
+ where id = '00000000-0000-0000-0000-000001290012';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001290012', false);
+select assert_eq(public.set_digest_opt_out(true), timestamptz '2026-02-02 09:00:00+00',
+  '129.2: setting it twice keeps the FIRST stamp, so the record says when the rider decided');
+select set_config('test.uid', '00000000-0000-0000-0000-000001290011', false);
+select assert_eq(public.my_digest_opt_out(), null::timestamptz,
+  '129.2: another rider reads their own NULL while this one is opted out — the reader answers for auth.uid() alone');
+select set_config('test.uid', '00000000-0000-0000-0000-000001290012', false);
+select assert_eq(public.set_digest_opt_out(false), null::timestamptz,
+  '129.2: false clears the stamp outright and returns NULL');
+select assert_eq(public.my_digest_opt_out(), null::timestamptz,
+  '129.2: ... and the reader agrees');
+select assert_rejected($$select public.set_digest_opt_out(null)$$,
+  '22004', '129.2: set_digest_opt_out(null) is refused rather than read as an opt-in');
+select set_config('test.uid', '', false);
+select assert_rejected($$select public.set_digest_opt_out(true)$$,
+  '42501', '129.2: with no session it answers 42501');
+select set_config('test.uid', '00000000-0000-0000-0000-000001299999', false);
+select assert_rejected($$select public.set_digest_opt_out(true)$$,
+  'P0002', '129.2: with no profile row it answers P0002, never a silent NULL that would read as "not opted out"');
+
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where (n.nspname, p.proname) in (('private', 'weekend_digest_for'), ('public', 'my_weekend_digest'),
+                                     ('public', 'my_digest_opt_out'), ('public', 'set_digest_opt_out'))
+      and p.prosecdef and p.proconfig @> array['search_path=""']),
+  4, '129.2: all four functions are security definer with search_path pinned empty');
+select assert_eq(
+  (select string_agg(p.proname || '=' || p.provolatile::text, ',' order by p.proname)
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where (n.nspname, p.proname) in (('private', 'weekend_digest_for'), ('public', 'my_weekend_digest'))),
+  'my_weekend_digest=s,weekend_digest_for=s', '129.2: the body and the reader are both STABLE — they write nothing');
+
+-- ---------------------------------------------------------------------------
+-- 129.3  The two opt-outs are independent, asserted once per direction
+-- ---------------------------------------------------------------------------
+-- true, false, true against a known stamp on the OTHER column: a writer that
+-- touched the wrong column would clear it on false or move it on true.
+update profiles set analytics_opt_out_at = timestamptz '2026-03-03 09:00:00+00', digest_opt_out_at = null
+ where id = '00000000-0000-0000-0000-000001290012';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001290012', false);
+select public.set_digest_opt_out(true);
+select public.set_digest_opt_out(false);
+select public.set_digest_opt_out(true);
+reset role;
+select assert_eq(
+  (select analytics_opt_out_at from profiles where id = '00000000-0000-0000-0000-000001290012'),
+  timestamptz '2026-03-03 09:00:00+00',
+  '129.3: setting and clearing the digest opt-out leaves analytics_opt_out_at exactly as it was');
+
+update profiles set analytics_opt_out_at = null, digest_opt_out_at = timestamptz '2026-04-04 09:00:00+00'
+ where id = '00000000-0000-0000-0000-000001290012';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001290012', false);
+select public.set_analytics_opt_out(true);
+select public.set_analytics_opt_out(false);
+select public.set_analytics_opt_out(true);
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select digest_opt_out_at from profiles where id = '00000000-0000-0000-0000-000001290012'),
+  timestamptz '2026-04-04 09:00:00+00',
+  '129.3: ... and setting and clearing the analytics opt-out leaves digest_opt_out_at exactly as it was');
+
+-- ---------------------------------------------------------------------------
+-- 129.4  anon reaches none of the three public functions
+-- ---------------------------------------------------------------------------
+select assert_eq(has_function_privilege('anon', 'public.my_weekend_digest(double precision, double precision)', 'execute'),
+  false, '129.4: anon holds no EXECUTE on my_weekend_digest — a signed-out visitor reaches no data');
+select assert_eq(has_function_privilege('anon', 'public.my_digest_opt_out()', 'execute'),
+  false, '129.4: ... nor on my_digest_opt_out');
+select assert_eq(has_function_privilege('anon', 'public.set_digest_opt_out(boolean)', 'execute'),
+  false, '129.4: ... nor on set_digest_opt_out');
+select assert_eq(
+  (has_function_privilege('authenticated', 'public.my_weekend_digest(double precision, double precision)', 'execute')
+   and has_function_privilege('authenticated', 'public.my_digest_opt_out()', 'execute')
+   and has_function_privilege('authenticated', 'public.set_digest_opt_out(boolean)', 'execute')),
+  true, '129.4: authenticated holds EXECUTE on all three — the control that makes the three refusals about anon');
+
+-- ---------------------------------------------------------------------------
+-- 129.5  No client role, and not service_role, may execute the body
+-- ---------------------------------------------------------------------------
+-- Named per role rather than called: the suite runs as the owner (031).
+select assert_eq(has_function_privilege('authenticated',
+    'private.weekend_digest_for(uuid, timestamptz, double precision, double precision)', 'execute'),
+  false, '129.5: authenticated cannot execute private.weekend_digest_for — only through my_weekend_digest, with its own id');
+select assert_eq(has_function_privilege('anon',
+    'private.weekend_digest_for(uuid, timestamptz, double precision, double precision)', 'execute'),
+  false, '129.5: ... nor can anon');
+select assert_eq(has_function_privilege('service_role',
+    'private.weekend_digest_for(uuid, timestamptz, double precision, double precision)', 'execute'),
+  false, '129.5: ... nor service_role, which would otherwise read any rider''s digest by id');
+
+-- ---------------------------------------------------------------------------
+-- 129.6  The body is checkably candidate-relative; the reader is one line
+-- ---------------------------------------------------------------------------
+-- On the comment-stripped `prosrc` (the comment trap). `is_club_member(` and
+-- `is_ride_crew(` read the session internally; the `_for` forms do not.
+select assert_eq(
+  (select regexp_replace(prosrc, '--.*', '', 'gn') ~ 'auth\.uid\('
+     from pg_proc where oid = 'private.weekend_digest_for(uuid, timestamptz, double precision, double precision)'::regprocedure),
+  false, '129.6: the body never calls auth.uid() — it answers for its candidate, never for the session');
+select assert_eq(
+  (select regexp_replace(prosrc, '--.*', '', 'gn') ~ 'private\.is_club_member\('
+     from pg_proc where oid = 'private.weekend_digest_for(uuid, timestamptz, double precision, double precision)'::regprocedure),
+  false, '129.6: ... nor private.is_club_member(), which reads auth.uid() inside');
+select assert_eq(
+  (select regexp_replace(prosrc, '--.*', '', 'gn') ~ 'private\.is_ride_crew\('
+     from pg_proc where oid = 'private.weekend_digest_for(uuid, timestamptz, double precision, double precision)'::regprocedure),
+  false, '129.6: ... nor private.is_ride_crew(), for the same reason');
+select assert_eq(
+  (select regexp_replace(prosrc, '--.*', '', 'gn') ~ '\mrides_from\M'
+     from pg_proc where oid = 'private.weekend_digest_for(uuid, timestamptz, double precision, double precision)'::regprocedure),
+  false, '129.6: the body never reads rides_from — the rider''s own words are never a position, in SQL either');
+select assert_eq(
+  (select regexp_replace(prosrc, '--.*', '', 'gn') ~ '\mdigest_opt_out_at\M'
+     from pg_proc where oid = 'private.weekend_digest_for(uuid, timestamptz, double precision, double precision)'::regprocedure),
+  false, '129.6: the body never reads digest_opt_out_at — the preference is not a content rule');
+
+-- Verified both ways, in the suite rather than once by hand: the same filter
+-- flags a scratch body that reads the column, and does not flag one that only
+-- names it in a comment.
+create function private.dg129_scratch_reads() returns text language sql as $$
+  select p.rides_from from public.profiles p limit 1
+$$;
+create function private.dg129_scratch_mentions() returns text language sql as $$
+  -- rides_from appears only in this comment
+  select 'nothing'::text
+$$;
+select assert_eq(
+  (select regexp_replace(prosrc, '--.*', '', 'gn') ~ '\mrides_from\M'
+     from pg_proc where oid = 'private.dg129_scratch_reads()'::regprocedure),
+  true, '129.6: the rides_from filter DOES flag a scratch body that reads the column — so the false above is a finding, not a filter that matches nothing');
+select assert_eq(
+  (select regexp_replace(prosrc, '--.*', '', 'gn') ~ '\mrides_from\M'
+     from pg_proc where oid = 'private.dg129_scratch_mentions()'::regprocedure),
+  false, '129.6: ... and does NOT flag one that names it only in a comment');
+
+select assert_eq(
+  (select prosrc from pg_proc where oid = 'public.my_weekend_digest(double precision, double precision)'::regprocedure),
+  'select * from private.weekend_digest_for((select auth.uid()), pg_catalog.now(), near_lat, near_lon)',
+  '129.6: the reader''s body EQUALS the one delegation — the caller''s own id, now, and the position; no arm can be added unnoticed');
+select assert_eq(
+  pg_get_function_result('public.my_weekend_digest(double precision, double precision)'::regprocedure),
+  'TABLE(section text, ordinal integer, ride_id uuid, club_id uuid, new_rides integer, new_threads integer)',
+  '129.6: the reader returns exactly six columns — ids, order and counts, never content; a seventh fails here');
+select assert_eq(
+  pg_get_function_arguments('public.my_weekend_digest(double precision, double precision)'::regprocedure),
+  'near_lat double precision DEFAULT NULL::double precision, near_lon double precision DEFAULT NULL::double precision',
+  '129.6: ... and takes only a position, both halves defaulting to NULL, and no rider id');
+select assert_eq(
+  pg_get_function_identity_arguments('private.weekend_digest_for(uuid, timestamptz, double precision, double precision)'::regprocedure),
+  'candidate uuid, at timestamp with time zone, near_lat double precision, near_lon double precision',
+  '129.6: the body''s signature is (candidate, at, near_lat, near_lon) — the one part 2''s assembler will call');
+select assert_eq(
+  (select count(*)::int
+     from private.weekend_digest_for(pg_temp.dg129_uid('member'), timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 52.52, 13.40) d
+    where not ((d.section = 'rides' and d.ride_id is not null and d.club_id is null
+                and d.new_rides is null and d.new_threads is null)
+            or (d.section = 'clubs' and d.ride_id is null and d.club_id is not null
+                and d.new_rides is not null and d.new_threads is not null))
+       or d.ordinal not between 1 and 5),
+  0, '129.6: every row is a ride row (ride_id only) or a club row (club_id and both counts), ordinal 1 to 5 — the shape the client hydrates');
+
+-- ---------------------------------------------------------------------------
+-- 129.7  A blocked organiser's ride is absent, the block row in each direction
+-- ---------------------------------------------------------------------------
+-- ** Mutation-tested on DEV, and the result is worth writing down: deleting the
+-- body's OWN `is_blocked` conjunct leaves 129.7 and 129.8 GREEN, because
+-- can_read_ride and can_read_club_thread test the block too. ** These four
+-- assertions go red only when blocking is invisible everywhere — proved by
+-- running them against a scratch body whose helpers were block-free copies. So
+-- they are a test of the RULE, not of that one conjunct; the conjunct is the
+-- design's deliberate second statement of it, for the day a helper changes.
+select assert_eq(
+  pg_temp.dg129_rides('blocker', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 48.86, 2.35),
+  array['g2_b2', 'g2_ctl'],
+  '129.7: a rider who BLOCKED an organiser does not get that organiser''s ride');
+select assert_eq(
+  pg_temp.dg129_rides('blockee', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 48.86, 2.35),
+  array['g2_b1', 'g2_ctl'],
+  '129.7: ... nor does a rider an organiser has BLOCKED — symmetric, though the row is directional');
+select assert_eq(
+  pg_temp.dg129_rides('member', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 48.86, 2.35),
+  array['g2_b1', 'g2_b2', 'g2_ctl'],
+  '129.7: an unblocked rider gets all three — the control that makes both absences about the block');
+
+-- ---------------------------------------------------------------------------
+-- 129.8  Club counts exclude rows by anyone blocked with the rider
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  pg_temp.dg129_clubs('blocker', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', null, null),
+  array['C1:5/3'],
+  '129.8: five new threads, two by the rider this one BLOCKED, count 3 — and that rider''s new ride is not counted either');
+select assert_eq(
+  pg_temp.dg129_clubs('blockee', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', null, null),
+  array['C1:5/4'],
+  '129.8: ... and the other direction: the thread and ride of a rider who blocked this one are not counted');
+select assert_eq(
+  pg_temp.dg129_clubs('member', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', null, null),
+  array['C1:6/5', 'Cpub:1/1'],
+  '129.8: an unblocked member counts all 6 rides and 5 threads — the 8-day-old ride and thread and the departed ride never count, and the quiet club gets no row');
+
+-- ---------------------------------------------------------------------------
+-- 129.9  A private club's rides and activity never reach a non-member
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select is_public and not private.is_club_public(club_id) from rides
+    where id = '00000000-0000-0000-0000-000001290231'),
+  true, '129.9: the fixture holds a ride flagged PUBLIC inside the PRIVATE club, so the next assertion is not vacuous');
+select assert_eq(
+  pg_temp.dg129_rides('outsider', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 52.52, 13.40),
+  array['g4_ctl'],
+  '129.9: a non-member gets no ride from the private club — not the private one, and not the one flagged public');
+select assert_eq(
+  pg_temp.dg129_clubs('outsider', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 52.52, 13.40),
+  '{}'::text[],
+  '129.9: ... and no club row at all — not the private club, and not a public club with new activity they have not joined');
+select assert_eq(
+  pg_temp.dg129_rides('member', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 52.52, 13.40),
+  array['g4_smuggled', 'g4_invited', 'g4_ctl'],
+  '129.9: a member gets both of the club''s rides — the control');
+
+-- ---------------------------------------------------------------------------
+-- 129.10  A pending CLUB invite grants nothing; a declined RIDE invite neither
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  pg_temp.dg129_rides('clubinvitee', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 52.52, 13.40),
+  array['g4_ctl'],
+  '129.10: a pending club invitee gets no ride from that club');
+select assert_eq(
+  pg_temp.dg129_clubs('clubinvitee', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', null, null),
+  '{}'::text[],
+  '129.10: ... and no club row for it');
+select assert_eq(
+  pg_temp.dg129_rides('rideinvitee', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 52.52, 13.40),
+  array['g4_invited', 'g4_ctl'],
+  '129.10: a LIVE ride invite makes that private-club ride eligible — 083''s arm, read through can_read_ride');
+select assert_eq(
+  pg_temp.dg129_clubs('rideinvitee', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', null, null),
+  '{}'::text[],
+  '129.10: ... but names no club: an invite to one ride is not membership');
+select assert_eq(
+  pg_temp.dg129_rides('declined', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 52.52, 13.40),
+  array['g4_ctl'],
+  '129.10: a DECLINED ride invite does not make the ride eligible');
+
+-- ---------------------------------------------------------------------------
+-- 129.11  A removed member loses the club on the next read
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  pg_temp.dg129_clubs('removed', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', null, null),
+  array['C1:6/5'],
+  '129.11: while a member, the rider gets the club row — the control');
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-000001290101'
+   and user_id = '00000000-0000-0000-0000-000001290006';
+insert into club_removals (club_id, user_id) values
+  ('00000000-0000-0000-0000-000001290101', '00000000-0000-0000-0000-000001290006');
+select assert_eq(
+  pg_temp.dg129_clubs('removed', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', null, null),
+  '{}'::text[],
+  '129.11: after removal (a club_removals row, no club_members row) the next call names no club');
+select assert_eq(
+  pg_temp.dg129_rides('removed', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 52.52, 13.40),
+  array['g4_ctl'],
+  '129.11: ... and hands over none of its rides');
+
+-- ---------------------------------------------------------------------------
+-- 129.12  The organiser never sees their own ride, nor counts their own rows
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  pg_temp.dg129_rides('owner', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 48.14, 11.58),
+  array['g3_going', 'g3_ctl', 'g3_maybe'],
+  '129.12: the organiser does not get their own ride');
+select assert_eq(
+  pg_temp.dg129_clubs('owner', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', null, null),
+  array['C1:5/4'],
+  '129.12: ... and their own new ride and thread are not news to them — 5 and 4 where a member counts 6 and 5');
+
+-- ---------------------------------------------------------------------------
+-- 129.13  A ride the rider already answered is absent
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  pg_temp.dg129_rides('member', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 48.14, 11.58),
+  array['g3_own', 'g3_ctl'],
+  '129.13: rides the rider answered going or maybe are absent');
+select assert_eq(
+  pg_temp.dg129_rides('admin', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 48.14, 11.58),
+  array['g3_going', 'g3_own', 'g3_ctl', 'g3_maybe'],
+  '129.13: a rider who answered neither gets all four, soonest first — the control');
+
+-- ---------------------------------------------------------------------------
+-- 129.14  This weekend, in the ride's own zone, within 100 km; order and cap
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  pg_temp.dg129_rides('outsider', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 52.09, 5.12),
+  array['g1_satmorning', 'g1_sat', 'g1_tie', 'g1_99', 'g1_sun'],
+  '129.14: on a Wednesday, the coming weekend''s rides within 100 km, soonest first, distance breaking a tie, at most 5 — g1_sun2 is the sixth');
+select assert_eq(
+  'g1_nocoord' = any(pg_temp.dg129_rides('outsider', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 52.09, 5.12)),
+  false, '129.14: a ride with no coordinate is never near');
+select assert_eq(
+  'g1_101' = any(pg_temp.dg129_rides('outsider', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 52.09, 5.12)),
+  false, '129.14: a ride 101 km away is absent, where one at 99 km is present');
+select assert_eq(
+  'g1_fri' = any(pg_temp.dg129_rides('outsider', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 52.09, 5.12)),
+  false, '129.14: a Friday ride is absent — the weekend is Saturday and Sunday');
+select assert_eq(
+  'g1_la' = any(pg_temp.dg129_rides('outsider', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 52.09, 5.12)),
+  false, '129.14: a ride that is Saturday in Amsterdam but Friday in its own zone is absent — the ride''s zone decides');
+select assert_eq(
+  pg_temp.dg129_rides('outsider', timestamptz '2035-06-09 15:00:00 Europe/Amsterdam', 52.09, 5.12),
+  array['g1_sun', 'g1_sun2'],
+  '129.14: on Saturday afternoon only what is left of this weekend — the morning''s rides have departed');
+select assert_eq(
+  'g1_nextsat' = any(pg_temp.dg129_rides('outsider', timestamptz '2035-06-09 15:00:00 Europe/Amsterdam', 52.09, 5.12)),
+  false, '129.14: next week''s Saturday is absent even inside the 8-day prefilter — the ISO week decides');
+select assert_eq(
+  pg_temp.dg129_rides('outsider', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 52.0949, 5.1249),
+  array['g1_satmorning', 'g1_sat', 'g1_tie', 'g1_99', 'g1_sun'],
+  '129.14: the body rounds the position to 2 dp — g1_edge is 99.8 km from the raw point and 100.3 km from the rounded one, and stays out');
+
+-- ---------------------------------------------------------------------------
+-- 129.15  No position: no rides, and the clubs section still shows
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  pg_temp.dg129_rides('member', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', null, null),
+  '{}'::text[],
+  '129.15: with no position there is no ride row');
+select assert_eq(
+  pg_temp.dg129_clubs('member', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', null, null)
+    = pg_temp.dg129_clubs('member', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 52.52, 13.40),
+  true, '129.15: ... and the clubs section is exactly what it is with one — it does not depend on the position');
+
+-- ---------------------------------------------------------------------------
+-- 129.16  Nothing to show is zero rows; a quiet club never gets a row
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from private.weekend_digest_for(pg_temp.dg129_uid('quiet'),
+     timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', -33.87, 151.21)),
+  0, '129.16: a rider with no ride near them and only a quiet club gets ZERO rows — no placeholder, no zero-count row');
+select assert_eq(
+  (select count(*)::int from private.weekend_digest_for(pg_temp.dg129_uid('quiet'),
+     timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', null, null)),
+  0, '129.16: ... and the same with no position — the quiet club is not a row with 0/0');
+select assert_eq(
+  pg_temp.dg129_clubs('capper', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', null, null),
+  array['K6:0/6', 'K5:0/5', 'K4:0/4', 'K3:0/3', 'K7:0/2'],
+  '129.16: clubs are busiest first, the name breaks a tie (K7 "cap a" before K2 "cap b"), and there are at most 5');
+
+-- ---------------------------------------------------------------------------
+-- 129.17  No subject is zero rows; a malformed position is 22023
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from private.weekend_digest_for(null,
+     timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 52.09, 5.12)),
+  0, '129.17: a NULL candidate gets zero rows and no error, where any rider there gets five');
+select assert_rejected($$select * from private.weekend_digest_for('00000000-0000-0000-0000-000001290004',
+    timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', null, 5.12)$$,
+  '22023', '129.17: a position with no latitude is refused');
+select assert_rejected($$select * from private.weekend_digest_for('00000000-0000-0000-0000-000001290004',
+    timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 52.09, null)$$,
+  '22023', '129.17: ... and one with no longitude');
+select assert_rejected($$select * from private.weekend_digest_for('00000000-0000-0000-0000-000001290004',
+    timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 'NaN'::double precision, 5.12)$$,
+  '22023', '129.17: NaN is refused — it sorts above every number, so the range test catches it');
+select assert_rejected($$select * from private.weekend_digest_for('00000000-0000-0000-0000-000001290004',
+    timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 52.09, '-Infinity'::double precision)$$,
+  '22023', '129.17: an infinity is refused');
+select assert_rejected($$select * from private.weekend_digest_for('00000000-0000-0000-0000-000001290004',
+    timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', 91, 5.12)$$,
+  '22023', '129.17: a latitude past 90 is refused');
+select assert_eq(
+  (select count(*)::int from public.my_weekend_digest(52.09, 5.12)),
+  0, '129.17: the reader with no subject returns zero rows — what service_role gets');
+-- With a subject, because a NULL candidate returns before the position is read.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001290004', false);
+select assert_rejected($$select * from public.my_weekend_digest(52.09, null)$$,
+  '22023', '129.17: the reader passes the refusal through unchanged');
+reset role;
+select set_config('test.uid', '', false);
+
+-- ---------------------------------------------------------------------------
+-- 129.18  An admin gets exactly what a member gets
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  pg_temp.dg129_clubs('admin', timestamptz '2035-06-06 12:00:00 Europe/Amsterdam', null, null),
+  array['C1:6/5'],
+  '129.18: the admin''s row for the club is the member''s, 6/5 — the body reads no admin-only row');
+
+-- ---------------------------------------------------------------------------
+-- 129.19  The opt-out is not a gate: an opted-out rider's answer is a twin's
+-- ---------------------------------------------------------------------------
+-- Through the READER, at now(): both twins belong to CT alone, whose one
+-- thread was created now by the writer.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001290010', false);
+select assert_eq(public.set_digest_opt_out(true) is not null, true,
+  '129.19: the first twin opts out');
+select set_config('test.dg129_twin',
+  (select string_agg(concat_ws('|', section, ordinal, ride_id, club_id, new_rides, new_threads), ';'
+                     order by section, ordinal)
+     from public.my_weekend_digest()), false);
+select assert_eq(current_setting('test.dg129_twin'),
+  'clubs|1|00000000-0000-0000-0000-000001290104|0|1',
+  '129.19: the opted-out twin still gets their digest — one club row, one new thread');
+select set_config('test.uid', '00000000-0000-0000-0000-000001290011', false);
+select assert_eq(
+  (select string_agg(concat_ws('|', section, ordinal, ride_id, club_id, new_rides, new_threads), ';'
+                     order by section, ordinal)
+     from public.my_weekend_digest()),
+  current_setting('test.dg129_twin'),
+  '129.19: ... and it is identical to the twin who is not opted out');
+
+reset role;
+select set_config('test.uid', '', false);
+rollback to savepoint weekend_digest_129;
+
 rollback;
 
 \echo ''
