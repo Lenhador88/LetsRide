@@ -7,6 +7,8 @@ import type { ActionState } from '@/lib/actions/state'
 import { BACK_ORIGIN_PARAM, resolveBackDestination } from '@/lib/back-navigation'
 import {
   declinesSwipeBack,
+  isClaimingSwipeBack,
+  SWIPE_BACK_CLAIM_PX,
   isSwipeBack,
   startsInEdgeZone,
   SWIPE_BACK_OPT_OUT,
@@ -124,26 +126,34 @@ export function useBack(): () => void {
  * works over the fixed header and the RSVP bar, which sit outside the scrolling
  * content.
  *
- * **Nothing is ever `preventDefault`ed and no `touch-action` is set.** A
- * declined swipe is a swipe this hook says nothing about, so the deck, the
- * strips and the page scroll exactly as they did — see `swipe-back.ts`.
+ * **A gesture this hook ADMITS is taken from the browser, on a native
+ * `touchmove` — PD-341.** Without that the gesture never fires on a phone at
+ * all: the pan claim cancels the pointer stream before the release is judged.
+ * A DECLINED swipe is still a swipe this hook says nothing about — the deck,
+ * the strips, a text field and the page behave exactly as they did, because
+ * `declinesSwipeBack` runs before anything is claimed. What changed is that an
+ * admitted one is no longer free: the claim is one-way, so a gesture that
+ * looks sideways and then turns vertical costs the rider that scroll. The
+ * residual is measured and bounded in `isClaimingSwipeBack`; a screen whose
+ * vertical axis matters should read it before mounting this.
  *
  * ## `chain` is the unmeasured part of this feature, and it is not the numbers
  *
  * `declinesSwipeBack` has **six** cases over hand-built nodes — six, not the
- * fifteen in that file, which is its whole suite including `startsInEdgeZone`
- * and `isSwipeBack` — and by construction none of them can fail if `chain` feeds
- * it the wrong shape.
+ * twenty-one in that file, which is its whole suite including
+ * `startsInEdgeZone`, `isSwipeBack` and `isClaimingSwipeBack` — and by
+ * construction none of them can fail if `chain` feeds it the wrong shape.
  *
  * **Re-derive it with the filter, not without.** The bare `vitest list` prints
- * fifteen lines, which is exactly the number this sentence exists to correct — a
- * command that returns the wrong answer reads as measured and is worse than
- * none:
+ * twenty-one lines, which is exactly the number this sentence exists to
+ * correct — a command that returns the wrong answer reads as measured and is
+ * worse than none:
  *
  * ```
  * npx vitest list --run src/lib/__tests__/swipe-back.test.ts | grep -c "declinesSwipeBack >"
- * ``` Every
- * decline rests on two DOM facts nothing here has executed: that
+ * ```
+ *
+ * Every decline rests on two DOM facts nothing here has executed: that
  * `getComputedStyle(el).overflowX` answers `'auto'` for a Tailwind
  * `overflow-x-auto` element, and that `scrollWidth > clientWidth` is true for a
  * strip wider than its box. Both are ordinary and both are believed rather than
@@ -186,6 +196,9 @@ export function useSwipeBack(back: string | (() => void) | null): void {
     // from it, and a `setState` per `pointerdown` would re-render every screen
     // that mounts this on every tap.
     let gesture: { x: number; y: number; at: number } | null = null
+    // Whether the raw `touchmove` listener below has taken this touch from the
+    // browser. Reset wherever `gesture` is.
+    let claimed = false
 
     const chain = (node: EventTarget | null): SwipeBackNode | null => {
       // A synthetic or detached target is not something to reason about. The
@@ -215,8 +228,12 @@ export function useSwipeBack(back: string | (() => void) | null): void {
       return head
     }
 
+    const claimTouches = () => window.addEventListener('touchmove', onTouchMove, { passive: false })
+    const releaseTouches = () => window.removeEventListener('touchmove', onTouchMove)
+
     const onDown = (event: PointerEvent) => {
       gesture = null
+      claimed = false
       if (!target.current) return
       // Touch and pen only. A mouse drag from the left edge is a text selection
       // or a scrollbar, never a back gesture, and there is a visible arrow for
@@ -231,11 +248,14 @@ export function useSwipeBack(back: string | (() => void) | null): void {
       if (declinesSwipeBack(chain(event.target))) return
 
       gesture = { x: event.clientX, y: event.clientY, at: event.timeStamp }
+      claimTouches()
     }
 
     const onUp = (event: PointerEvent) => {
       const started = gesture
       gesture = null
+      claimed = false
+      releaseTouches()
       const destination = target.current
       if (!started || !destination) return
 
@@ -261,7 +281,72 @@ export function useSwipeBack(back: string | (() => void) | null): void {
     // could clear the axis test on the way back up.
     const onCancel = () => {
       gesture = null
+      claimed = false
+      releaseTouches()
     }
+
+    /**
+     * **Why a raw `touchmove` listener exists at all — PD-341, measured
+     * 2026-09-23.** Until it did, this gesture never fired on a phone. The
+     * decision above is taken at `pointerup`, and on touch there is no
+     * `pointerup`: Chromium reads an edge drag as a pan and sends
+     * `pointercancel` about 20px in. Measured with raw touch through CDP on a
+     * vertically scrolling page — `down, move10, move20, CANCEL`, zero
+     * navigations — and the same harness answers a navigation with this
+     * listener in place, while a vertical drag from the same edge still
+     * scrolls.
+     *
+     * It claims nothing on its own: `gesture` is non-null only when `onDown`
+     * already admitted this touch — in the edge zone, no modal open, and
+     * `declinesSwipeBack` satisfied — so a text field, a horizontal scroller
+     * and `PostcardDeck`'s opted-out card are all untouched.
+     *
+     * **The claim is one-way, which is why `isClaimingSwipeBack` is strict.**
+     * Once a `touchmove` is cancelled the engine will not start a scroll for
+     * that touch, so releasing on a later sample cannot give a scroll back —
+     * measured, and the reason a looser entry test (any rightward-dominant
+     * sample) was replaced: it swallowed a scroll that began with a 20px
+     * sideways leg, moving the page 0px where the unfixed build moved 300.
+     * A sample that is not a claim DROPS the gesture rather than waiting for
+     * a later one, so a scroll already under way can never be taken.
+     */
+    const onTouchMove = (event: TouchEvent) => {
+      if (!gesture || !target.current) return
+
+      // Two fingers is a pinch, never this gesture.
+      if (event.touches.length !== 1) {
+        gesture = null
+        claimed = false
+        return
+      }
+
+      const touch = event.touches[0]
+      if (!claimed) {
+        const dx = touch.clientX - gesture.x
+        const dy = touch.clientY - gesture.y
+        // Below the floor in both axes the sample says nothing yet: Chromium's
+        // own touch slop means this is rare, and waiting costs nothing while
+        // the browser has not claimed either.
+        if (Math.abs(dx) < SWIPE_BACK_CLAIM_PX && Math.abs(dy) < SWIPE_BACK_CLAIM_PX) return
+        if (!isClaimingSwipeBack(dx, dy)) {
+          gesture = null
+          return
+        }
+        claimed = true
+      }
+
+      // `cancelable` is false once the browser has already committed to its
+      // own scroll, and calling it then only logs a console error.
+      if (event.cancelable) event.preventDefault()
+    }
+
+    /**
+     * **Bound only while a gesture is live.** A non-passive `touchmove` on
+     * `window` makes every scroll on the screen wait for a main-thread
+     * handler, and the early return above does not buy that back — the cost is
+     * the handler existing. `pointerdown` always precedes the first
+     * `touchmove` of the same touch, so arming here loses no sample.
+     */
 
     window.addEventListener('pointerdown', onDown, { passive: true })
     window.addEventListener('pointerup', onUp, { passive: true })
@@ -271,6 +356,14 @@ export function useSwipeBack(back: string | (() => void) | null): void {
       window.removeEventListener('pointerdown', onDown)
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onCancel)
+      // **No `touchend` listener, deliberately.** It was dead weight in
+      // Chromium — measured order is `touchstart, pointerup, touchend`, so
+      // `onUp` has already cleared the gesture — and actively harmful on an
+      // engine that fires `touchend` FIRST: it would null `gesture` before
+      // `onUp` could judge the release, which is the very defect this hook was
+      // fixed for. `pointerup` and `pointercancel` between them end every
+      // gesture.
+      releaseTouches()
     }
   }, [router])
 }

@@ -71,13 +71,22 @@
  * edge-origin drag lands inside one. `declinesSwipeBack` is what
  * closes that, and it is a separate test rather than a tuning of this one.
  *
- * ## No `preventDefault`, anywhere
+ * ## One `preventDefault`, and it is the gesture's entry price — PD-341
  *
- * Nothing here cancels a browser gesture or sets `touch-action`. A declined
- * swipe is simply a swipe this module says nothing about, so the scroller,
- * the deck and the page keep behaving exactly as they did. That is what makes
- * adding the gesture safe on a screen whose axis is already spoken for: the
- * failure mode is "back did not happen", never "the strip stopped scrolling".
+ * This module sets no `touch-action` and cancels nothing. **The hook does**,
+ * on a native `touchmove`, because without it the gesture never fires on a
+ * phone at all: the browser reads an edge drag as a pan and cancels the
+ * pointer stream before the release this module judges. `isClaimingSwipeBack`
+ * below is the entry test for that, and it is deliberately strict, because
+ * the claim is ONE-WAY — once a `touchmove` is cancelled the engine will not
+ * start a scroll for that touch, so a gesture claimed in error is a scroll
+ * that never happens.
+ *
+ * So the old promise — "the failure mode is *back did not happen*, never *the
+ * strip stopped scrolling*" — no longer holds unconditionally, and a screen
+ * whose vertical axis matters still has to clear the entry test rather than
+ * trust this paragraph. A declined swipe is still a swipe nothing is said
+ * about: `declinesSwipeBack` runs before any claim.
  */
 
 /**
@@ -109,6 +118,13 @@ export const SWIPE_BACK_MAX_MS = 1200
 
 /** How much more horizontal than vertical the travel has to be. */
 export const SWIPE_BACK_AXIS_RATIO = 2
+
+/**
+ * How far across a sample must be before the hook may take the touch from the
+ * browser — PD-341. Small enough to beat Chromium's pan claim at about 20px,
+ * large enough that a jitter or the first sample of a thumb arc is left alone.
+ */
+export const SWIPE_BACK_CLAIM_PX = 6
 
 export type SwipeBackSample = {
   startX: number
@@ -159,6 +175,49 @@ export function isSwipeBack({ startX, startY, endX, endY, elapsedMs }: SwipeBack
  * someone forgot to add can.
  */
 export const SWIPE_BACK_OPT_OUT = 'data-swipe-back'
+
+/**
+ * Does this raw delta let the hook take the touch from the browser? — PD-341.
+ *
+ * **The gesture never fired on a phone until this existed.** `useSwipeBack`
+ * decides at `pointerup`, and on touch there is no `pointerup`: Chromium takes
+ * an edge drag as a pan and sends `pointercancel` about 20px in. Measured with
+ * raw touch through CDP against the real hook, on a vertically scrolling page:
+ * as shipped, `down, move10, move20, CANCEL`, and zero navigations.
+ * `preventDefault()` on a `pointermove` does not stop a pan — only
+ * `touch-action`, or a **native, non-passive `touchmove` listener's own**
+ * `preventDefault`, decides who owns a touch, and `touch-action` is the wrong
+ * tool here because the gesture starts anywhere on a screen that must keep
+ * scrolling vertically.
+ *
+ * **Strict, because the claim is one-way.** Once a `touchmove` is cancelled
+ * the engine will not start a scroll for that touch, so a claim taken on a
+ * gesture that turns out to be a scroll costs the rider the whole scroll —
+ * measured before this was tightened: a 20px rightward leg followed by 250px
+ * of vertical moved the page not at all, where the unfixed build scrolled
+ * 300px. Hence the SAME axis ratio the release test uses, plus a floor: a
+ * thumb arc (14px across, 12px down per sample) stays the browser's, while a
+ * deliberate sideways pull is taken well before the pan claim at ~20px.
+ *
+ * It stays weaker than `isSwipeBack`, which still decides the navigation at
+ * the release: claiming the touch only buys the gesture the chance to be
+ * judged.
+ *
+ * **The residual, measured and accepted.** A gesture that pulls a clean 18px
+ * sideways and only then turns vertical IS claimed, so that scroll is lost —
+ * the rider lifts and scrolls again. It cannot be given back: the engine will
+ * not start a scroll for a touch whose `touchmove` was cancelled, so there is
+ * no later sample at which releasing would help. The alternative is refusing
+ * every gesture that is not near-horizontal for its whole length, which loses
+ * the gesture itself, since Chromium claims the pan at about 20px. A thumb arc
+ * — the common accidental case — stays the browser's, measured at 347px of
+ * scroll where the looser test moved the page not at all.
+ */
+export function isClaimingSwipeBack(dx: number, dy: number): boolean {
+  if (dx < SWIPE_BACK_CLAIM_PX) return false
+  return dx >= SWIPE_BACK_AXIS_RATIO * Math.abs(dy)
+}
+
 
 /**
  * One element on the path from the gesture's target to the document root, in

@@ -118,6 +118,12 @@ zero counts.** It is `security definer`, `stable`, `search_path` pinned, and EXE
 `public`, `anon`, `authenticated` **and `service_role`** — part 2's assembler will be its second
 caller, and it takes a candidate, so a client that could call it could read any rider's digest.
 
+**The helpers it leans on are pinned to their policies elsewhere in the suite** — `can_read_ride`
+by §060 and §083, and `can_read_club_thread` by **§121.6f**. `129`'s own header cites §121.6b for
+the second of those, which is `push_payload_for`'s type list instead; the header is not edited,
+because `migrations.md` records the applied statement's md5 and a fix now would manufacture the
+drift that record exists to exclude.
+
 **`public.my_weekend_digest(near_lat, near_lon)` is the in-app door**, `authenticated` only, and its
 body is *exactly* `select * from private.weekend_digest_for((select auth.uid()), pg_catalog.now(),
 near_lat, near_lon)` — pinned by **equality** at `129.6`, not by `like`, so it cannot grow an arm.

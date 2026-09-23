@@ -187,11 +187,11 @@ cases.
 
 ## 8. Docs
 
-- [ ] 8.1 `docs/reference/schema.md` — **left to the session holding `129`'s actual SQL.** Left
-      undone deliberately: this tree has no migration file to describe accurately, and guessing at
-      grants/signatures risks a doc that disagrees with what actually ships.
-- [ ] 8.2 `docs/reference/migrations.md` — same reason; also needs a real `list_migrations`
-      reading against DEV/PROD, which this session did not do.
+- [x] 8.1 `docs/reference/schema.md` — written by the session holding `129`'s SQL, against the DEV
+      catalogue rather than the file. It also carries the correction the review found: `129`'s
+      header cites §121.6b for the `can_read_club_thread` pin, which is §121.6f.
+- [x] 8.2 `docs/reference/migrations.md` — applied state and the advisor accounting, read off both
+      refs.
 
 ## 9. Gates and counts
 
@@ -202,13 +202,14 @@ cases.
       see the session report.
 - [x] 9.2 Re-derive every count this change moves, and give the numbers to the main thread,
       which owns `CLAUDE.md`:
-      - [ ] RLS assertions — not this session's; no Postgres here.
-      - [x] component tests: 60 → 61 (`git ls-files 'src/**/*.test.tsx' | wc -l`) — reported to the
-            main thread, not edited in `CLAUDE.md`;
-      - [x] jsdom tests: 17 → 18 (`git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'`)
-            — fixed directly in `docs/reference/running-locally.md`, which owns this count;
-      - [ ] advisors — not this session's; no Supabase call made.
+      - [x] RLS assertions: 4273 → 4361, counted from `129`'s +88 `129.x` labels. CI's RLS job is
+            the measurement; there is no Postgres on the machine that wrote them.
+      - [x] component tests: **63**, and jsdom **20**, after this branch merged PD-475 and PD-341,
+            which each added one of each. The client half alone moved them 60 → 61 and 17 → 18.
+      - [x] advisors: DEV 47 → 50 (+3 `authenticated_security_definer_function_executable`, one per
+            new public function, no new class); PROD unchanged at 47 until `129` is promoted.
 - [x] 9.3 `npm run docs:check` (green after the render-model.md and running-locally.md fixes),
       `npx vitest run scripts/docs/__tests__/crossrefs.test.mjs` (green). **The walk against DEV was
       not run** — out of this session's resources (no dev server/relay/walk permitted).
-- [ ] 9.4 Archiving is the merging session's job, once `129` and its RLS suite land alongside this.
+- [x] 9.4 Archived by the merging session, as `2026-09-23-a-weekly-digest-of-what-is-on`. Part 2
+      carries no requirements here, so nothing unbuilt reaches the standing specs.

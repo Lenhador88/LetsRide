@@ -91,11 +91,11 @@ describe('getWeekendDigest', () => {
 
   it('drops a ride id RLS withheld and keeps the reader’s ordinal order, not the fetch order', async () => {
     rpcResult = result([
-      { section: 'ride', ordinal: 2, ride_id: 'ride-2', club_id: null, new_rides: 0, new_threads: 0 },
-      { section: 'ride', ordinal: 1, ride_id: 'ride-1', club_id: null, new_rides: 0, new_threads: 0 },
+      { section: 'rides', ordinal: 2, ride_id: 'ride-2', club_id: null, new_rides: 0, new_threads: 0 },
+      { section: 'rides', ordinal: 1, ride_id: 'ride-1', club_id: null, new_rides: 0, new_threads: 0 },
       // Ordinal 3, but the hydration read below never returns it — RLS
       // withheld it, and it must vanish rather than leave a gap.
-      { section: 'ride', ordinal: 3, ride_id: 'ride-3', club_id: null, new_rides: 0, new_threads: 0 },
+      { section: 'rides', ordinal: 3, ride_id: 'ride-3', club_id: null, new_rides: 0, new_threads: 0 },
     ])
     // Fetch order deliberately disagrees with ordinal order.
     ridesResult = result([rideRow({ id: 'ride-2' }), rideRow({ id: 'ride-1' })])
@@ -107,8 +107,8 @@ describe('getWeekendDigest', () => {
 
   it('drops a club id RLS withheld and pairs each survivor with its own counts', async () => {
     rpcResult = result([
-      { section: 'club', ordinal: 1, ride_id: null, club_id: 'club-1', new_rides: 2, new_threads: 1 },
-      { section: 'club', ordinal: 2, ride_id: null, club_id: 'club-2', new_rides: 5, new_threads: 0 },
+      { section: 'clubs', ordinal: 1, ride_id: null, club_id: 'club-1', new_rides: 2, new_threads: 1 },
+      { section: 'clubs', ordinal: 2, ride_id: null, club_id: 'club-2', new_rides: 5, new_threads: 0 },
     ])
     // club-2 is withheld — only club-1 comes back.
     clubsResult = result([clubRow({ id: 'club-1' })])
@@ -131,8 +131,8 @@ describe('getWeekendDigest', () => {
 
   it('rejects when the ride hydration read fails, even though the club read would have succeeded', async () => {
     rpcResult = result([
-      { section: 'ride', ordinal: 1, ride_id: 'ride-1', club_id: null, new_rides: 0, new_threads: 0 },
-      { section: 'club', ordinal: 1, ride_id: null, club_id: 'club-1', new_rides: 1, new_threads: 0 },
+      { section: 'rides', ordinal: 1, ride_id: 'ride-1', club_id: null, new_rides: 0, new_threads: 0 },
+      { section: 'clubs', ordinal: 1, ride_id: null, club_id: 'club-1', new_rides: 1, new_threads: 0 },
     ])
     ridesResult = result(null, { message: 'boom', code: 'XXX' })
     clubsResult = result([clubRow()])
@@ -142,8 +142,8 @@ describe('getWeekendDigest', () => {
 
   it('rejects when the club hydration read fails, even though the ride read would have succeeded', async () => {
     rpcResult = result([
-      { section: 'ride', ordinal: 1, ride_id: 'ride-1', club_id: null, new_rides: 0, new_threads: 0 },
-      { section: 'club', ordinal: 1, ride_id: null, club_id: 'club-1', new_rides: 1, new_threads: 0 },
+      { section: 'rides', ordinal: 1, ride_id: 'ride-1', club_id: null, new_rides: 0, new_threads: 0 },
+      { section: 'clubs', ordinal: 1, ride_id: null, club_id: 'club-1', new_rides: 1, new_threads: 0 },
     ])
     ridesResult = result([rideRow()])
     clubsResult = result(null, { message: 'boom', code: 'XXX' })

@@ -34,7 +34,7 @@ npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 10 pre-existing warnings, 0 errors
                                       #   9 <img>, plus one unused 'joined' in ClubCard.tsx
-npm run test:unit                     # 4228/4228 across 193 files (Mac; CI reads 49 more — running-locally.md's row has the delta)
+npm run test:unit                     # 4248/4248 across 194 files (on CI's Node 22; a Mac on Node 26 fails 19 of them and reads 49 more files — running-locally.md's Node version row)
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 45 static routes
 node scripts/native/assert-web-build.mjs   # that build was the web app, not the bundle

@@ -78,7 +78,13 @@ vi.mock('next/navigation', () => ({
   notFound: () => {},
 }))
 
-const setDigestOptOut = vi.fn(async (_optOut: boolean) => ({ error: null }))
+// The parameter is referenced rather than named `_optOut`: this config has no
+// `argsIgnorePattern`, so an underscore prefix is still an unused-argument
+// warning.
+const setDigestOptOut = vi.fn(async (optOut: boolean) => {
+  void optOut
+  return { error: null }
+})
 
 vi.mock('@/lib/actions/profile', () => ({
   setDigestOptOut: (optOut: boolean) => setDigestOptOut(optOut),
