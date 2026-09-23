@@ -184,6 +184,29 @@ const NUMBER_WORDS = {
   'fifty-eight': 58,
   'fifty-nine': 59,
   sixty: 60,
+  // **Extended to eighty in one go, 2026-09-23**, for the reason the note
+  // above gives and which held again: the ceiling was hit by the next story
+  // after it was raised to sixty. Twenty words of headroom cost twenty lines.
+  'sixty-one': 61,
+  'sixty-two': 62,
+  'sixty-three': 63,
+  'sixty-four': 64,
+  'sixty-five': 65,
+  'sixty-six': 66,
+  'sixty-seven': 67,
+  'sixty-eight': 68,
+  'sixty-nine': 69,
+  seventy: 70,
+  'seventy-one': 71,
+  'seventy-two': 72,
+  'seventy-three': 73,
+  'seventy-four': 74,
+  'seventy-five': 75,
+  'seventy-six': 76,
+  'seventy-seven': 77,
+  'seventy-eight': 78,
+  'seventy-nine': 79,
+  eighty: 80,
 }
 
 /**
