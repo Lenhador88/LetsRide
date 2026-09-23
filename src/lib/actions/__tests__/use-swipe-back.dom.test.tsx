@@ -17,6 +17,11 @@
  * a gesture it already admitted. jsdom cannot scroll or pan, so it cannot show
  * the defect; it can show the call, which is what a later refactor would drop.
  * The CDP harness is the other half and lives in the PR.
+ *
+ * **The latch has its own case**, because it is the guard that cost a scroll
+ * when it was first written too loosely: once claimed, every later sample is
+ * cancelled without re-testing, since the engine will not hand a cancelled
+ * touch back.
  */
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -89,13 +94,37 @@ function touchMove(clientX: number, clientY: number) {
 }
 
 describe('the touch claim', () => {
-  it('takes a rightward drag that began in the edge zone', () => {
+  it('takes a plainly sideways drag that began in the edge zone', () => {
     pointer('pointerdown', at('plain'), { clientX: 8, clientY: 400, timeStamp: 0 })
     // The claim is what stops the browser panning; without it the gesture ends
     // in pointercancel and pointerup never arrives.
     expect(touchMove(20, 401).defaultPrevented).toBe(true)
-    // Once claimed it keeps claiming, including a sample that has drifted.
-    expect(touchMove(60, 430).defaultPrevented).toBe(true)
+  })
+
+  it('keeps claiming once claimed, including a sample that turns vertical', () => {
+    pointer('pointerdown', at('plain'), { clientX: 8, clientY: 400, timeStamp: 0 })
+    expect(touchMove(20, 401).defaultPrevented).toBe(true)
+    // (8,400) → (60,520) is dx 52, dy 120: it would not claim on its own, so
+    // this fails if the latch is dropped and every sample re-tested. The latch
+    // is not a nicety — the browser will not hand a cancelled touch back, so
+    // releasing mid-gesture would leave the rider with neither scroll nor
+    // navigation.
+    expect(touchMove(60, 520).defaultPrevented).toBe(true)
+  })
+
+  it('leaves a thumb arc to the browser, and does not come back for it', () => {
+    pointer('pointerdown', at('plain'), { clientX: 8, clientY: 400, timeStamp: 0 })
+    // 14 across, 12 down — the measured shape of a scroll that starts near the
+    // edge. Claiming it would cost the rider the whole scroll.
+    expect(touchMove(22, 412).defaultPrevented).toBe(false)
+    expect(touchMove(140, 412).defaultPrevented).toBe(false)
+  })
+
+  it('waits rather than claiming on a sample below the floor', () => {
+    pointer('pointerdown', at('plain'), { clientX: 8, clientY: 400, timeStamp: 0 })
+    expect(touchMove(11, 400).defaultPrevented).toBe(false)
+    // …and the gesture survives that sample, so the next real one still claims.
+    expect(touchMove(30, 402).defaultPrevented).toBe(true)
   })
 
   it('leaves a vertical drag to the browser, and does not come back for it', () => {

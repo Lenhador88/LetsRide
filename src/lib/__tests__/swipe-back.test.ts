@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  isRightwardHorizontal,
+  isClaimingSwipeBack,
+  SWIPE_BACK_CLAIM_PX,
   declinesSwipeBack,
   isSwipeBack,
   startsInEdgeZone,
@@ -159,32 +160,45 @@ describe('declinesSwipeBack', () => {
 /**
  * The claim predicate — PD-341, measured 2026-09-23.
  *
- * It answers an earlier, weaker question than `isSwipeBack`: not *was that a
- * back gesture* but *must the browser's own pan be refused on this sample,
- * before it takes the touch and `isSwipeBack` is never asked*. Measured with
- * raw touch through CDP against the real hook: without the claim, an edge
- * swipe right logs `down, pointercancel` and never navigates.
+ * It answers an earlier question than `isSwipeBack`: not *was that a back
+ * gesture* but *may the hook take this touch from the browser now, before the
+ * browser takes it and the release is never judged*. Measured with raw touch
+ * through CDP against the real hook: without a claim, an edge swipe right logs
+ * `down, pointercancel` and never navigates.
+ *
+ * **The claim is one-way**, which is what makes this strict rather than
+ * generous: once a `touchmove` is cancelled the engine will not start a scroll
+ * for that touch. A first version claimed any rightward-dominant sample and
+ * swallowed a scroll that began with a sideways leg — 0px of scroll where the
+ * unfixed build moved 300.
  */
-describe('isRightwardHorizontal', () => {
-  it('claims the first rightward sample, however small', () => {
-    // No magnitude floor: Chromium commits to its pan within a few samples,
-    // well inside SWIPE_BACK_DISTANCE_PX.
-    expect(isRightwardHorizontal(1, 0)).toBe(true)
-    expect(isRightwardHorizontal(4, 3)).toBe(true)
+describe('isClaimingSwipeBack', () => {
+  it('takes a plainly sideways sample, well before the browser claims the pan', () => {
+    // Chromium commits to its own pan at about 20px.
+    expect(isClaimingSwipeBack(SWIPE_BACK_CLAIM_PX, 0)).toBe(true)
+    expect(isClaimingSwipeBack(12, 3)).toBe(true)
   })
 
-  it('refuses a leftward or stationary sample', () => {
-    expect(isRightwardHorizontal(0, 0)).toBe(false)
-    expect(isRightwardHorizontal(-10, 0)).toBe(false)
+  it('leaves a thumb arc to the browser', () => {
+    // 14 across and 12 down per sample: the measured shape of a scroll that
+    // starts near the edge. Claiming it costs the rider the whole scroll.
+    expect(isClaimingSwipeBack(14, 12)).toBe(false)
+    expect(isClaimingSwipeBack(14, -12)).toBe(false)
   })
 
-  it('refuses a vertical-dominant sample, which is the rider scrolling', () => {
-    expect(isRightwardHorizontal(5, 9)).toBe(false)
-    expect(isRightwardHorizontal(5, -9)).toBe(false)
-    // Equal parts: still the scroll's, because a diagonal that resolves into a
-    // swipe will say so on the next sample, and a scroll claimed wrongly is
-    // gone for the whole gesture.
-    expect(isRightwardHorizontal(5, 5)).toBe(false)
+  it('leaves a jitter alone, below the floor', () => {
+    expect(isClaimingSwipeBack(SWIPE_BACK_CLAIM_PX - 1, 0)).toBe(false)
+    expect(isClaimingSwipeBack(0, 0)).toBe(false)
+  })
+
+  it('refuses a leftward sample, at any size', () => {
+    expect(isClaimingSwipeBack(-40, 0)).toBe(false)
+  })
+
+  it('uses the same axis ratio as the release test', () => {
+    // At exactly the ratio it claims; a pixel more vertical and it does not.
+    expect(isClaimingSwipeBack(20, 10)).toBe(true)
+    expect(isClaimingSwipeBack(20, 11)).toBe(false)
   })
 
   it('is weaker than isSwipeBack, never stronger', () => {
@@ -193,7 +207,7 @@ describe('isRightwardHorizontal', () => {
     const qualifying = { startX: 8, startY: 400, endX: 8 + 120, endY: 405, elapsedMs: 300 }
     expect(isSwipeBack(qualifying)).toBe(true)
     expect(
-      isRightwardHorizontal(qualifying.endX - qualifying.startX, qualifying.endY - qualifying.startY)
+      isClaimingSwipeBack(qualifying.endX - qualifying.startX, qualifying.endY - qualifying.startY)
     ).toBe(true)
   })
 })

@@ -7,7 +7,8 @@ import type { ActionState } from '@/lib/actions/state'
 import { BACK_ORIGIN_PARAM, resolveBackDestination } from '@/lib/back-navigation'
 import {
   declinesSwipeBack,
-  isRightwardHorizontal,
+  isClaimingSwipeBack,
+  SWIPE_BACK_CLAIM_PX,
   isSwipeBack,
   startsInEdgeZone,
   SWIPE_BACK_OPT_OUT,
@@ -236,12 +237,14 @@ export function useSwipeBack(back: string | (() => void) | null): void {
       if (declinesSwipeBack(chain(event.target))) return
 
       gesture = { x: event.clientX, y: event.clientY, at: event.timeStamp }
+      claimTouches()
     }
 
     const onUp = (event: PointerEvent) => {
       const started = gesture
       gesture = null
       claimed = false
+      releaseTouches()
       const destination = target.current
       if (!started || !destination) return
 
@@ -268,6 +271,7 @@ export function useSwipeBack(back: string | (() => void) | null): void {
     const onCancel = () => {
       gesture = null
       claimed = false
+      releaseTouches()
     }
 
     /**
@@ -277,19 +281,23 @@ export function useSwipeBack(back: string | (() => void) | null): void {
      * `pointerup`: Chromium reads an edge drag as a pan and sends
      * `pointercancel` about 20px in. Measured with raw touch through CDP on a
      * vertically scrolling page — `down, move10, move20, CANCEL`, zero
-     * navigations — and the same harness answers `CLAIMED@20 … UP … NAVIGATE`
-     * with this listener in place, while a vertical drag from the same edge
-     * still scrolls the page.
+     * navigations — and the same harness answers a navigation with this
+     * listener in place, while a vertical drag from the same edge still
+     * scrolls.
      *
-     * It claims nothing on its own: `gesture` is non-null only when
-     * `onDown` already admitted this touch — in the edge zone, no modal open,
-     * and `declinesSwipeBack` satisfied — so a text field, a horizontal
-     * scroller and `PostcardDeck`'s opted-out card are all untouched, and the
-     * browser keeps every gesture this hook was never going to answer.
+     * It claims nothing on its own: `gesture` is non-null only when `onDown`
+     * already admitted this touch — in the edge zone, no modal open, and
+     * `declinesSwipeBack` satisfied — so a text field, a horizontal scroller
+     * and `PostcardDeck`'s opted-out card are all untouched.
      *
-     * A sample that is not rightward-horizontal DROPS the gesture rather than
-     * waiting: that is the rider scrolling, and the alternative is claiming
-     * their scroll one sample later.
+     * **The claim is one-way, which is why `isClaimingSwipeBack` is strict.**
+     * Once a `touchmove` is cancelled the engine will not start a scroll for
+     * that touch, so releasing on a later sample cannot give a scroll back —
+     * measured, and the reason a looser entry test (any rightward-dominant
+     * sample) was replaced: it swallowed a scroll that began with a 20px
+     * sideways leg, moving the page 0px where the unfixed build moved 300.
+     * A sample that is not a claim DROPS the gesture rather than waiting for
+     * a later one, so a scroll already under way can never be taken.
      */
     const onTouchMove = (event: TouchEvent) => {
       if (!gesture || !target.current) return
@@ -305,8 +313,11 @@ export function useSwipeBack(back: string | (() => void) | null): void {
       if (!claimed) {
         const dx = touch.clientX - gesture.x
         const dy = touch.clientY - gesture.y
-        if (dx === 0 && dy === 0) return
-        if (!isRightwardHorizontal(dx, dy)) {
+        // Below the floor in both axes the sample says nothing yet: Chromium's
+        // own touch slop means this is rare, and waiting costs nothing while
+        // the browser has not claimed either.
+        if (Math.abs(dx) < SWIPE_BACK_CLAIM_PX && Math.abs(dy) < SWIPE_BACK_CLAIM_PX) return
+        if (!isClaimingSwipeBack(dx, dy)) {
           gesture = null
           return
         }
@@ -318,21 +329,32 @@ export function useSwipeBack(back: string | (() => void) | null): void {
       if (event.cancelable) event.preventDefault()
     }
 
+    /**
+     * **Bound only while a gesture is live.** A non-passive `touchmove` on
+     * `window` makes every scroll on the screen wait for a main-thread
+     * handler, and the early return above does not buy that back — the cost is
+     * the handler existing. `pointerdown` always precedes the first
+     * `touchmove` of the same touch, so arming here loses no sample.
+     */
+    const claimTouches = () => window.addEventListener('touchmove', onTouchMove, { passive: false })
+    const releaseTouches = () => window.removeEventListener('touchmove', onTouchMove)
+
     window.addEventListener('pointerdown', onDown, { passive: true })
     window.addEventListener('pointerup', onUp, { passive: true })
     window.addEventListener('pointercancel', onCancel, { passive: true })
-    // **Non-passive, which is the whole point**: a passive listener may not
-    // call `preventDefault`, and `preventDefault` is the only thing that keeps
-    // the browser from taking this touch.
-    window.addEventListener('touchmove', onTouchMove, { passive: false })
-    window.addEventListener('touchend', onCancel, { passive: true })
 
     return () => {
       window.removeEventListener('pointerdown', onDown)
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onCancel)
-      window.removeEventListener('touchmove', onTouchMove)
-      window.removeEventListener('touchend', onCancel)
+      // **No `touchend` listener, deliberately.** It was dead weight in
+      // Chromium — measured order is `touchstart, pointerup, touchend`, so
+      // `onUp` has already cleared the gesture — and actively harmful on an
+      // engine that fires `touchend` FIRST: it would null `gesture` before
+      // `onUp` could judge the release, which is the very defect this hook was
+      // fixed for. `pointerup` and `pointercancel` between them end every
+      // gesture.
+      releaseTouches()
     }
   }, [router])
 }
