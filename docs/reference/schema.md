@@ -109,7 +109,7 @@ it here.
 
 **`private.weekend_digest_for(candidate uuid, at timestamptz, near_lat double precision, near_lon
 double precision)` is the only place the content rule is written** (PD-450 part 1;
-`openspec/changes/a-weekly-digest-of-what-is-on/design.md` §D3). Rides this weekend **in the ride's
+`openspec/changes/archive/2026-09-23-a-weekly-digest-of-what-is-on/design.md` §D3). Rides this weekend **in the ride's
 own zone**, within 100 km of the position the caller passes (rounded to 2 dp *by the body*), that
 the rider can read, did not organise, has not answered and shares no block with the organiser; plus
 the rider's own clubs with the last 7 days' new upcoming rides and new threads, their own rows and
