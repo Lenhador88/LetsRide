@@ -122,12 +122,12 @@
  * `select count(*) from logs where source = 'edge_logs'` over the same 24h
  * returns 0. The projects are quiet; the reader is not blind.
  *
- * NO SESSION CAN RE-RUN THIS LOCALLY — `api.supabase.com:443` is a policy
- * denial at the agent proxy (403 to CONNECT), so no build container runs this
- * file's `fetch`. A GitHub Actions runner has no such restriction, which is
- * why `.github/workflows/log-digest.yml` is the only environment that executes
- * it — scheduled at 06:00 and 18:00 UTC, or on `workflow_dispatch`. Re-derive
- * the proxy half rather than trusting this line:
+ * THE NETWORK REASON IS GONE AS OF 2026-09-20 — `api.supabase.com:443` was a
+ * policy denial at the agent proxy (403 to CONNECT) and now answers, so this
+ * file's `fetch` is no longer what fails. What a session lacks is the token
+ * below, which is why `.github/workflows/log-digest.yml` is still where this
+ * runs — scheduled at 06:00 and 18:00 UTC, or on `workflow_dispatch`. Re-derive
+ * rather than trusting either half of that:
  *
  *     curl -sS "$HTTPS_PROXY/__agentproxy/status"   # recentRelayFailures
  *
