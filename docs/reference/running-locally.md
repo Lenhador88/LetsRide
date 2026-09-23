@@ -551,10 +551,10 @@ timeout:**
 
 ## Component tests — which ones need jsdom, and why
 
-Under `environment: 'node'`, all but **sixteen** render through `renderToStaticMarkup`, and jsdom is
+Under `environment: 'node'`, all but **seventeen** render through `renderToStaticMarkup`, and jsdom is
 the answer only when something needs a **mounted effect, a layout, an event or a portal**. Check a
 new one's reason against that list rather than against the count,
-because each of the sixteen below is there for a different one. Count them with
+because each of the seventeen below is there for a different one. Count them with
 `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'`.
 
 - `rides/__tests__/filterbar-survives-tap.dom.test.tsx` and
@@ -603,6 +603,10 @@ because each of the sixteen below is there for a different one. Count them with
   reached only through a callback the place field raises: a pick whose `countryCode` is absent,
   and a lookup failure. Neither exists on first paint, so `page.test.tsx` beside it covers the
   branch every rider sees and this one covers the two it cannot reach.
+- `use-swipe-back.dom.test.tsx` (PD-341) — **listeners**, which is where the whole defect was: the
+  hook has to call `preventDefault` on a non-passive `touchmove`, and only for a gesture it already
+  admitted. The pure module beside it had every threshold right while the gesture never fired on a
+  phone. jsdom cannot pan, so it pins the CALL; the PR carries the CDP measurement.
 - `TownFromDevice.dom.test.tsx` (PD-477) — an **effect** and **events**: the permission is read in
   a mounted effect, the request runs from a click, and the late-answer rule is decided by an input
   event on the wrapped field. Under `environment: 'node'` the permission read never resolves and

@@ -7,6 +7,7 @@ import type { ActionState } from '@/lib/actions/state'
 import { BACK_ORIGIN_PARAM, resolveBackDestination } from '@/lib/back-navigation'
 import {
   declinesSwipeBack,
+  isRightwardHorizontal,
   isSwipeBack,
   startsInEdgeZone,
   SWIPE_BACK_OPT_OUT,
@@ -186,6 +187,9 @@ export function useSwipeBack(back: string | (() => void) | null): void {
     // from it, and a `setState` per `pointerdown` would re-render every screen
     // that mounts this on every tap.
     let gesture: { x: number; y: number; at: number } | null = null
+    // Whether the raw `touchmove` listener below has taken this touch from the
+    // browser. Reset wherever `gesture` is.
+    let claimed = false
 
     const chain = (node: EventTarget | null): SwipeBackNode | null => {
       // A synthetic or detached target is not something to reason about. The
@@ -217,6 +221,7 @@ export function useSwipeBack(back: string | (() => void) | null): void {
 
     const onDown = (event: PointerEvent) => {
       gesture = null
+      claimed = false
       if (!target.current) return
       // Touch and pen only. A mouse drag from the left edge is a text selection
       // or a scrollbar, never a back gesture, and there is a visible arrow for
@@ -236,6 +241,7 @@ export function useSwipeBack(back: string | (() => void) | null): void {
     const onUp = (event: PointerEvent) => {
       const started = gesture
       gesture = null
+      claimed = false
       const destination = target.current
       if (!started || !destination) return
 
@@ -261,16 +267,72 @@ export function useSwipeBack(back: string | (() => void) | null): void {
     // could clear the axis test on the way back up.
     const onCancel = () => {
       gesture = null
+      claimed = false
+    }
+
+    /**
+     * **Why a raw `touchmove` listener exists at all — PD-341, measured
+     * 2026-09-23.** Until it did, this gesture never fired on a phone. The
+     * decision above is taken at `pointerup`, and on touch there is no
+     * `pointerup`: Chromium reads an edge drag as a pan and sends
+     * `pointercancel` about 20px in. Measured with raw touch through CDP on a
+     * vertically scrolling page — `down, move10, move20, CANCEL`, zero
+     * navigations — and the same harness answers `CLAIMED@20 … UP … NAVIGATE`
+     * with this listener in place, while a vertical drag from the same edge
+     * still scrolls the page.
+     *
+     * It claims nothing on its own: `gesture` is non-null only when
+     * `onDown` already admitted this touch — in the edge zone, no modal open,
+     * and `declinesSwipeBack` satisfied — so a text field, a horizontal
+     * scroller and `PostcardDeck`'s opted-out card are all untouched, and the
+     * browser keeps every gesture this hook was never going to answer.
+     *
+     * A sample that is not rightward-horizontal DROPS the gesture rather than
+     * waiting: that is the rider scrolling, and the alternative is claiming
+     * their scroll one sample later.
+     */
+    const onTouchMove = (event: TouchEvent) => {
+      if (!gesture || !target.current) return
+
+      // Two fingers is a pinch, never this gesture.
+      if (event.touches.length !== 1) {
+        gesture = null
+        claimed = false
+        return
+      }
+
+      const touch = event.touches[0]
+      if (!claimed) {
+        const dx = touch.clientX - gesture.x
+        const dy = touch.clientY - gesture.y
+        if (dx === 0 && dy === 0) return
+        if (!isRightwardHorizontal(dx, dy)) {
+          gesture = null
+          return
+        }
+        claimed = true
+      }
+
+      // `cancelable` is false once the browser has already committed to its
+      // own scroll, and calling it then only logs a console error.
+      if (event.cancelable) event.preventDefault()
     }
 
     window.addEventListener('pointerdown', onDown, { passive: true })
     window.addEventListener('pointerup', onUp, { passive: true })
     window.addEventListener('pointercancel', onCancel, { passive: true })
+    // **Non-passive, which is the whole point**: a passive listener may not
+    // call `preventDefault`, and `preventDefault` is the only thing that keeps
+    // the browser from taking this touch.
+    window.addEventListener('touchmove', onTouchMove, { passive: false })
+    window.addEventListener('touchend', onCancel, { passive: true })
 
     return () => {
       window.removeEventListener('pointerdown', onDown)
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onCancel)
+      window.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('touchend', onCancel)
     }
   }, [router])
 }

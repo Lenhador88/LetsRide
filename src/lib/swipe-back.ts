@@ -158,6 +158,39 @@ export function isSwipeBack({ startX, startY, endX, endY, elapsedMs }: SwipeBack
  * detected by its own geometry, which cannot go stale the way an attribute
  * someone forgot to add can.
  */
+/**
+ * Is this raw delta *plausibly* the start of a rightward swipe, with no
+ * distance floor at all? — PD-341, measured 2026-09-23.
+ *
+ * **The gesture never fired on a phone until this existed.** `useSwipeBack`
+ * decides at `pointerup`, and on touch there is no `pointerup`: Chromium takes
+ * an edge drag as a pan and sends `pointercancel` about 20px in, so the
+ * decision above is never reached. Measured with raw touch through CDP, on a
+ * vertically scrolling page: as shipped, `down, move10, move20, CANCEL`, and
+ * zero navigations in every case.
+ *
+ * `preventDefault()` on a `pointermove` does not stop a pan — only
+ * `touch-action`, or a **native, non-passive `touchmove` listener's own**
+ * `preventDefault`, decides who owns a touch. `touch-action` is the wrong tool
+ * here: the gesture starts anywhere on a screen that must keep scrolling
+ * vertically, and it resets at every element that scrolls. So the hook claims
+ * the touch instead, and asks this on every sample.
+ *
+ * **No magnitude floor, deliberately**, for `swipe-dismiss.ts`'s reason: the
+ * browser commits to its pan faster than `SWIPE_BACK_DISTANCE_PX` would
+ * notice, and calling `preventDefault` one frame early costs nothing when the
+ * gesture turns out to be a tap. It is deliberately WEAKER than `isSwipeBack`:
+ * claiming the touch is not navigating, and `isSwipeBack` still decides that
+ * at the end, against the same three tests it always has.
+ *
+ * Dominance rather than `SWIPE_BACK_AXIS_RATIO`: at the first few samples a
+ * qualifying swipe has barely moved, and requiring 2:1 that early throws away
+ * the gesture the browser is about to take.
+ */
+export function isRightwardHorizontal(dx: number, dy: number): boolean {
+  return dx > 0 && dx > Math.abs(dy)
+}
+
 export const SWIPE_BACK_OPT_OUT = 'data-swipe-back'
 
 /**

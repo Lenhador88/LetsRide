@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  isRightwardHorizontal,
   declinesSwipeBack,
   isSwipeBack,
   startsInEdgeZone,
@@ -152,5 +153,47 @@ describe('declinesSwipeBack', () => {
     expect(declinesSwipeBack(node({ tagName: 'TEXTAREA' }))).toBe(true)
     expect(declinesSwipeBack(node({ tagName: 'INPUT' }))).toBe(true)
     expect(declinesSwipeBack(node({ isContentEditable: true }))).toBe(true)
+  })
+})
+
+/**
+ * The claim predicate — PD-341, measured 2026-09-23.
+ *
+ * It answers an earlier, weaker question than `isSwipeBack`: not *was that a
+ * back gesture* but *must the browser's own pan be refused on this sample,
+ * before it takes the touch and `isSwipeBack` is never asked*. Measured with
+ * raw touch through CDP against the real hook: without the claim, an edge
+ * swipe right logs `down, pointercancel` and never navigates.
+ */
+describe('isRightwardHorizontal', () => {
+  it('claims the first rightward sample, however small', () => {
+    // No magnitude floor: Chromium commits to its pan within a few samples,
+    // well inside SWIPE_BACK_DISTANCE_PX.
+    expect(isRightwardHorizontal(1, 0)).toBe(true)
+    expect(isRightwardHorizontal(4, 3)).toBe(true)
+  })
+
+  it('refuses a leftward or stationary sample', () => {
+    expect(isRightwardHorizontal(0, 0)).toBe(false)
+    expect(isRightwardHorizontal(-10, 0)).toBe(false)
+  })
+
+  it('refuses a vertical-dominant sample, which is the rider scrolling', () => {
+    expect(isRightwardHorizontal(5, 9)).toBe(false)
+    expect(isRightwardHorizontal(5, -9)).toBe(false)
+    // Equal parts: still the scroll's, because a diagonal that resolves into a
+    // swipe will say so on the next sample, and a scroll claimed wrongly is
+    // gone for the whole gesture.
+    expect(isRightwardHorizontal(5, 5)).toBe(false)
+  })
+
+  it('is weaker than isSwipeBack, never stronger', () => {
+    // Everything isSwipeBack accepts, this accepts first — otherwise the
+    // browser takes the gesture before the decision is reached.
+    const qualifying = { startX: 8, startY: 400, endX: 8 + 120, endY: 405, elapsedMs: 300 }
+    expect(isSwipeBack(qualifying)).toBe(true)
+    expect(
+      isRightwardHorizontal(qualifying.endX - qualifying.startX, qualifying.endY - qualifying.startY)
+    ).toBe(true)
   })
 })
