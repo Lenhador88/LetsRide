@@ -545,10 +545,10 @@ timeout:**
 
 ## Component tests — which ones need jsdom, and why
 
-Under `environment: 'node'`, all but **seventeen** render through `renderToStaticMarkup`, and jsdom is
+Under `environment: 'node'`, all but **eighteen** render through `renderToStaticMarkup`, and jsdom is
 the answer only when something needs a **mounted effect, a layout, an event or a portal**. Check a
 new one's reason against that list rather than against the count,
-because each of the seventeen below is there for a different one. Count them with
+because each of the eighteen below is there for a different one. Count them with
 `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'`.
 
 - `rides/__tests__/filterbar-survives-tap.dom.test.tsx` and
@@ -609,3 +609,8 @@ because each of the seventeen below is there for a different one. Count them wit
   behaviour is which transport the click handler reaches and in what order, and a static render
   has nothing to tap. The ordering is the feature — a reversed version shares a login-gated link,
   reports every outcome identically, and is invisible in a diff.
+- `rides/weekend/__tests__/page.dom.test.tsx` (PD-450) — an **event** and a **portal**: the
+  no-position row's tap opens `TownQuestionSheet`, a `ContextMenu` stubbed to a marker, and the
+  whole thing under test is that nothing opens it first. A static render never mounts the portal
+  and has no click to withhold, so it would pass against a build that opens the sheet
+  unconditionally.

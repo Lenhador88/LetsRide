@@ -106,96 +106,106 @@ cases.
 
 ## 4. Data layer
 
-- [ ] 4.1 Types in `src/types/index.ts`:
-      - [ ] `WeekendDigest = { rides: RideListItem[]; clubs: WeekendDigestClub[] }`;
-      - [ ] `WeekendDigestClub = { club: EmbeddedClub; newRides: number; newThreads: number }`.
+- [x] 4.1 Types in `src/types/index.ts`:
+      - [x] `WeekendDigest = { rides: RideListItem[]; clubs: WeekendDigestClub[] }`;
+      - [x] `WeekendDigestClub = { club: EmbeddedClub; newRides: number; newThreads: number }`.
       Reuse existing shapes rather than inventing new ones.
-- [ ] 4.2 `src/lib/data/digest.ts`, `getWeekendDigest(near: RiderPosition | null)`:
-      - [ ] `rpc('my_weekend_digest', near ? { near_lat, near_lon } : {})`;
-      - [ ] then, in parallel:
-        - [ ] rides by id with `RIDE_SELECT`, through `toRideListItem`, `withRideDistance` and
+- [x] 4.2 `src/lib/data/digest.ts`, `getWeekendDigest(near: RiderPosition | null)`:
+      - [x] `rpc('my_weekend_digest', near ? { near_lat, near_lon } : {})`;
+      - [x] then, in parallel:
+        - [x] rides by id with `RIDE_SELECT`, through `toRideListItem`, `withRideDistance` and
               `resolveRideMapUrls`;
-        - [ ] clubs by id with `CLUB_EMBED_COLUMNS`, with avatar URLs resolved as elsewhere;
-      - [ ] order by `ordinal`, and drop any id RLS did not return;
-      - [ ] any failed read rejects. There is no partial result.
-- [ ] 4.3 `src/lib/data/__tests__/digest.test.ts`:
-      - [ ] drops a withheld id and keeps the order;
-      - [ ] each of the three failures rejects;
-      - [ ] no position sends `{}`;
-      - [ ] **verified both ways**.
-- [ ] 4.4 `src/lib/query/keys.ts`:
-      - [ ] `rides.weekend(near)` is `['rides','weekend', 'lat,lon' | 'unlocated']`;
-      - [ ] `rides.weekendAll()` is `['rides','weekend']`;
-      - [ ] document the reach: `rides.all()` covers RSVPs, the membership helper covers joining
+        - [x] clubs by id with `CLUB_EMBED_COLUMNS`, with avatar URLs resolved as elsewhere;
+      - [x] order by `ordinal`, and drop any id RLS did not return;
+      - [x] any failed read rejects. There is no partial result.
+- [x] 4.3 `src/lib/data/__tests__/digest.test.ts`:
+      - [x] drops a withheld id and keeps the order;
+      - [x] each of the three failures rejects;
+      - [x] no position sends `{}`;
+      - [x] **verified both ways** (reasoned per assertion; not literally mutation-run — see the
+            file's own header).
+- [x] 4.4 `src/lib/query/keys.ts`:
+      - [x] `rides.weekend(near)` is `['rides','weekend', 'lat,lon' | 'unlocated']`;
+      - [x] `rides.weekendAll()` is `['rides','weekend']`;
+      - [x] document the reach: `rides.all()` covers RSVPs, the membership helper covers joining
             and leaving, and the rider's own ride and thread writes owe nothing.
-- [ ] 4.5 `invalidateClubMembership` in `src/lib/actions/clubs.ts` gains
+- [x] 4.5 `invalidateClubMembership` in `src/lib/actions/clubs.ts` gains
       `invalidate(queryKeys.rides.weekendAll())`. Check that `lib/actions/__tests__`' cache-claim
       checks still pass.
 
 ## 5. The screen and the row
 
-- [ ] 5.1 `src/app/(app)/rides/weekend/page.tsx`, `'use client'`, `Header` titled "This weekend"
+- [x] 5.1 `src/app/(app)/rides/weekend/page.tsx`, `'use client'`, `Header` titled "This weekend"
       with `backHref="/rides/explore"`:
-      - [ ] position via `useQuery(queryKeys.riderLocation(), resolveRiderLocation)`;
-      - [ ] digest via `useQuery(decided ? queryKeys.rides.weekend(position) : null, …)`;
-      - [ ] every state in `design.md` §D6, gated on data;
-      - [ ] rides render as `RideCard`s, with `MapAttribution` when any card has a tile;
-      - [ ] club rows link to the club, with a zero half omitted.
-- [ ] 5.2 The no-position row: a **tap** opens `TownQuestionSheet`. After a save, the
+      - [x] position via `useQuery(queryKeys.riderLocation(), resolveRiderLocation)`;
+      - [x] digest via `useQuery(decided ? queryKeys.rides.weekend(position) : null, …)`;
+      - [x] every state in `design.md` §D6, gated on data;
+      - [x] rides render as `RideCard`s, with `MapAttribution` when any card has a tile;
+      - [x] club rows link to the club, with a zero half omitted.
+- [x] 5.2 The no-position row: a **tap** opens `TownQuestionSheet`. After a save, the
       `riderLocation` invalidation that `setRiderTown` already performs moves the key.
-      A component test pins that nothing opens without the tap.
-- [ ] 5.3 `/rides/explore`: one static row (`CalendarIcon`, "This weekend", chevron), directly
+      A component test pins that nothing opens without the tap
+      (`rides/weekend/__tests__/page.dom.test.tsx`, verified both ways).
+- [x] 5.3 `/rides/explore`: one static row (`CalendarIcon`, "This weekend", chevron), directly
       under `LocationQuestionRow` and outside the list gate, linking to `/rides/weekend`.
       `src/__tests__/one-question-row.test.ts` stays unchanged and green.
-- [ ] 5.4 `scripts/walk.mjs`:
-      - [ ] add `/rides/weekend` to the route list;
-      - [ ] `WALK_FIXTURES` gains one ride near the walk rider departing the coming Saturday;
-      - [ ] a signed-out visit is redirected to `/auth/login`.
+- [x] 5.4 `scripts/walk.mjs`:
+      - [x] add `/rides/weekend` to the route list;
+      - [x] `WALK_FIXTURES` gains one ride near the walk rider departing the coming Saturday
+            (`provisionWeekendRide`) — **written but not run**; this session could not exercise the
+            walk (no dev server/relay/walk allowed). Needs a real run against DEV before trusting it;
+      - [x] a signed-out visit is redirected to `/auth/login` (`GUARD_CASES_SIGNED_OUT`) — same
+            caveat.
 
 ## 6. `NotificationsSheet`
 
-- [ ] 6.1 Replace the intro and empty-week copy with copy that is honest about today, for
+- [x] 6.1 Replace the intro and empty-week copy with copy that is honest about today, for
       example: *"A Friday-evening round-up of rides near you this weekend, once push
       notifications are switched on. You can turn it off now."* No sentence may say a round-up
       is put together or sent now. Fix the branch's comments in five places: `NotificationsSheet.tsx`,
       `ProfileMenu.tsx`, `setDigestOptOut` in `actions/profile.ts`, `getDigestOptOut` in
       `data/profile.ts`, and `keys.ts`'s `digestOptOut`. They cite a migration number that is now
       spent (use `129`), and say a job reads the column, when no job exists until part 2.
-- [ ] 6.2 Fix `NotificationsSheet.dom.test.tsx`:
-      - [ ] give the `vi.fn` a parameter (`async (_optOut: boolean) => ({ error: null })`), which
+- [x] 6.2 Fix `NotificationsSheet.dom.test.tsx`:
+      - [x] give the `vi.fn` a parameter (`async (_optOut: boolean) => ({ error: null })`), which
             clears `tsc`'s `(77,57)` *Expected 0 arguments, but got 1*;
-      - [ ] replace the `/phone|push notification/` negative pin with pins on the new copy: it
+      - [x] replace the `/phone|push notification/` negative pin with pins on the new copy: it
             names push as a condition, and it does not claim anything is assembled now;
-      - [ ] re-measure the header's mutation counts rather than editing them by hand.
+      - [x] re-measure the header's mutation counts rather than editing them by hand (four
+            mutations actually run — see the file's header for the measured pass/fail splits).
 
 ## 7. Privacy page
 
-- [ ] 7.1 Confirm the reader stores nothing: `129`'s functions contain no `insert`, `update` or
+- [x] 7.1 Confirm the reader stores nothing: `129`'s functions contain no `insert`, `update` or
       `delete`, checked on `prosrc`. If so, `/legal/privacy` gains **no line** in part 1
-      (`design.md` Q4). The stored anchor in part 2 owes one.
+      (`design.md` Q4). The stored anchor in part 2 owes one. **Confirmed from `design.md` §D4/§D5's
+      own statement, not by reading `129`'s actual SQL** — that migration is not in this tree (a
+      `data` agent is writing it elsewhere); no `/legal/privacy` line was added.
 
 ## 8. Docs
 
-- [ ] 8.1 `docs/reference/schema.md`:
-      - [ ] add `digest_opt_out_at` to the `profiles` row, with no grant and its accessors;
-      - [ ] the four functions, their grants, and the ids-only reader shape with its reason.
-- [ ] 8.2 `docs/reference/migrations.md`:
-      - [ ] `129`'s applied-state entry per project, in apply order;
-      - [ ] migration-first, and why;
-      - [ ] the advisor delta.
+- [ ] 8.1 `docs/reference/schema.md` — **left to the session holding `129`'s actual SQL.** Left
+      undone deliberately: this tree has no migration file to describe accurately, and guessing at
+      grants/signatures risks a doc that disagrees with what actually ships.
+- [ ] 8.2 `docs/reference/migrations.md` — same reason; also needs a real `list_migrations`
+      reading against DEV/PROD, which this session did not do.
 
 ## 9. Gates and counts
 
-- [ ] 9.1 Run `npx tsc --noEmit`, `npm run lint` and `npm run test:unit`. `tsc` must be clean,
-      including the `(77,57)` fix.
-- [ ] 9.2 Re-derive every count this change moves, and give the numbers to the main thread,
+- [x] 9.1 Run `npx tsc --noEmit`, `npm run lint` and `npm run test:unit`. `tsc` clean, including the
+      `(77,57)` fix. `test:unit`: the ~21 pre-existing failures named in the brief (`dismissal.test.ts`,
+      `LocationQuestionRow.dom.test.tsx`, one analytics test) plus THREE more this session found and
+      confirmed environmental/pre-existing (missing `node_modules` entries unrelated to this diff) —
+      see the session report.
+- [x] 9.2 Re-derive every count this change moves, and give the numbers to the main thread,
       which owns `CLAUDE.md`:
-      - [ ] RLS assertions: `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`;
-      - [ ] component tests: `git ls-files 'src/**/*.test.tsx' | wc -l`;
-      - [ ] jsdom tests: `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'`;
-      - [ ] advisors.
-- [ ] 9.3 `npm run docs:check`, `npx vitest run scripts/docs/__tests__/crossrefs.test.mjs`, and
-      the walk against DEV.
-- [ ] 9.4 Archive this change with `/opsx:archive` at the wrap-up of the session that merges it,
-      and only with the RLS suite green. `129` goes to PROD ahead of the promotion PR, per
-      `docs/ENVIRONMENTS.md` §Migrations.
+      - [ ] RLS assertions — not this session's; no Postgres here.
+      - [x] component tests: 60 → 61 (`git ls-files 'src/**/*.test.tsx' | wc -l`) — reported to the
+            main thread, not edited in `CLAUDE.md`;
+      - [x] jsdom tests: 17 → 18 (`git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'`)
+            — fixed directly in `docs/reference/running-locally.md`, which owns this count;
+      - [ ] advisors — not this session's; no Supabase call made.
+- [x] 9.3 `npm run docs:check` (green after the render-model.md and running-locally.md fixes),
+      `npx vitest run scripts/docs/__tests__/crossrefs.test.mjs` (green). **The walk against DEV was
+      not run** — out of this session's resources (no dev server/relay/walk permitted).
+- [ ] 9.4 Archiving is the merging session's job, once `129` and its RLS suite land alongside this.
