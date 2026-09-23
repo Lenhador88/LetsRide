@@ -74,12 +74,13 @@ history.
   the schedule, in that order. Unset, a tick 500s before it claims — nothing delivered, none lost.
   **`DIGEST_RECIPIENT` is the owner's private mailbox, never `SUPPORT_EMAIL`** —
   `docs/ENVIRONMENTS.md` §`send-moderation-digest`'s secrets is the control no test can reach.
-- **Xcode Cloud (PD-474) is live and `Todo Human`** — a push to `main` archives and delivers to
-  TestFlight *LetsRide internal*. **The push trigger fired for the first time on 2026-09-23's
-  promotion** (`c6f64afd`), so its build is the first carrying both gesture fixes; read its
-  conclusion rather than assuming it. The story closes when a phone installs a build.
-- **Florina was invited to App Store Connect on 2026-09-23** (Customer Support, LetsRide only).
-  She must accept Apple's email before she can be added to *LetsRide internal* and install.
+- **Xcode Cloud (PD-474) delivered `1.0.0 (2)`** — the 2026-09-23 promotion (`c6f64afd`), the
+  first build carrying both gesture fixes. It is **installed on the iPad and not on the phone**:
+  the iPhone 17 holds `1.0.0 (1)`, which predates both.
+- **`External testers` exists and can deliver nothing** — Xcode Cloud's post-action names
+  *LetsRide internal* alone, so an external build is attached by hand and waits on Beta App
+  Review. Dave Kok is internal and installs now; Florina's App Store Connect invitation is
+  unaccepted, and that is what keeps her out.
 
 Re-derive rather than trust it: `list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`
 filtered by status, and `list_pull_requests state=open`.
@@ -101,8 +102,8 @@ body carries its own steps.
 
 ## Next action
 
-**A phone.** The build from 2026-09-23's promotion carries both gesture fixes, and **neither is
-verified on WKWebView** — they were measured in Chromium. Check the postcard pull-down and
+**`1.0.0 (2)` on the iPhone.** It carries both gesture fixes and neither is verified on
+WKWebView — they were measured in Chromium. Check the postcard pull-down and
 swipe-right-to-go-back first, then the device-only rows in `docs/reference/native-shell.md` §What
 the first build settled — the camera prompt, universal links, push (child B, which wants the Vault
 and APNs steps in §In flight), and the onboarding location control, whose dialog iOS grants once

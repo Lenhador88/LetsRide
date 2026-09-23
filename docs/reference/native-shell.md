@@ -494,7 +494,7 @@ rather than through a single label on the whole section.
 | Universal links | the entitlement, the association file and the listener all landed 2026-09-18 (PD-205) and **not one of them has been exercised** — Apple fetches the file from its own CDN onto a real device, so a simulator settles nothing. §Universal links has what a device run has to check |
 | The location prompt | not exercised; the string is verified in the bundle, the dialog is not. **The camera prompt joins it as of PD-453** — and it is the one whose absence was a process kill rather than a silent no-op, so it is worth exercising first on the next device run |
 | `clearSessionStore`'s sweep | **still unexercised.** Sign-out was run, but auth-js removes the `sb-` keys by name first, so the sweep had nothing to find |
-| A device install | **none yet.** The archive and TestFlight are settled — Xcode Cloud build 1 (2026-09-22) archived `main` at `e10dcc6` and delivered `1.0.0 (1)` to the internal group, §Xcode Cloud — but no phone has installed it, so every device-only row above still stands |
+| A device install | **done — and not of the build that matters.** App Store Connect → TestFlight → *LetsRide internal* → the tester's **Devices** lists two (2026-09-23): an **iPad Air 11-inch (M4)** on iOS 26.6.2 carrying `1.0.0 (2)`, and an **iPhone 17** on iOS 27.0 carrying `1.0.0 (1)`. So the pipeline reaches a phone and the phone is a build behind — `(1)` is Xcode Cloud build 1, `main` at `e10dcc6`, which predates both gesture fixes. **An install is not an exercise**: App Store Connect reports sessions and crashes, never which of the rows above anyone touched, so each stands until a person reports it |
 
 ### Xcode Cloud — every merge to `main` archives to TestFlight, first build green 2026-09-22
 
@@ -507,6 +507,20 @@ internal group *LetsRide internal*, and the Xcode Cloud product **App** with one
 TestFlight Internal Testing → *LetsRide internal*; the three required variables). Its Manual Start
 condition is any branch, which is harmless — the script refuses everything but `main`. **Build 1
 succeeded**: 6 minutes, 3 compute minutes, `1.0.0 (1)` in TestFlight.
+
+**An external group exists and nothing feeds it.** *External testers* (created 2026-09-23 —
+Florina Finaru, Dave Kok) receives no build from the post-action, which names *LetsRide internal*
+alone: a build reaches an external group only when someone attaches it by hand, and no tester can
+install it until it clears **Beta App Review**. Its Test Information — beta description, feedback
+email, contact — is unfilled, and a group with no build emails nobody, which is why both testers
+read *No Builds Available*. **The sign-in answer is decided** (owner, 2026-09-23): the reviewer
+signs up through the app's own forms rather than being handed an account, and a production demo
+account is created only if Apple refuses that. PROD has email confirmation ON (decision #6), so a
+reviewer confirms their own address.
+
+**Internal is the faster route for anyone who has an App Store Connect account**, and the add
+dialog lists only those who have **accepted** their invitation — Dave Kok (Admin) could be added
+on 2026-09-23 and Florina could not, her invitation being unaccepted.
 
 | File | Why it exists |
 |---|---|
