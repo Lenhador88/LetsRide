@@ -615,3 +615,6 @@ because each of the seventeen below is there for a different one. Count them wit
   behaviour is which transport the click handler reaches and in what order, and a static render
   has nothing to tap. The ordering is the feature — a reversed version shares a login-gated link,
   reports every outcome identically, and is invisible in a diff.
+- `PostcardViewer.dismiss.dom.test.tsx` (PD-475) — an **event** and a real `scrollTop`: the drag
+  gesture lives entirely in `pointerdown`/`pointermove`/`pointerup` handlers and reads the panel's
+  own scroll offset off a live DOM node, neither of which exists under `environment: 'node'`.
