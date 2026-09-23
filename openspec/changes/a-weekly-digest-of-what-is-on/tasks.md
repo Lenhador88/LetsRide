@@ -10,39 +10,39 @@ and to PROD before the promotion merges. The branch already calls `my_digest_opt
 
 ## 1. `129` — the additive migration
 
-- [ ] 1.1 Take the number off DEV's `list_migrations` when the file is written. It was `128` on
+- [x] 1.1 Take the number off DEV's `list_migrations` when the file is written. It was `128` on
       2026-09-22, with 131 rows, 128 files and 3 long-standing file-less rows. Count the
       file-less rows, not the gap.
-- [ ] 1.2 Add `profiles.digest_opt_out_at timestamptz`: nullable, no default, no backfill, with a
+- [x] 1.2 Add `profiles.digest_opt_out_at timestamptz`: nullable, no default, no backfill, with a
       column comment saying it is a preference, not a gate, and that nothing reads it until
       part 2. **No `grant` and no `revoke` on `public.profiles`.** The file says which of `025`'s
       three lists the column joins (none) and names the accessor.
-- [ ] 1.3 Add `public.my_digest_opt_out()` and `public.set_digest_opt_out(p_opt_out boolean)`,
+- [x] 1.3 Add `public.my_digest_opt_out()` and `public.set_digest_opt_out(p_opt_out boolean)`,
       following `096`'s pair verbatim:
-      - [ ] `true` gives `coalesce(existing, now())`, and `false` gives NULL;
-      - [ ] each returns the effective value;
-      - [ ] no profile row gives `P0002`, and no session gives `42501`;
-      - [ ] grants: `revoke all … from public, anon` and `grant execute … to authenticated`.
-- [ ] 1.4 Add `private.weekend_digest_for(candidate uuid, at timestamptz, near_lat double
+      - [x] `true` gives `coalesce(existing, now())`, and `false` gives NULL;
+      - [x] each returns the effective value;
+      - [x] no profile row gives `P0002`, and no session gives `42501`;
+      - [x] grants: `revoke all … from public, anon` and `grant execute … to authenticated`.
+- [x] 1.4 Add `private.weekend_digest_for(candidate uuid, at timestamptz, near_lat double
       precision, near_lon double precision)` per `design.md` §D3 and §D4:
-      - [ ] `security definer`, `stable`, `search_path = ''`;
-      - [ ] return columns `(section text, ordinal integer, ride_id uuid, club_id uuid, new_rides
+      - [x] `security definer`, `stable`, `search_path = ''`;
+      - [x] return columns `(section text, ordinal integer, ride_id uuid, club_id uuid, new_rides
             integer, new_threads integer)`;
-      - [ ] a NULL candidate returns zero rows;
-      - [ ] position: both NULL means no position; one NULL or out of range raises `22023`;
+      - [x] a NULL candidate returns zero rows;
+      - [x] position: both NULL means no position; one NULL or out of range raises `22023`;
             otherwise round to 2 dp;
-      - [ ] the 8-day `departure_at` prefilter;
-      - [ ] haversine with 6371.0088 and `<= 100`;
-      - [ ] **no comment inside the body names** `auth.uid`, `rides_from` or `digest_opt_out_at`
+      - [x] the 8-day `departure_at` prefilter;
+      - [x] haversine with 6371.0088 and `<= 100`;
+      - [x] **no comment inside the body names** `auth.uid`, `rides_from` or `digest_opt_out_at`
             (the comment trap: `§129.6` strips `--` comments, but keep the body clean anyway);
-      - [ ] `revoke all … from public, anon, authenticated, service_role`.
-- [ ] 1.5 Add `public.my_weekend_digest(near_lat double precision default null, near_lon double
+      - [x] `revoke all … from public, anon, authenticated, service_role`.
+- [x] 1.5 Add `public.my_weekend_digest(near_lat double precision default null, near_lon double
       precision default null)`:
-      - [ ] same return shape; `security definer`; `search_path = ''`;
-      - [ ] the body is exactly `select * from private.weekend_digest_for((select auth.uid()),
+      - [x] same return shape; `security definer`; `search_path = ''`;
+      - [x] the body is exactly `select * from private.weekend_digest_for((select auth.uid()),
             pg_catalog.now(), near_lat, near_lon)`;
-      - [ ] grants: `revoke all … from public, anon` and `grant execute … to authenticated`.
-- [ ] 1.6 Header: additive, migration-first, and the reason. Include the definer justification
+      - [x] grants: `revoke all … from public, anon` and `grant execute … to authenticated`.
+- [x] 1.6 Header: additive, migration-first, and the reason. Include the definer justification
       for each of the four functions, and the note that no table, trigger, policy or table grant
       moves.
 
@@ -51,25 +51,25 @@ and to PROD before the promotion merges. The branch already calls `my_digest_opt
 Each item is one labelled assertion or more. The numbers follow `design.md` §Roles and negative
 cases.
 
-- [ ] 2.1 `129.1`:
-      - [ ] `has_column_privilege('authenticated', 'public.profiles', 'digest_opt_out_at', …)` is
+- [x] 2.1 `129.1`:
+      - [x] `has_column_privilege('authenticated', 'public.profiles', 'digest_opt_out_at', …)` is
             false for select, insert and update;
-      - [ ] `096.1`'s widths still read 10/8/8.
-- [ ] 2.2 `129.2`:
-      - [ ] identity args are `''` and `'p_opt_out boolean'`;
-      - [ ] setting twice keeps the first stamp;
-      - [ ] `false` clears it.
-- [ ] 2.3 `129.3`: each opt-out leaves the other unchanged, as two assertions, one per direction.
-- [ ] 2.4 `129.4` and `129.5`, both grantee-scoped `has_function_privilege`:
-      - [ ] `anon` has no EXECUTE on the three public RPCs;
-      - [ ] `authenticated`, `anon` and `service_role` have none on the private body.
-- [ ] 2.5 `129.6`:
-      - [ ] the body's comment-stripped `prosrc` matches none of `auth\.uid\(`,
+      - [x] `096.1`'s widths still read 10/8/8.
+- [x] 2.2 `129.2`:
+      - [x] identity args are `''` and `'p_opt_out boolean'`;
+      - [x] setting twice keeps the first stamp;
+      - [x] `false` clears it.
+- [x] 2.3 `129.3`: each opt-out leaves the other unchanged, as two assertions, one per direction.
+- [x] 2.4 `129.4` and `129.5`, both grantee-scoped `has_function_privilege`:
+      - [x] `anon` has no EXECUTE on the three public RPCs;
+      - [x] `authenticated`, `anon` and `service_role` have none on the private body.
+- [x] 2.5 `129.6`:
+      - [x] the body's comment-stripped `prosrc` matches none of `auth\.uid\(`,
             `private\.is_club_member\(`, `private\.is_ride_crew\(`, `\mrides_from\M` or
             `\mdigest_opt_out_at\M`;
-      - [ ] the wrapper's `prosrc` **equals** the delegation;
-      - [ ] **verified both ways** against a scratch body that names `rides_from`.
-- [ ] 2.6 Build the fixture: a small world with one timestamp, pinning `at` to a known Wednesday.
+      - [x] the wrapper's `prosrc` **equals** the delegation;
+      - [x] **verified both ways** against a scratch body that names `rides_from`.
+- [x] 2.6 Build the fixture: a small world with one timestamp, pinning `at` to a known Wednesday.
       It holds:
       - riders: owner, admin, member, non-member, club invitee, removed member, ride invitee,
         and a rider blocked in each direction;
@@ -80,27 +80,30 @@ cases.
       - one ride in `America/Los_Angeles` that is Friday locally and Saturday in Amsterdam;
       - a public ride inside the private club;
       - threads, some by the blocked rider.
-- [ ] 2.7 `129.7` to `129.16`, and `129.18`, against that fixture, calling
+- [x] 2.7 `129.7` to `129.16`, and `129.18`, against that fixture, calling
       `private.weekend_digest_for` as the owner with each candidate. Blocks are asserted with the row in each direction.
       **Mutation-test** the block conjuncts and the membership gate in a scratch copy: each
       assertion must go red, then revert.
-- [ ] 2.8 `129.19`: an opted-out rider and a twin who is not opted out get identical rows.
-- [ ] 2.9 `129.17`: a NULL candidate returns zero rows, and one-NULL and `NaN` positions raise
+- [x] 2.8 `129.19`: an opted-out rider and a twin who is not opted out get identical rows.
+- [x] 2.9 `129.17`: a NULL candidate returns zero rows, and one-NULL and `NaN` positions raise
       `22023`.
-- [ ] 2.10 The participation-gate totals stay **23**. Re-derive them with the count query in
+- [x] 2.10 The participation-gate totals stay **23**. Re-derive them with the count query in
       `docs/reference/schema.md` §The participation gate. No new gated table.
-- [ ] 2.11 `npm test` is green, and the new labels are listed in the PR.
+- [ ] 2.11 `npm test` is green, and the new labels are listed in the PR. **Not run here: there is
+      no Postgres on this Mac.** The block was run instead against DEV in a rolled-back
+      transaction, in the hosted identity idiom, with the assertions recording rather than
+      raising: 88 passed, 0 failed. CI's RLS job (Postgres 17) is the gate.
 
 ## 3. DEV — the hand-exercise gate, then apply
 
-- [ ] 3.1 On DEV, as `authenticated`, in one **rolled-back** transaction (`set local role
+- [x] 3.1 On DEV, as `authenticated`, in one **rolled-back** transaction (`set local role
       authenticated` plus `request.jwt.claims`):
-      - [ ] call `my_weekend_digest` with a position and without one;
-      - [ ] call `set_digest_opt_out(true)` twice, then `false`, then `my_digest_opt_out()`;
-      - [ ] confirm `analytics_opt_out_at` did not move;
-      - [ ] confirm `select digest_opt_out_at from profiles` answers `42501`.
-- [ ] 3.2 Apply `129` to DEV. Read `list_migrations` back.
-- [ ] 3.3 `get_advisors(security)` shows exactly **+3** `authenticated_security_definer_function_executable`
+      - [x] call `my_weekend_digest` with a position and without one;
+      - [x] call `set_digest_opt_out(true)` twice, then `false`, then `my_digest_opt_out()`;
+      - [x] confirm `analytics_opt_out_at` did not move;
+      - [x] confirm `select digest_opt_out_at from profiles` answers `42501`.
+- [x] 3.2 Apply `129` to DEV. Read `list_migrations` back.
+- [x] 3.3 `get_advisors(security)` shows exactly **+3** `authenticated_security_definer_function_executable`
       WARNs (the three public functions) and no new class. Record them in
       `docs/reference/migrations.md` §Security advisors.
 
