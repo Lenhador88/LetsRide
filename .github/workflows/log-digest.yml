@@ -16,10 +16,11 @@ name: Supabase log digest
 # daily run would make every miss a permanent hole in exactly the record this
 # exists to keep.
 #
-# `workflow_dispatch` is not a convenience. No shell in any build container can
-# reach the Management API, so this workflow is the only thing that can execute
-# the script at all — and a dispatch is how a fix gets tested without waiting
-# 12 hours for the schedule. The transport test itself was NOT the first manual
+# `workflow_dispatch` is not a convenience. This runner holds
+# SUPABASE_ACCESS_TOKEN and a session does not, so this workflow is where the
+# script actually runs — and a dispatch is how a fix gets tested without waiting
+# 12 hours for the schedule. (It used to be that no build container could reach
+# the Management API at all; that stopped being true on 2026-09-20.) The transport test itself was NOT the first manual
 # run: run 1, scheduled, 2026-08-31, already reached the API and was refused.
 # See the VERIFICATION STATUS block in scripts/db/logs-errors.mjs.
 #

@@ -189,13 +189,15 @@ never the **guarantee**. **Forms are hand-rolled** — controlled inputs plus `u
 | Kind | Tool | Status |
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | Gates every PR touching `supabase/**` |
-| Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard, the session store | Vitest — `npm run test:unit` | Gates every PR that touches code. `src/lib/auth/guard.ts` (58 cases, replacing the untestable `proxy.ts`). `lib/actions/__tests__/` reads every action module on comment-stripped source to assert each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Fifty-eight** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence, verified both ways. Almost all render through `renderToStaticMarkup` under `environment: 'node'`; **jsdom is the answer only when something needs a mounted effect, a layout, an event or a portal**, and each jsdom test states which in its header — `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'` |
+| Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard, the session store | Vitest — `npm run test:unit` | Gates every PR that touches code. `src/lib/auth/guard.ts` (58 cases, replacing the untestable `proxy.ts`). `lib/actions/__tests__/` reads every action module on comment-stripped source to assert each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Sixty-three** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence, verified both ways. Almost all render through `renderToStaticMarkup` under `environment: 'node'`; **jsdom is the answer only when something needs a mounted effect, a layout, an event or a portal**, and each jsdom test states which in its header — `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'` |
 | Edge Functions | `deno check`, CI's `functions` job | Type-checks every `index.ts` under Deno when `supabase/functions/**` changes. `tsconfig.json` excludes the directory, so `tsc` never sees the entrypoints |
 | Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything**: signs in, walks every screen including discovered detail routes, checks the guard's redirects and sign-out. `WALK_FIXTURES=1` creates the rows the detail routes need; a shrunken `N/N` is a skip, not a pass. In CI as the `walk` job, minting its own rider, **skipped until the repository variable `WALK_CI=1` is set** because the Actions secrets name PROD. Not a required check yet (PD-370) |
 | End-to-end | Playwright | Deferred as a full suite. The walk asks one question per route — did this render — and asserts behaviour only in named phases, each covering a defect no other gate can see |
 
-Chromium is pre-installed at `/opt/pw-browsers`; never run `playwright install`. **Chromium in this
-container cannot reach Supabase** — `scripts/supabase-relay.mjs` is the fix; read its header.
+Chromium is pre-installed at `/opt/pw-browsers`; never run `playwright install`. **Chromium's Supabase stall
+REVERSED on 2026-09-22** — it reaches Supabase directly now, and a full walk has run with no
+relay. `scripts/supabase-relay.mjs` is kept and still documented; its header has both
+measurements and why.
 
 **Versions.** `package-lock.json` is committed and CI runs `npm ci`. Pin exact for `next`,
 `eslint-config-next`, `react`, `react-dom`, `@supabase/supabase-js` and **every Capacitor package**.
@@ -333,11 +335,11 @@ repointed. `docs/ENVIRONMENTS.md` is the contract. **Never promote a Vercel prev
 — both Supabase variables are inlined at build time and promote does not rebuild. **Check drift
 rather than claiming it**: `npm run db:drift` compares migration *names*.
 
-**Applied state: 126 files; DEV is at `126` and PROD at `126` — measured 2026-09-21.** DEV-ahead
+**Applied state: 129 files; DEV is at `129` and PROD at `126` — measured 2026-09-23.** DEV-ahead
 is the resting state between a merge and its promotion; promote everything the gap contains, in
 filename order, per `docs/ENVIRONMENTS.md` §Migrations, and record each file's ordering in
 `docs/reference/migrations.md` §Applied state. Count rather than trust it — `list_migrations`
-against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV answers 129 rows and
+against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV answers 132 rows and
 THREE have no file; PROD none** — the long-standing hand-applied ones. **Three sessions build at
 once, so the DEV ref runs ahead of the tree by however many are in flight**: count the FILE-LESS
 rows rather than the gap, and take the next number off `list_migrations` rather than off `wc -l`.
@@ -367,7 +369,7 @@ before it applies** — every affected path exercised on DEV, in a rolled-back t
 recorded statement that does not equal `md5sum` of its file is the NORM; compare the OBJECT
 (`docs/reference/migrations.md` §Applying a large file, §What reads as drift).
 
-Suite **4245** assertions — re-derive rather than trust it:
+Suite **4361** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs.
 

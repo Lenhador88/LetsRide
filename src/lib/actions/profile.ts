@@ -40,6 +40,7 @@ export async function updateProfile(
   const parsed = profileEditSchema.safeParse({
     bio: formData.get('bio'),
     bike_model: formData.get('bike_model'),
+    rides_from: formData.get('rides_from'),
   })
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
@@ -368,5 +369,38 @@ export async function setAnalyticsOptOut(optOut: boolean): Promise<ActionState> 
 
   applyAnalyticsPreference(data !== null)
   invalidate(queryKeys.profile.analyticsOptOut())
+  return { error: null }
+}
+
+/**
+ * Flip the weekly-digest opt-out — PD-450, part 1.
+ *
+ * `setAnalyticsOptOut`'s twin, minus the SDK call, and the missing half is the
+ * interesting difference between them. That one has to tell a client-side SDK
+ * because `096`'s column cannot enforce anything — PostHog is not in Postgres's
+ * path, so the column is a remembered answer this app honours. **This one
+ * writes into a column nothing reads yet.** `129` adds no job — the content
+ * rule, the reader and this opt-out are the whole of part 1 — so today the
+ * stamp is recorded and stops there. It becomes a real gate the day part 2's
+ * assembler exists, which is required to read it as its own conjunct
+ * (`design.md` §Deferred to part 2) rather than folding it into the content
+ * rule `private.weekend_digest_for` states.
+ *
+ * So the ordering worry that shaped the other function does not arise here:
+ * there is one write, and when it returns the preference is stored.
+ */
+export async function setDigestOptOut(optOut: boolean): Promise<ActionState> {
+  const supabase = await resolveSupabase()
+  // `p_opt_out` is load-bearing as a NAME, exactly as in `setAnalyticsOptOut`:
+  // PostgREST maps a parameter name to the JSON key, so renaming it in `129`
+  // is a wire-format change and not a rename.
+  //
+  // One message for every failure, matching the shape `096`'s siblings use: no
+  // session is `42501`, no profile row `P0002`, and a database without `129`
+  // answers `PGRST202`. None of the three is actionable from a toggle.
+  const { error } = await supabase.rpc('set_digest_opt_out', { p_opt_out: optOut })
+  if (error) return { error: 'Could not save that. Try again.' }
+
+  invalidate(queryKeys.profile.digestOptOut())
   return { error: null }
 }

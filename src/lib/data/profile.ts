@@ -347,3 +347,25 @@ export async function getAnalyticsOptOut(): Promise<boolean> {
   const stamp = unwrap(await supabase.rpc('my_analytics_opt_out'), 'your privacy settings')
   return stamp !== null
 }
+
+/**
+ * Whether this rider has opted out of the weekly digest — PD-450, part 1.
+ *
+ * `129`'s own-row RPC, and the twin of `getAnalyticsOptOut` down to the
+ * `stamp !== null` line, for the same reason: the function returns the STAMP so
+ * the answer carries *when* as well as *whether*, and comparing a timestamptz
+ * to `true` type-checks against `unwrap`'s generic while reading every rider as
+ * subscribed. That is the failure direction here too — it would leave the
+ * round-up switched on for a rider who asked to stop, the day part 2 gives it
+ * something to switch off.
+ *
+ * **A second function rather than a second caller of the first.** PD-450: "The
+ * opt-out is its own thing and must not be conflated with `096`'s analytics
+ * opt-out. Two different consents." Two readers keep it that way structurally,
+ * so neither can become the other by an edit to one call site.
+ */
+export async function getDigestOptOut(): Promise<boolean> {
+  const supabase = await resolveSupabase()
+  const stamp = unwrap(await supabase.rpc('my_digest_opt_out'), 'your notification settings')
+  return stamp !== null
+}

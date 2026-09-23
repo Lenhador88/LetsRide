@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+import { CalendarIcon, ChevronRightIcon } from '@/components/icons/generated'
 import { Header } from '@/components/layout/Header'
 import { ExploreRidesList } from '@/components/rides/ExploreRidesList'
 import { MapAttribution } from '@/components/rides/MapAttribution'
@@ -103,6 +105,27 @@ export default function ExploreRidesPage() {
           position={positionDecided ? position : undefined}
           town={city.data}
         />
+
+        {/* PD-450, part 1 — the one door to `/rides/weekend`, per `design.md`
+            §D6. Static: it carries no count and needs no read of its own, so
+            it has no loading state and cannot jump the list below it — the
+            same reasoning that keeps this outside the list's own gate,
+            directly under the location question rather than inside either
+            branch. Not in the tab root's strip slot — `one-question-row.test.ts`
+            only governs `LocationQuestionRow` there, and this row lives on
+            Explore alone. */}
+        <div className="px-4 pt-2">
+          <Link
+            href="/rides/weekend"
+            className="flex h-14 items-center gap-3 rounded-lg bg-surface px-4 transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none active:bg-background"
+          >
+            <CalendarIcon className="h-6 w-6 shrink-0 text-accent" />
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
+              This weekend
+            </span>
+            <ChevronRightIcon className="h-6 w-6 shrink-0 text-muted" />
+          </Link>
+        </div>
 
         {rides.error ? (
           <ErrorState onRetry={rides.refetch} />

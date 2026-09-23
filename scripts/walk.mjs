@@ -182,6 +182,7 @@ const STATIC_PATHS = [
   '/postcards/new',
   '/rides',
   '/rides/explore',
+  '/rides/weekend',
   '/rides/new',
   '/clubs',
   '/clubs/explore',
@@ -1633,6 +1634,64 @@ async function seedRideThread(rideId) {
 }
 
 /**
+ * A ride near the walk rider's own town, departing the coming Saturday —
+ * PD-450, part 1, task 5.4. `provision()`'s year-out fixture exists to sit at
+ * the top of `/rides` and deliberately never falls in `design.md` §D3's "this
+ * weekend" window; `/rides/weekend` needs one that does, measured from
+ * Amsterdam — the same town `provision()`'s club fixture already picks — so
+ * `getWeekendDigest` has a ride to hydrate at all. `design.md` §Risks records
+ * that DEV holds **0** rides in that window as of 2026-09-22, so the screen
+ * rendering empty even after this runs is the honest state, not a defect.
+ *
+ * **Independent of `provision()`'s ownership gate.** PD-306 governs "does the
+ * rider own A ride", which `provision()`'s year-out fixture already answers —
+ * so a rider who owns one never enters that block, and would never get a
+ * weekend-shaped one either without a fixture of its own. Idempotent by a
+ * title search on the rider's own list rather than by ownership, because
+ * "this weekend" moves under a fixture every week and a title match is the
+ * cheap way to ask "does today's Saturday one already exist" without a second
+ * `discoverOwned`-shaped probe.
+ */
+async function provisionWeekendRide() {
+  const permit = fixturesPermitted(await authenticatedProjectRef())
+  if (!permit.ok) return permit.why ? `refused:${permit.why}` : 'opted out'
+
+  const already = await page
+    .goto(`${BASE}/rides?filter=mine`, { waitUntil: 'networkidle' })
+    .then(() => page.locator('text=Walk weekend fixture').count())
+    .catch(() => 0)
+  if (already > 0) return 'present'
+
+  // The next Saturday strictly after now, at a daytime hour so no reasonable
+  // IANA offset from UTC pushes the LOCAL date to Friday or Sunday — this
+  // only has to land inside `design.md` §D3's window, not at a precise time.
+  const target = new Date()
+  target.setUTCHours(12, 0, 0, 0)
+  const untilSaturday = (6 - target.getUTCDay() + 7) % 7 || 7
+  target.setUTCDate(target.getUTCDate() + untilSaturday)
+  const departure = target.toISOString().slice(0, 16)
+
+  await page.goto(`${BASE}/rides/new`, { waitUntil: 'networkidle' })
+  const rendered = await page
+    .waitForSelector('input[name="title"]', { timeout: 20_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (!rendered) return 'the composer did not render'
+
+  await page.fill('input[name="title"]', 'Walk weekend fixture')
+  await page.fill('input[name="meeting_point"]', 'Dam Square, Amsterdam')
+  await page.fill('input[name="departure_at"]', departure)
+
+  await Promise.all([
+    page.waitForURL((u) => !u.pathname.endsWith('/new'), { timeout: 30_000 }).catch(() => {}),
+    page.click('button[type="submit"]'),
+  ])
+  await page.waitForTimeout(1200)
+
+  return new URL(page.url()).searchParams.get('id') ? 'created' : 'refused: no id after submit'
+}
+
+/**
  * A LIVE invite token for `rideId` — PD-430, task 6.4. Reused if the ride
  * already carries one, minted through `/rides/detail/invite`'s own "Create an
  * invite link" control otherwise, exactly the way `provision()` above creates
@@ -1766,6 +1825,20 @@ if (isFullWalk) {
     } else if (seeded !== 'present' && seeded !== 'opted out') {
       console.log(`  ! the fixture ride thread could not be created — ${seeded}`)
     }
+  }
+
+  // **Best-effort, and never a `fixtureFailures` count** — `design.md` §Risks
+  // already accepts an empty `/rides/weekend` on DEV as the honest state, so
+  // an unavailable geocoder or a refused write here degrades the digest's
+  // content, never the walk's exit code, unlike `owned.ride`/`owned.club`
+  // above which the walk's OTHER phases depend on existing at all.
+  const weekendFixture = await provisionWeekendRide()
+  if (weekendFixture === 'created') {
+    console.log('  + created a ride departing this coming Saturday, for /rides/weekend')
+  } else if (weekendFixture.startsWith('refused:')) {
+    console.log(`  (no weekend-digest fixture ride — ${weekendFixture.slice('refused:'.length)})`)
+  } else if (weekendFixture !== 'present' && weekendFixture !== 'opted out') {
+    console.log(`  (no weekend-digest fixture ride — ${weekendFixture})`)
   }
 
   const detail = await discoverDetailPaths({ preferRide: owned.ride, preferClub: owned.club })
@@ -2003,6 +2076,9 @@ const GUARD_CASES_SIGNED_OUT = [
   ['/', '/auth/login'],
   ['/postcards', '/auth/login'],
   ['/profile', '/auth/login'],
+  // PD-450, part 1 — `weekly-digest`'s own scenario: a signed-out visit
+  // reaches the shell and no data, never the reader.
+  ['/rides/weekend', '/auth/login'],
   ['/legal/terms', '/legal/terms'],
   ['/auth/reset-password', '/auth/reset-password'],
 ]

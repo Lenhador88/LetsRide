@@ -1081,8 +1081,15 @@ function ListBody({
   )
 }
 
-/** A vendor result, as the value this field stores. */
-function toPlaceValue(place: PlaceSearchResult, maxNameLength?: number): PlaceValue {
+/**
+ * A vendor result, as the value this field stores.
+ *
+ * Exported for `TownFromDevice` (PD-477), so a town filled from the
+ * device is the same `PlaceValue` a typed pick would be — country code, zone
+ * and the length bound included — rather than a second hand-built copy that
+ * drifts.
+ */
+export function toPlaceValue(place: PlaceSearchResult, maxNameLength?: number): PlaceValue {
   return {
     name: boundName(placeLabel(place), maxNameLength),
     placeId: place.id,

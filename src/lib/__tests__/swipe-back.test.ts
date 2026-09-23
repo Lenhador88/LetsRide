@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  isClaimingSwipeBack,
+  SWIPE_BACK_CLAIM_PX,
   declinesSwipeBack,
   isSwipeBack,
   startsInEdgeZone,
@@ -152,5 +154,60 @@ describe('declinesSwipeBack', () => {
     expect(declinesSwipeBack(node({ tagName: 'TEXTAREA' }))).toBe(true)
     expect(declinesSwipeBack(node({ tagName: 'INPUT' }))).toBe(true)
     expect(declinesSwipeBack(node({ isContentEditable: true }))).toBe(true)
+  })
+})
+
+/**
+ * The claim predicate — PD-341, measured 2026-09-23.
+ *
+ * It answers an earlier question than `isSwipeBack`: not *was that a back
+ * gesture* but *may the hook take this touch from the browser now, before the
+ * browser takes it and the release is never judged*. Measured with raw touch
+ * through CDP against the real hook: without a claim, an edge swipe right logs
+ * `down, pointercancel` and never navigates.
+ *
+ * **The claim is one-way**, which is what makes this strict rather than
+ * generous: once a `touchmove` is cancelled the engine will not start a scroll
+ * for that touch. A first version claimed any rightward-dominant sample and
+ * swallowed a scroll that began with a sideways leg — 0px of scroll where the
+ * unfixed build moved 300.
+ */
+describe('isClaimingSwipeBack', () => {
+  it('takes a plainly sideways sample, well before the browser claims the pan', () => {
+    // Chromium commits to its own pan at about 20px.
+    expect(isClaimingSwipeBack(SWIPE_BACK_CLAIM_PX, 0)).toBe(true)
+    expect(isClaimingSwipeBack(12, 3)).toBe(true)
+  })
+
+  it('leaves a thumb arc to the browser', () => {
+    // 14 across and 12 down per sample: the measured shape of a scroll that
+    // starts near the edge. Claiming it costs the rider the whole scroll.
+    expect(isClaimingSwipeBack(14, 12)).toBe(false)
+    expect(isClaimingSwipeBack(14, -12)).toBe(false)
+  })
+
+  it('leaves a jitter alone, below the floor', () => {
+    expect(isClaimingSwipeBack(SWIPE_BACK_CLAIM_PX - 1, 0)).toBe(false)
+    expect(isClaimingSwipeBack(0, 0)).toBe(false)
+  })
+
+  it('refuses a leftward sample, at any size', () => {
+    expect(isClaimingSwipeBack(-40, 0)).toBe(false)
+  })
+
+  it('uses the same axis ratio as the release test', () => {
+    // At exactly the ratio it claims; a pixel more vertical and it does not.
+    expect(isClaimingSwipeBack(20, 10)).toBe(true)
+    expect(isClaimingSwipeBack(20, 11)).toBe(false)
+  })
+
+  it('is weaker than isSwipeBack, never stronger', () => {
+    // Everything isSwipeBack accepts, this accepts first — otherwise the
+    // browser takes the gesture before the decision is reached.
+    const qualifying = { startX: 8, startY: 400, endX: 8 + 120, endY: 405, elapsedMs: 300 }
+    expect(isSwipeBack(qualifying)).toBe(true)
+    expect(
+      isClaimingSwipeBack(qualifying.endX - qualifying.startX, qualifying.endY - qualifying.startY)
+    ).toBe(true)
   })
 })

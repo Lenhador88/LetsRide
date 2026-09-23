@@ -90,6 +90,8 @@ export const BIKE_MODEL_MAX_LENGTH = 60
  * to shorten. `PlaceSearchField`'s `maxNameLength` is where it lands.
  */
 export const LOCATION_MAX_LENGTH = 100
+/** `127`'s `profiles_rides_from_length` — `018`'s location bound, mirrored. */
+export const RIDES_FROM_MAX_LENGTH = 100
 
 /**
  * Bio, bike and location are all **optional** on the profile editor, so an
@@ -167,6 +169,19 @@ export const locationSchema = optionalText(
 )
 
 /**
+ * `profiles.rides_from` (`127`, PD-476) — where the rider says they ride from,
+ * in their own words. Anything goes up to the bound: it is never geocoded, so
+ * there is nothing to validate it against. **It is not `locationSchema`'s
+ * column and must never become a second door into it** — `location` is the
+ * placed town the distances come from, and writing free text there is PD-425's
+ * defect.
+ */
+export const ridesFromSchema = optionalText(
+  RIDES_FROM_MAX_LENGTH,
+  `Must be ${RIDES_FROM_MAX_LENGTH} characters or fewer.`
+)
+
+/**
  * The editable surface of a profile, and deliberately not all of it.
  *
  * `username` is absent: it is unique, reserved-word checked, and rendered as
@@ -194,6 +209,7 @@ export const locationSchema = optionalText(
 export const profileEditSchema = z.object({
   bio: bioSchema,
   bike_model: bikeModelSchema,
+  rides_from: ridesFromSchema,
 })
 
 /**

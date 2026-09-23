@@ -141,7 +141,13 @@ export const RIDE_CREW_LIMIT = 200
  * answers false — a ride with no coordinate is never near anything, and must
  * never be counted as though it were.
  */
-const RIDE_SELECT = `
+/**
+ * Exported for `lib/data/digest.ts` alone (PD-450, part 1) — the weekend
+ * reader returns ids only (`design.md` §D2), so the client re-fetches the
+ * ride rows for those ids under the caller's own RLS, and it needs this same
+ * projection rather than a second one that could drift from it.
+ */
+export const RIDE_SELECT = `
   id, title, meeting_point, departure_at, created_at, timezone, organizer_id, map_card_path,
   latitude, longitude,
   organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS}),
