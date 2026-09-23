@@ -19,14 +19,14 @@ git diff --stat origin/development -- docs/HANDOFF.md   # is this file itself un
 
 ## Position
 
-**Updated 2026-09-21.** Prune the lines that are no longer true when you land work; do not add
+**Updated 2026-09-23.** Prune the lines that are no longer true when you land work; do not add
 history.
 
 - **`development` is the default branch and deploys to DEV** (`app-dev.letsride.social`);
   `main` is production (`app.letsride.social`). `development` is normally ahead of `main`, and
-  that is the steady state.
-- **Migrations: 126 files; DEV and PROD both at `126`** — DEV answers 129 rows, the three extra
-  hand-applied with no file; PROD answers exactly 126. **Take the next number from `list_migrations`, never the
+  that is the steady state; 2026-09-23's promotion left them level and `Queued (AI)` empty.
+- **Migrations: 129 files; DEV and PROD both at `129`** — DEV answers 132 rows, the three extra
+  hand-applied with no file; PROD answers exactly 129. **Take the next number from `list_migrations`, never the
   file count and never a DECLARED one** — a territory comment naming `125` is not a spent
   number, and the ref is what settles it. `docs/reference/migrations.md` §Applied state has the per-file log
   and §Security advisors the counts.
@@ -35,12 +35,15 @@ history.
   is not currency, and both new ones are inert on both projects until the owner's secrets land.
   Read the `deploy` *job's* conclusion, never the run's: without the token it skips and the run is
   green anyway.
-- **The walk is green on DEV** — named account **25/25 screens, 89/89 checks** (2026-09-20);
-  `docs/reference/running-locally.md` §The walk has the quota trap. In CI it is
-  **skipped**, per §Blocked on the owner.
+- **A touch gesture decided at `pointerup` does not fire on a phone** — the browser claims the
+  touch as a pan and cancels the pointer stream, and jsdom cannot see it. Two shipped gestures were
+  dead this way. Drive raw touch through CDP against the real component; `swipe-back.ts` and
+  `swipe-dismiss.ts` carry what reproduced.
+- **The walk is green on DEV** (2026-09-20) and **skipped in CI**, per §Blocked on the owner;
+  `docs/reference/running-locally.md` §The walk has the counts and the quota trap.
 - **Pass the Linear team id `7388c68e-ef17-4998-a9b7-d8ad8ce66038`, never a name** — a stale one
   errors on `list_issue_statuses` and answers `[]` elsewhere, so empty is not proof.
-- **OpenSpec has 9 open changes and 48 archived**
+- **OpenSpec has 9 open changes and 51 archived**
   (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`). Every one
   left is open for a reason its own banner or `docs/reference/journal.md` §The open OpenSpec
   changes names — **archiving one is not two commands**, and that section has the mechanism and
@@ -48,35 +51,35 @@ history.
 
 ## In flight
 
-- **Nothing in this app opens a sheet by itself** (PD-447, reversing PD-419). The Explore question
-  is `LocationQuestionRow`, on the two Explore screens only. **`profiles.location` has TWO
-  writers** — `setRiderTown` and `setHomeTown` — so anything keyed to a stored town goes in both.
+- **Nothing in this app opens a sheet by itself** (PD-447, reversing PD-419), and the two controls
+  that may raise the location dialog do it on a tap — `request-callers.test.ts` holds them to two.
+  **`profiles.location` has TWO writers**, `setRiderTown` and `setHomeTown`, so anything keyed to a
+  stored town goes in both.
 - **Onboarding's terminal step is `/onboarding/town`** (PD-445), behind `setHomeTown`; the
   guard's `isOnboarding` catch-all is what makes `/onboarding/country` safe. **A town is answered
   by a THIRD PARTY at the app's most critical gate** — `search-places` has an application-wide
   ceiling (2000/24h across all riders) — so a lookup failure reveals a country select on its own
-  and the rider finishes with no town — the 2026-09-08 walk hit that on `Amsterdam`.
-  Every walk run spends two credits.
+  and the rider finishes with no town. Every walk run spends two credits. **Until `128` it could
+  not search at all** — its ledger wanted the onboarding stamp that step writes.
 - **Universal links are built and UNVERIFIED** (PD-205) — Apple fetches the association file onto
   a device, so a simulator settles nothing; `docs/reference/native-shell.md` §Universal links has
   the checks and the owner action. **It stays open**: the Android half needs a signing fingerprint
   that cannot exist until `android/` does.
 - **Push (`openspec/changes/deliver-push-notifications`): child C (PD-303) is built and delivers
-  nothing yet** — the job is Vault-gated per project and no-ops on both until the owner runs
-  `121` §0c's order, whose step 3 wants the gateway `curl` in `docs/ENVIRONMENTS.md`
-  §Scheduled jobs first. Child B
-  (#438, #446) is unverified on a device — 2.15–2.19a want a phone running the TestFlight build.
-  PD-291 stays open until a phone has received one.
+  nothing yet** — Vault-gated per project, and no-ops on both until the owner runs `121` §0c's
+  order, whose step 3 wants `docs/ENVIRONMENTS.md` §Scheduled jobs' gateway `curl` first. Child B
+  is unverified on a device; PD-291 stays open until a phone has received one. **PD-450's part 2
+  waits on the same credentials.**
 - **The mail rail sends nothing** (PD-457): the owner owes the secrets, one hand invocation, then
   the schedule, in that order. Unset, a tick 500s before it claims — nothing delivered, none lost.
   **`DIGEST_RECIPIENT` is the owner's private mailbox, never `SUPPORT_EMAIL`** —
   `docs/ENVIRONMENTS.md` §`send-moderation-digest`'s secrets is the control no test can reach.
-- **PD-385 is open on purpose**: 9 DEV rides have a coordinate and no tile, repairable only by
-  their organizers.
 - **Xcode Cloud (PD-474) is live and `Todo Human`** — a push to `main` archives and delivers to
-  TestFlight *LetsRide internal*. Build 1 (2026-09-22) was a **manual** start that put `1.0.0 (1)`
-  there; the next promotion is the push trigger's first run (`docs/reference/native-shell.md`
-  §Xcode Cloud). The story closes when a phone installs a build.
+  TestFlight *LetsRide internal*. **The push trigger fired for the first time on 2026-09-23's
+  promotion** (`c6f64afd`), so its build is the first carrying both gesture fixes; read its
+  conclusion rather than assuming it. The story closes when a phone installs a build.
+- **Florina was invited to App Store Connect on 2026-09-23** (Customer Support, LetsRide only).
+  She must accept Apple's email before she can be added to *LetsRide internal* and install.
 
 Re-derive rather than trust it: `list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`
 filtered by status, and `list_pull_requests state=open`.
@@ -98,17 +101,17 @@ body carries its own steps.
 
 ## Next action
 
-**A phone.** `1.0.0 (1)` is in TestFlight; once the owner installs it, the device-only rows in
-`docs/reference/native-shell.md` §What the first build settled can finally be checked — the camera
-prompt first, then universal links and push (child B, which also wants the Vault and APNs steps in
-§In flight before a push can arrive).
+**A phone.** The build from 2026-09-23's promotion carries both gesture fixes, and **neither is
+verified on WKWebView** — they were measured in Chromium. Check the postcard pull-down and
+swipe-right-to-go-back first, then the device-only rows in `docs/reference/native-shell.md` §What
+the first build settled — the camera prompt, universal links, push (child B, which wants the Vault
+and APNs steps in §In flight), and the onboarding location control, whose dialog iOS grants once
+per install.
 
 **Then the standing specs' known-stale text**, which no archive could fix because no change owns
-it: the pre-join sheet PD-418 changed, `enforce-creator-membership`'s "no admin row exists today"
-(false since `088`), and `photo-capture-metadata` describing the composer before PD-275.
-**`add-account-deletion` must have its role block rewritten against the standing spec, and its
-pre-PD-98 succession answer replaced by `107`'s, before it archives** — its banner says how. *Verify shipped from `src/` and `supabase/migrations/`, never from `tasks.md`*, whose tick
-counts are wrong in both directions.
+it — `docs/reference/journal.md` §The open OpenSpec changes names each one and what is wrong with
+it, `add-account-deletion` included. *Verify shipped from `src/` and `supabase/migrations/`, never
+from `tasks.md`*, whose tick counts are wrong in both directions.
 
 ## Test accounts
 
@@ -140,7 +143,4 @@ curl -s --noproxy '*' -X POST 'http://localhost:3001/auth/v1/token?grant_type=pa
 **Replacing one** is `docs/reference/running-locally.md` §Replacing a fixture.
 
 **`screenshot-account.sql`'s guard stands on its DEV arm alone** — PROD carries no
-`@letsride.test` account, so the arm that looked for one can no longer fire. Count rather than
-trust it, against `zwprydcyryvudhurbnye`:
-`select count(*) from auth.users where email like '%@letsride.test';` → 0. The history is
-`docs/reference/journal.md` §Test accounts — the full record.
+`@letsride.test` account. `docs/reference/journal.md` §Test accounts has the record.
