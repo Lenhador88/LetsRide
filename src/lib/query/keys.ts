@@ -154,8 +154,8 @@ export const queryKeys = {
      */
     analyticsOptOut: (): QueryKey => ['profile', 'analyticsOptOut'],
     /**
-     * `getDigestOptOut` — PD-450. The weekly digest's own consent, from `125`'s
-     * `public.my_digest_opt_out()`. No `revalidatePath` predecessor.
+     * `getDigestOptOut` — PD-450, part 1. The weekly digest's own consent, from
+     * `129`'s `public.my_digest_opt_out()`. No `revalidatePath` predecessor.
      *
      * **Its own leaf rather than a second reading of `analyticsOptOut`**, and
      * that is the requirement rather than a preference: PD-450 states the two
@@ -667,6 +667,31 @@ export const queryKeys = {
       'explore',
       near ? `${near.lat},${near.lon}` : 'unlocated',
     ],
+    /**
+     * `/rides/weekend` — `getWeekendDigest` (PD-450, part 1). Position-keyed
+     * for `explore`'s own reason: the reader is asked to round and filter by a
+     * position, so a digest measured from Utrecht is not the digest for the
+     * same rider in Maastricht, and `null` — no resolvable position — is its
+     * own segment rather than an omitted one.
+     *
+     * **Reached three ways, and `weekendAll()` is the prefix all three share.**
+     * `rides.all()` already covers the rider's own RSVP — `setRideAttendance`
+     * invalidates that whole prefix, and this key sits under it, so joining or
+     * leaving a ride this weekend takes it off the digest for free. Joining or
+     * leaving a CLUB does not move `rides.all()` at all, which is why
+     * `invalidateClubMembership` gains an explicit `weekendAll()` claim — see
+     * that function. **The rider's own ride and thread writes owe nothing
+     * here**: `design.md` §D3 excludes the organiser's and the author's own
+     * rows from every count, so creating either can never move their own
+     * digest, and there is no invalidation to add for it.
+     */
+    weekend: (near?: { lat: number; lon: number } | null): QueryKey => [
+      'rides',
+      'weekend',
+      near ? `${near.lat},${near.lon}` : 'unlocated',
+    ],
+    /** The prefix `weekend(...)`'s two segments share — see that key. */
+    weekendAll: (): QueryKey => ['rides', 'weekend'],
     /**
      * The rider's own last picked start locations, offered by the place field
      * on focus — PD-274, `getRecentRideStarts`.

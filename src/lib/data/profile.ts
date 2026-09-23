@@ -349,14 +349,15 @@ export async function getAnalyticsOptOut(): Promise<boolean> {
 }
 
 /**
- * Whether this rider has opted out of the weekly digest — PD-450.
+ * Whether this rider has opted out of the weekly digest — PD-450, part 1.
  *
- * `125`'s own-row RPC, and the twin of `getAnalyticsOptOut` down to the
+ * `129`'s own-row RPC, and the twin of `getAnalyticsOptOut` down to the
  * `stamp !== null` line, for the same reason: the function returns the STAMP so
  * the answer carries *when* as well as *whether*, and comparing a timestamptz
  * to `true` type-checks against `unwrap`'s generic while reading every rider as
- * subscribed. That is the failure direction here too — it would keep sending to
- * a rider who asked to stop.
+ * subscribed. That is the failure direction here too — it would leave the
+ * round-up switched on for a rider who asked to stop, the day part 2 gives it
+ * something to switch off.
  *
  * **A second function rather than a second caller of the first.** PD-450: "The
  * opt-out is its own thing and must not be conflated with `096`'s analytics
