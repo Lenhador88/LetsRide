@@ -251,7 +251,7 @@ export type RideListItem = {
   longitude: number | null
   /**
    * How far the meeting point is from the rider, in kilometres — filled by
-   * `getExploreRides` alone, and `undefined` everywhere else.
+   * `getExploreRides` and `getWeekendDigest`, and `undefined` everywhere else.
    *
    * Three different "no" collapse to `undefined` and that is deliberate: the
    * rider has no resolvable position, the ride has no coordinate, or the read
@@ -1227,6 +1227,37 @@ export type ClubListItem = {
    * and from nowhere in the product.
    */
   request_status?: ClubJoinRequestStatus | null
+}
+
+/**
+ * One club's row in the weekend digest (PD-450, part 1) — `getWeekendDigest`'s
+ * shape for `WeekendDigest.clubs`.
+ *
+ * **Counts, not rows.** `public.my_weekend_digest` returns `new_rides` and
+ * `new_threads` for a club the candidate already belongs to; this type pairs
+ * them with the `EmbeddedClub` the data layer resolves for the id, under the
+ * viewer's own RLS (`design.md` §D2). A club with both counts at zero is never
+ * returned by the reader at all — see `WeekendDigest`.
+ */
+export type WeekendDigestClub = {
+  club: EmbeddedClub
+  newRides: number
+  newThreads: number
+}
+
+/**
+ * `getWeekendDigest(near)`'s whole answer — PD-450, part 1.
+ *
+ * **Two independent sections, not a merged feed.** `rides` is at most 5 rides
+ * this weekend near `near`, ordered `departure_at` then distance; `clubs` is
+ * at most 5 of the rider's own clubs with new activity this week, busiest
+ * first. Both empty is the screen's own empty state, not an error — the reader
+ * returns zero rows rather than a placeholder (`design.md` §D3, "Nothing to
+ * show").
+ */
+export type WeekendDigest = {
+  rides: RideListItem[]
+  clubs: WeekendDigestClub[]
 }
 
 /** `085`. Two values, not three: an APPROVED request is deleted and the

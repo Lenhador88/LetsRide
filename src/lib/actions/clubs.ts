@@ -87,6 +87,12 @@ export function invalidateClubMembership(clubId: string) {
   // written or deleted. Joining restores it. Nothing else in this file moves a
   // notification — see `keys.ts`.
   invalidate(queryKeys.notifications.all())
+  // PD-450, part 1. `rides.all()` — which `setRideAttendance` invalidates —
+  // does not reach `rides.weekend(...)`'s clubs section, because joining or
+  // leaving a club writes no ride and no thread. Without this claim a rider
+  // who joins a busy club keeps reading its old (absent) row in the digest
+  // until the cache's own stale window happens to lapse.
+  invalidate(queryKeys.rides.weekendAll())
 }
 
 /**
